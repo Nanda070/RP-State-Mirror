@@ -58,6 +58,11 @@ class InterserverBot(commands.Bot):
     async def setup_hook(self):
         await database.init_db()
         self.http_session = aiohttp.ClientSession()
+
+        await self.load_extension("cmd_invites")
+        await self.load_extension("cmd_crosscheck")
+        await self.load_extension("cmd_global_admin")
+
         for g_id in COMMAND_GUILD_IDS:
             guild = discord.Object(id=g_id)
             self.tree.copy_global_to(guild=guild)
