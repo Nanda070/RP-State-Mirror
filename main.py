@@ -55,36 +55,18 @@ class InterserverBot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
         self.http_session = None
 
-async def setup_hook(self):
-        print("1. Инициализация БД...")
+    async def setup_hook(self):
         await database.init_db()
-        print("2. БД загружена. Запуск сессии...")
         self.http_session = aiohttp.ClientSession()
-        
-        print("3. Подключение когов...")
-        try:
-            print("  -> Загрузка cmd_invites")
-            await self.load_extension("cmd_invites")
-            print("  -> Загрузка cmd_crosscheck")
-            await self.load_extension("cmd_crosscheck")
-            print("  -> Загрузка cmd_global_admin")
-            await self.load_extension("cmd_global_admin")
-        except Exception as e:
-            print(f"!!! ОШИБКА ЗАГРУЗКИ КОГА: {e}")
 
-        print("4. Синхронизация slash-команд...")
+        await self.load_extension("cmd_invites")
+        await self.load_extension("cmd_crosscheck")
+        await self.load_extension("cmd_global_admin")
+
         for g_id in COMMAND_GUILD_IDS:
-            try:
-                print(f"  -> Синхронизация сервера {g_id}...")
-                guild = discord.Object(id=g_id)
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                print(f"  -> Сервер {g_id} синхронизирован.")
-            except Exception as e:
-                print(f"!!! ОШИБКА СИНХРОНИЗАЦИИ {g_id}: {e}")
-                
-        print("5. setup_hook завершен!")
-    
+            guild = discord.Object(id=g_id)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
         self.cleanup_posts.start()
         self.check_overdue_fines.start()
         self.roster_reconciliation.start()
