@@ -89,7 +89,7 @@ async def setup_hook(self):
         self.check_overdue_fines.start()
         self.roster_reconciliation.start()
 
-    async def on_member_join(self, member):
+    async def on_member_join(self, member)
         await evaluate_member_access(self, member.id)
 
     async def on_member_update(self, before, after):
