@@ -11,7 +11,7 @@ import embeds
 import database
 from iam_logic import evaluate_member_access
 
-logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] %(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
 logger = logging.getLogger("bot")
 
 
