@@ -95,13 +95,16 @@ class CrossCheckCog(commands.Cog):
             factions = data["factions"]
             f_names = [f[0] for f in factions]
 
-            # Текст: @Тег (ID) - ФРАКЦИЯ1, ФРАКЦИЯ2
             content = f"{member.mention} ({member.id}) - {', '.join(f_names)}"
             view = UserFactionAuditView(member.id, member.display_name, factions, it.user.id)
 
-            await it.channel.send(content=content, view=view)
+            await it.channel.send(
+                content=content,
+                view=view,
+                allowed_mentions=discord.AllowedMentions(users=False)
+            )
 
-        await it.channel.send(f"{it.user.mention} - проверка завершена. Спасибо за работу.")
+        await it.channel.send(f"{it.user.mention} проверка завершена. Спасибо за работу.")
 
 
 async def setup(bot):
