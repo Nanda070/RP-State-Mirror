@@ -62,6 +62,7 @@ class InterserverBot(commands.Bot):
         await self.load_extension("cmd_invites")
         await self.load_extension("cmd_crosscheck")
         await self.load_extension("cmd_global_admin")
+        await self.load_extension("event_audit")
 
         for g_id in COMMAND_GUILD_IDS:
             guild = discord.Object(id=g_id)
