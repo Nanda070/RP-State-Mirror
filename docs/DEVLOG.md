@@ -16,7 +16,7 @@
 
 ### Проверка
 
-- `pnpm lint`, `pnpm check`, `pnpm dashboard:build` (см. коммит).
+- `pnpm lint`, `pnpm check`, `pnpm dashboard:build` — OK.
 
 ### Превью
 
