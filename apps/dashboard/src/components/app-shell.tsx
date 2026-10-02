@@ -5,10 +5,9 @@ import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { BrandMark } from "./brand-mark";
 import { CommandPalette } from "./command-palette";
 import { NotificationsBell } from "./notifications-bell";
-import { SiteFooter } from "./site-footer";
-import { ThemeSelect } from "./theme-provider";
 
 const NAV = [
   { href: "/overview", label: "Обзор", group: "Основное" },
@@ -32,6 +31,7 @@ export function AppShell({
     <div className="shell">
       <aside className="sidebar">
         <div className="brand-block">
+          <BrandMark />
           <div className="brand">Mirror · GTA5RP</div>
           <p>Дашборд государственных фракций</p>
         </div>
@@ -68,7 +68,6 @@ export function AppShell({
         <header className="topbar">
           <div className="muted">Ctrl+K — быстрый переход</div>
           <div className="row">
-            <ThemeSelect />
             <NotificationsBell />
           </div>
         </header>
@@ -80,7 +79,6 @@ export function AppShell({
         >
           {children}
         </motion.main>
-        <SiteFooter />
       </div>
       <CommandPalette />
     </div>

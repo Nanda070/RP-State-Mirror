@@ -2,10 +2,20 @@
 
 import { signIn } from "next-auth/react";
 
-export function LoginButton() {
+function DiscordGlyph() {
   return (
-    <button type="button" className="btn btn-primary" onClick={() => signIn("discord")}>
-      Продолжить через Discord
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M19.27 5.33A16.3 16.3 0 0 0 15.43 4a.1.1 0 0 0-.1.05c-.17.3-.36.7-.5 1.01a15.1 15.1 0 0 0-4.66 0c-.14-.32-.34-.7-.51-1.01A.1.1 0 0 0 9.56 4a16.26 16.26 0 0 0-3.84 1.33.09.09 0 0 0-.04.03C2.43 9.14 1.6 12.85 2 16.51c0 .02.01.04.03.05a16.5 16.5 0 0 0 4.97 2.52.1.1 0 0 0 .11-.04c.38-.52.72-1.07 1.01-1.65a.1.1 0 0 0-.05-.14 10.9 10.9 0 0 1-1.56-.75.1.1 0 0 1-.01-.17c.1-.08.21-.16.31-.24a.1.1 0 0 1 .1-.01c3.28 1.5 6.83 1.5 10.07 0a.1.1 0 0 1 .1.01c.1.08.21.16.32.24a.1.1 0 0 1-.01.17c-.5.29-1.02.54-1.56.75a.1.1 0 0 0-.05.14c.3.58.64 1.13 1.01 1.65a.1.1 0 0 0 .11.04 16.45 16.45 0 0 0 4.98-2.52.1.1 0 0 0 .03-.05c.48-4.24-.8-7.91-3.38-11.15a.07.07 0 0 0-.04-.03ZM9.7 14.33c-.99 0-1.8-.9-1.8-2.02s.8-2.02 1.8-2.02 1.81.91 1.8 2.02-.8 2.02-1.8 2.02Zm4.61 0c-.99 0-1.8-.9-1.8-2.02s.8-2.02 1.8-2.02 1.81.91 1.8 2.02-.81 2.02-1.8 2.02Z" />
+    </svg>
+  );
+}
+
+export function LoginButton({ label = "Войти через Discord" }: { label?: string }) {
+  return (
+    <button type="button" className="btn btn-discord" onClick={() => signIn("discord")}>
+      <DiscordGlyph />
+      {label}
+      <span aria-hidden>→</span>
     </button>
   );
 }

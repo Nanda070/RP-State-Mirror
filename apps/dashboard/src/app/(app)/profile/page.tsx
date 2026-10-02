@@ -2,6 +2,7 @@ import { buildStatusBadge } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import Image from "next/image";
 import { redirect } from "next/navigation";
+import type { CSSProperties } from "react";
 import { auth } from "@/auth";
 import { formatMoscow } from "@/lib/moscow";
 import { resolveFreshIdentity } from "@/lib/session";
@@ -31,60 +32,70 @@ export default async function ProfilePage() {
   return (
     <div className="stack">
       <div
-        className="profile-banner"
+        className="profile-hero"
         style={
           badge.accentColor
-            ? {
-                background: `linear-gradient(120deg, ${badge.accentColor}, transparent 60%), linear-gradient(210deg, color-mix(in srgb, var(--accent-2) 40%, transparent), var(--bg-2))`,
-              }
+            ? ({
+                ["--profile-accent" as string]: badge.accentColor,
+              } as CSSProperties)
             : undefined
         }
-      />
-      <div className="profile-row">
-        {avatar ? (
-          <Image className="avatar" src={avatar} alt="" width={96} height={96} unoptimized />
-        ) : (
-          <div className="avatar" aria-hidden />
-        )}
-        <div>
-          <h1 style={{ margin: 0 }}>{session.user.name ?? session.user.username}</h1>
-          <p className="muted" style={{ margin: "0.25rem 0 0.55rem" }}>
-            @{session.user.username ?? "discord"} · {session.user.discordId}
-          </p>
-          <div className="row">
-            <span className="badge" data-kind={badge.kind} style={badge.accentColor ? { borderColor: badge.accentColor } : undefined}>
-              {badge.primary}
-            </span>
-            {badge.secondary ? <span className="badge">{badge.secondary}</span> : null}
+      >
+        <div className="profile-identity">
+          {avatar ? (
+            <Image className="avatar" src={avatar} alt="" width={88} height={88} unoptimized />
+          ) : (
+            <div className="avatar" aria-hidden />
+          )}
+          <div className="profile-meta">
+            <h1>{session.user.name ?? session.user.username}</h1>
+            <p className="muted handle">
+              @{session.user.username ?? "discord"} · {session.user.discordId}
+            </p>
+            <div className="row">
+              <span
+                className="badge"
+                data-kind={badge.kind}
+                style={badge.accentColor ? { borderColor: badge.accentColor } : undefined}
+              >
+                {badge.primary}
+              </span>
+              {badge.secondary ? <span className="badge">{badge.secondary}</span> : null}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Серверы</h2>
+        <h2 className="panel-title">Серверы</h2>
+        <p className="muted" style={{ marginTop: 0, marginBottom: "1rem" }}>
+          Активные членства по снимку Discord. Роли считаются на момент последней синхронизации.
+        </p>
         {memberships.length === 0 ? (
           <p className="muted">Нет данных снимка. Запустите бота на серверах, где вы состоите.</p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Сервер</th>
-                <th>Ник</th>
-                <th>Вход</th>
-                <th>Ролей</th>
-              </tr>
-            </thead>
-            <tbody>
-              {memberships.map((member) => (
-                <tr key={member.id}>
-                  <td>{member.guild.name}</td>
-                  <td>{member.nickname ?? member.globalName ?? member.username}</td>
-                  <td>{formatMoscow(member.joinedAt)}</td>
-                  <td>{member.roleIds.length}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="server-grid">
+            {memberships.map((member) => (
+              <div className="server-card" key={member.id}>
+                <div>
+                  <span className="label">Сервер</span>
+                  <strong>{member.guild.name}</strong>
+                </div>
+                <div>
+                  <span className="label">Ник</span>
+                  <span>{member.nickname ?? member.globalName ?? member.username}</span>
+                </div>
+                <div>
+                  <span className="label">Вход</span>
+                  <span>{formatMoscow(member.joinedAt)}</span>
+                </div>
+                <div>
+                  <span className="label">Ролей</span>
+                  <strong>{member.roleIds.length}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

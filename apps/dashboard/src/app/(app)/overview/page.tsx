@@ -13,14 +13,17 @@ export default async function OverviewPage() {
 
   return (
     <div className="stack">
-      <div className="panel">
-        <h1 style={{ marginTop: 0 }}>Обзор</h1>
+      <div className="section-head">
+        <h1>Обзор</h1>
         <p className="muted">
           Добро пожаловать, {session.user.name ?? session.user.username}. Статус:{" "}
-          <strong>{badge.primary}</strong>
+          <strong style={{ color: "var(--ink)" }}>{badge.primary}</strong>
           {identity.adminLevel ? ` (${ADMIN_LEVEL_LABELS_RU[identity.adminLevel]})` : null}.
         </p>
-        <div className="row">
+      </div>
+      <div className="panel">
+        <h2 className="panel-title">Быстрые действия</h2>
+        <div className="row" style={{ marginTop: "0.75rem" }}>
           <Link href="/profile" className="btn btn-secondary">
             Профиль
           </Link>
@@ -32,8 +35,8 @@ export default async function OverviewPage() {
         </div>
       </div>
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Что дальше</h2>
-        <p className="muted">
+        <h2 className="panel-title">Что дальше</h2>
+        <p className="muted" style={{ marginBottom: 0 }}>
           Реестры документов, розысков, штрафов и модули бота появятся на следующих этапах. Сейчас
           доступны вход, профиль и базовые системные настройки.
         </p>
