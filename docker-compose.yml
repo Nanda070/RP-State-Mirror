@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: mirror
       POSTGRES_PASSWORD: mirror_local_password
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - mirror-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -16,24 +16,18 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  storage:
+    image: chrislusf/seaweedfs:4.48
     restart: unless-stopped
-    command: server /data --console-address ":9001"
+    command: mini -dir=/data -s3.port=9000 -bucket=mirror -admin.ui=false
     environment:
-      MINIO_ROOT_USER: mirror_local
-      MINIO_ROOT_PASSWORD: mirror_local_password
+      AWS_ACCESS_KEY_ID: mirror_local
+      AWS_SECRET_ACCESS_KEY: mirror_local_password
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
     volumes:
-      - mirror-minio:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - mirror-storage:/data
 
 volumes:
   mirror-postgres:
-  mirror-minio:
+  mirror-storage:

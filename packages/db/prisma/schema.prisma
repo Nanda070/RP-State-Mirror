@@ -29,43 +29,122 @@ enum AuditActorType {
   SYSTEM
 }
 
+enum AdminLevel {
+  SUPER_ADMIN
+  SENIOR_ADMIN
+  ADMIN
+  HELPER
+}
+
+enum RoleMappingKind {
+  ADMIN_LEVEL
+  FACTION_MEMBER
+  FACTION_LEADER
+  FACTION_DEPUTY
+  DEPARTMENT
+  RANK
+  PERMISSION
+}
+
 model User {
-  id             String      @id @default(cuid())
-  discordId      String      @unique @map("discord_id")
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
-  auditEvents    AuditLog[]  @relation("AuditActor")
-  initiatedJobs  Job[]       @relation("JobInitiator")
+  id            String     @id @default(cuid())
+  discordId     String     @unique @map("discord_id")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  auditEvents   AuditLog[] @relation("AuditActor")
+  initiatedJobs Job[]      @relation("JobInitiator")
 
   @@map("users")
 }
 
 model Guild {
-  id          String   @id @default(cuid())
-  discordId   String   @unique @map("discord_id")
-  name        String
-  isMain      Boolean  @default(false) @map("is_main")
-  isIncident  Boolean  @default(false) @map("is_incident")
-  status      RecordStatus @default(ACTIVE)
-  settings    Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  factions    Faction[]
+  id           String          @id @default(cuid())
+  discordId    String          @unique @map("discord_id")
+  name         String
+  iconUrl      String?         @map("icon_url")
+  status       RecordStatus    @default(ACTIVE)
+  settings     Json            @default("{}")
+  lastSyncedAt DateTime?       @map("last_synced_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+  factions     Faction[]
+  roles        DiscordRole[]
+  members      GuildMember[]
+  roleMappings RoleMapping[]
 
   @@map("guilds")
 }
 
+model DiscordRole {
+  id        String       @id @default(cuid())
+  discordId String       @unique @map("discord_id")
+  guildId   String       @map("guild_id")
+  guild     Guild        @relation(fields: [guildId], references: [id])
+  name      String
+  color     Int          @default(0)
+  position  Int          @default(0)
+  managed   Boolean      @default(false)
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@index([guildId])
+  @@map("discord_roles")
+}
+
+model GuildMember {
+  id             String    @id @default(cuid())
+  guildId        String    @map("guild_id")
+  guild          Guild     @relation(fields: [guildId], references: [id])
+  userDiscordId  String    @map("user_discord_id")
+  username       String
+  globalName     String?   @map("global_name")
+  nickname       String?
+  avatarUrl      String?   @map("avatar_url")
+  guildAvatarUrl String?   @map("guild_avatar_url")
+  roleIds        String[]  @map("role_ids")
+  joinedAt       DateTime? @map("joined_at")
+  isPresent      Boolean   @default(true) @map("is_present")
+  leftAt         DateTime? @map("left_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@unique([guildId, userDiscordId])
+  @@index([userDiscordId])
+  @@map("discord_guild_members")
+}
+
+model RoleMapping {
+  id            String          @id @default(cuid())
+  guildId       String          @map("guild_id")
+  guild         Guild           @relation(fields: [guildId], references: [id])
+  roleDiscordId String          @map("role_discord_id")
+  kind          RoleMappingKind
+  value         String          @default("")
+  factionId     String?         @map("faction_id")
+  faction       Faction?        @relation(fields: [factionId], references: [id])
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@unique([roleDiscordId, kind, value])
+  @@index([guildId])
+  @@map("role_mappings")
+}
+
 model Faction {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  color       String?
-  status      RecordStatus @default(ACTIVE)
-  guildId     String?  @map("guild_id")
-  guild       Guild?   @relation(fields: [guildId], references: [id])
-  settings    Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String        @id @default(cuid())
+  code         String        @unique
+  name         String
+  color        String?
+  emoji        String?
+  sortOrder    Int           @default(0) @map("sort_order")
+  status       RecordStatus  @default(ACTIVE)
+  guildId      String?       @map("guild_id")
+  guild        Guild?        @relation(fields: [guildId], references: [id])
+  settings     Json          @default("{}")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  roleMappings RoleMapping[]
 
   @@index([guildId])
   @@map("factions")
@@ -74,7 +153,6 @@ model Faction {
 model SystemSetting {
   key         String   @id
   value       Json
-  description String?
   updatedById String?  @map("updated_by_id")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -82,21 +160,21 @@ model SystemSetting {
 }
 
 model AuditLog {
-  id            String         @id @default(cuid())
-  actorType     AuditActorType @map("actor_type")
-  actorUserId   String?        @map("actor_user_id")
-  actorUser     User?          @relation("AuditActor", fields: [actorUserId], references: [id])
-  action        String
-  entityType    String         @map("entity_type")
-  entityId      String         @map("entity_id")
-  source        String
-  ipAddress     String?        @map("ip_address")
-  guildId       String?        @map("guild_id")
-  channelId     String?        @map("channel_id")
-  before        Json?
-  after         Json?
-  metadata      Json           @default("{}")
-  createdAt     DateTime       @default(now()) @map("created_at")
+  id          String         @id @default(cuid())
+  actorType   AuditActorType @map("actor_type")
+  actorUserId String?        @map("actor_user_id")
+  actorUser   User?          @relation("AuditActor", fields: [actorUserId], references: [id])
+  action      String
+  entityType  String         @map("entity_type")
+  entityId    String         @map("entity_id")
+  source      String
+  ipAddress   String?        @map("ip_address")
+  guildId     String?        @map("guild_id")
+  channelId   String?        @map("channel_id")
+  before      Json?
+  after       Json?
+  metadata    Json           @default("{}")
+  createdAt   DateTime       @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
   @@index([actorUserId, createdAt])
@@ -105,29 +183,32 @@ model AuditLog {
 }
 
 model Job {
-  id            String     @id @default(cuid())
+  id            String    @id @default(cuid())
   type          String
   payload       Json
-  status        JobStatus  @default(PENDING)
-  attempts      Int        @default(0)
-  availableAt   DateTime   @default(now()) @map("available_at")
-  lockedAt      DateTime?  @map("locked_at")
-  lockedBy      String?    @map("locked_by")
-  completedAt   DateTime?  @map("completed_at")
-  lastError     String?    @map("last_error")
-  initiatedById String?    @map("initiated_by_id")
-  initiatedBy   User?      @relation("JobInitiator", fields: [initiatedById], references: [id])
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  status        JobStatus @default(PENDING)
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(5) @map("max_attempts")
+  availableAt   DateTime  @default(now()) @map("available_at")
+  lockedAt      DateTime? @map("locked_at")
+  lockedBy      String?   @map("locked_by")
+  completedAt   DateTime? @map("completed_at")
+  lastError     String?   @map("last_error")
+  result        Json?
+  initiatedById String?   @map("initiated_by_id")
+  initiatedBy   User?     @relation("JobInitiator", fields: [initiatedById], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   @@index([status, availableAt])
+  @@index([status, lockedAt])
   @@map("jobs")
 }
 
 model AuditLogArchive {
-  id          String   @id
-  payload     Json
-  archivedAt  DateTime @default(now()) @map("archived_at")
+  id         String   @id
+  payload    Json
+  archivedAt DateTime @default(now()) @map("archived_at")
 
   @@map("audit_log_archive")
 }

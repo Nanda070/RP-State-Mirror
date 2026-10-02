@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@mirror/core": "workspace:*",
-    "@mirror/db": "workspace:*"
+    "@mirror/db": "workspace:*",
+    "discord.js": "^14.27.0",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "typescript": "^5.9.2"
