@@ -21,7 +21,7 @@ importers:
         specifier: ^10.11.0
         version: 10.11.0(jiti@2.7.0)
       globals:
-        specifier: ^17.13.0
+        specifier: ^17.0.0
         version: 17.13.0
       prettier:
         specifier: ^3.6.2
