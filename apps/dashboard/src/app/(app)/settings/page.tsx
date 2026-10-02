@@ -86,10 +86,6 @@ export default async function SettingsIndexPage() {
     <div className="stack">
       <div className="section-head">
         <h1>Настройки</h1>
-        <p className="muted">
-          Каждый модуль — на своей странице. Здесь только каталог: системные параметры и будущие
-          разделы бота не смешиваются в одной форме.
-        </p>
       </div>
 
       <section className="stack" style={{ gap: "0.75rem" }}>

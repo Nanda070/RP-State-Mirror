@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { RoleMultiSelect, type RoleOption, type SelectedRole } from "./role-multi-select";
 
 interface Guild {
   discordId: string;
@@ -39,45 +40,117 @@ const KIND_LABELS: Record<string, string> = {
   PERMISSION: "Право",
 };
 
-const ADMIN_VALUES = ["SUPER_ADMIN", "SENIOR_ADMIN", "ADMIN", "HELPER"];
+const ADMIN_VALUES = [
+  { value: "SUPER_ADMIN", label: "Главный администратор" },
+  { value: "SENIOR_ADMIN", label: "Старший администратор" },
+  { value: "ADMIN", label: "Администратор" },
+  { value: "HELPER", label: "Хелпер" },
+] as const;
+
+const FACTION_KINDS = [
+  { kind: "FACTION_MEMBER", label: "Участники" },
+  { kind: "FACTION_LEADER", label: "Лидеры" },
+  { kind: "FACTION_DEPUTY", label: "Заместители" },
+] as const;
+
+function mappingKey(kind: string, value: string, factionCode: string | null | undefined): string {
+  return `${kind}|${value}|${factionCode ?? ""}`;
+}
 
 export function SettingsRolesForm({
   initialMappings,
   guilds,
   factions,
   roles,
-  kinds,
 }: {
   initialMappings: Mapping[];
   guilds: Guild[];
   factions: Faction[];
   roles: Role[];
-  kinds: string[];
+  kinds?: string[];
 }) {
   const [mappings, setMappings] = useState(initialMappings);
-  const [guildDiscordId, setGuild] = useState(guilds[0]?.discordId ?? "");
-  const [roleDiscordId, setRole] = useState("");
-  const [kind, setKind] = useState("ADMIN_LEVEL");
-  const [value, setValue] = useState("ADMIN");
-  const [factionCode, setFaction] = useState(factions[0]?.code ?? "");
+  const [emptyTargets, setEmptyTargets] = useState<
+    { kind: string; value: string; factionCode: string | null }[]
+  >([]);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const guildRoles = useMemo(
-    () => roles.filter((role) => role.guild.discordId === guildDiscordId),
-    [roles, guildDiscordId],
+  const [extraKind, setExtraKind] = useState("DEPARTMENT");
+  const [extraValue, setExtraValue] = useState("");
+  const [extraFaction, setExtraFaction] = useState(factions[0]?.code ?? "");
+
+  const roleById = useMemo(() => new Map(roles.map((role) => [role.discordId, role])), [roles]);
+
+  const roleOptions: RoleOption[] = useMemo(
+    () =>
+      roles.map((role) => ({
+        discordId: role.discordId,
+        name: role.name,
+        color: role.color,
+        category: role.guild.name || role.guild.discordId,
+      })),
+    [roles],
   );
 
-  const needsFaction = [
-    "FACTION_MEMBER",
-    "FACTION_LEADER",
-    "FACTION_DEPUTY",
-    "DEPARTMENT",
-    "RANK",
-  ].includes(kind);
+  const selectedFor = useMemo(() => {
+    const map = new Map<string, SelectedRole[]>();
+    for (const mapping of mappings) {
+      const role = roleById.get(mapping.roleDiscordId);
+      const key = mappingKey(mapping.kind, mapping.value, mapping.faction?.code);
+      const list = map.get(key) ?? [];
+      list.push({
+        mappingId: mapping.id,
+        discordId: mapping.roleDiscordId,
+        name: role?.name ?? mapping.roleDiscordId,
+        color: role?.color ?? 0,
+      });
+      map.set(key, list);
+    }
+    return map;
+  }, [mappings, roleById]);
 
-  async function onCreate(event: React.FormEvent) {
-    event.preventDefault();
+  const extraTargets = useMemo(() => {
+    const keys = new Set<string>();
+    const items: { kind: string; value: string; factionCode: string | null }[] = [];
+    for (const mapping of mappings) {
+      if (!["DEPARTMENT", "RANK", "PERMISSION"].includes(mapping.kind)) continue;
+      const key = mappingKey(mapping.kind, mapping.value, mapping.faction?.code);
+      if (keys.has(key)) continue;
+      keys.add(key);
+      items.push({
+        kind: mapping.kind,
+        value: mapping.value,
+        factionCode: mapping.faction?.code ?? null,
+      });
+    }
+    for (const target of emptyTargets) {
+      const key = mappingKey(target.kind, target.value, target.factionCode);
+      if (keys.has(key)) continue;
+      keys.add(key);
+      items.push(target);
+    }
+    return items;
+  }, [mappings, emptyTargets]);
+
+  async function refreshMappings() {
+    const refresh = await fetch("/api/settings/role-mappings");
+    const refreshed = (await refresh.json()) as { mappings: Mapping[]; error?: string };
+    if (!refresh.ok) throw new Error(refreshed.error ?? "Не удалось обновить список");
+    setMappings(refreshed.mappings);
+  }
+
+  async function addRole(
+    roleDiscordId: string,
+    kind: string,
+    value: string,
+    factionCode: string | null,
+  ) {
+    const role = roleById.get(roleDiscordId);
+    if (!role) {
+      setMessage("Роль не найдена");
+      return;
+    }
     setPending(true);
     setMessage(null);
     try {
@@ -85,20 +158,16 @@ export function SettingsRolesForm({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          guildDiscordId,
+          guildDiscordId: role.guild.discordId,
           roleDiscordId,
           kind,
           value,
-          factionCode: needsFaction ? factionCode : null,
+          factionCode,
         }),
       });
-      const data = (await response.json()) as { error?: string; mapping?: Mapping };
+      const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось сохранить");
-      const refresh = await fetch(
-        `/api/settings/role-mappings?guildDiscordId=${encodeURIComponent(guildDiscordId)}`,
-      );
-      const refreshed = (await refresh.json()) as { mappings: Mapping[] };
-      setMappings(refreshed.mappings);
+      await refreshMappings();
       setMessage("Привязка сохранена.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка");
@@ -107,19 +176,19 @@ export function SettingsRolesForm({
     }
   }
 
-  async function onArchive(id: string) {
+  async function removeRole(mappingId: string) {
     setPending(true);
     setMessage(null);
     try {
       const response = await fetch("/api/settings/role-mappings", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id: mappingId }),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось архивировать");
-      setMappings((items) => items.filter((item) => item.id !== id));
-      setMessage("Привязка архивирована (без физического удаления).");
+      setMappings((items) => items.filter((item) => item.id !== mappingId));
+      setMessage("Привязка архивирована.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка");
     } finally {
@@ -127,155 +196,189 @@ export function SettingsRolesForm({
     }
   }
 
+  function registerExtraTarget(event: React.FormEvent) {
+    event.preventDefault();
+    const value = extraValue.trim();
+    if (!value) {
+      setMessage("Укажите значение");
+      return;
+    }
+    const needsFaction = extraKind === "DEPARTMENT" || extraKind === "RANK";
+    const factionCode = needsFaction ? extraFaction || null : null;
+    if (needsFaction && !factionCode) {
+      setMessage("Выберите фракцию");
+      return;
+    }
+    const key = mappingKey(extraKind, value, factionCode);
+    setEmptyTargets((prev) => {
+      if (prev.some((t) => mappingKey(t.kind, t.value, t.factionCode) === key)) return prev;
+      if (
+        mappings.some((m) => mappingKey(m.kind, m.value, m.faction?.code) === key)
+      ) {
+        return prev;
+      }
+      return [...prev, { kind: extraKind, value, factionCode }];
+    });
+    setExtraValue("");
+    setMessage(`Цель «${KIND_LABELS[extraKind] ?? extraKind}: ${value}» готова — добавьте роли.`);
+  }
+
   return (
     <div className="stack">
-      <form className="panel" onSubmit={onCreate}>
-        <h2 style={{ marginTop: 0 }}>Новая привязка роли</h2>
-        <div className="field">
-          <label htmlFor="guild">Сервер</label>
-          <select
-            id="guild"
-            value={guildDiscordId}
-            onChange={(event) => {
-              setGuild(event.target.value);
-              setRole("");
-            }}
-          >
-            {guilds.map((guild) => (
-              <option key={guild.discordId} value={guild.discordId}>
-                {guild.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="role">Роль Discord</label>
-          <select
-            id="role"
-            value={roleDiscordId}
-            onChange={(event) => setRole(event.target.value)}
-            required
-          >
-            <option value="">Выберите роль</option>
-            {guildRoles.map((role) => (
-              <option key={role.discordId} value={role.discordId}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="kind">Тип</label>
-          <select
-            id="kind"
-            value={kind}
-            onChange={(event) => {
-              const next = event.target.value;
-              setKind(next);
-              if (next === "ADMIN_LEVEL") setValue("ADMIN");
-              if (next === "RANK") setValue("1");
-              if (next === "DEPARTMENT") setValue("");
-              if (next === "PERMISSION") setValue("");
-              if (next.startsWith("FACTION_")) setValue("true");
-            }}
-          >
-            {kinds.map((item) => (
-              <option key={item} value={item}>
-                {KIND_LABELS[item] ?? item}
-              </option>
-            ))}
-          </select>
-        </div>
-        {kind === "ADMIN_LEVEL" ? (
-          <div className="field">
-            <label htmlFor="adminValue">Уровень</label>
-            <select id="adminValue" value={value} onChange={(event) => setValue(event.target.value)}>
-              {ADMIN_VALUES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : kind === "RANK" || kind === "DEPARTMENT" || kind === "PERMISSION" ? (
-          <div className="field">
-            <label htmlFor="value">Значение</label>
-            <input
-              id="value"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              required
-              placeholder={kind === "RANK" ? "1–20" : "код или название"}
-            />
-          </div>
-        ) : (
-          <input type="hidden" value={value || "true"} readOnly />
-        )}
-        {needsFaction ? (
-          <div className="field">
-            <label htmlFor="faction">Фракция</label>
-            <select
-              id="faction"
-              value={factionCode}
-              onChange={(event) => setFaction(event.target.value)}
-              required
-            >
-              {factions.map((faction) => (
-                <option key={faction.code} value={faction.code}>
-                  {faction.code} — {faction.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        <button type="submit" className="btn btn-primary" disabled={pending || !roleDiscordId}>
-          {pending ? "Сохранение…" : "Добавить привязку"}
-        </button>
-        {message ? <p className="muted">{message}</p> : null}
-      </form>
+      {message ? <p className="muted">{message}</p> : null}
 
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>Активные привязки</h2>
-        {mappings.length === 0 ? (
-          <p className="muted">Пока нет привязок.</p>
+        <h2 className="panel-title" style={{ marginTop: 0 }}>
+          Уровни доступа
+        </h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Несколько Discord-ролей могут соответствовать одному уровню.
+        </p>
+        <div className="stack" style={{ gap: "1rem" }}>
+          {ADMIN_VALUES.map((level) => {
+            const key = mappingKey("ADMIN_LEVEL", level.value, null);
+            return (
+              <RoleMultiSelect
+                key={level.value}
+                label={level.label}
+                hint={`ADMIN_LEVEL · ${level.value}`}
+                selected={selectedFor.get(key) ?? []}
+                options={roleOptions}
+                disabled={pending}
+                onAdd={(roleDiscordId) => addRole(roleDiscordId, "ADMIN_LEVEL", level.value, null)}
+                onRemove={removeRole}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2 className="panel-title" style={{ marginTop: 0 }}>
+          Фракции
+        </h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Роли участников, лидеров и заместителей по каждой фракции.
+        </p>
+        {factions.length === 0 ? (
+          <p className="muted">Нет активных фракций.</p>
         ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Сервер</th>
-                <th>Роль</th>
-                <th>Тип</th>
-                <th>Значение</th>
-                <th>Фракция</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {mappings.map((mapping) => (
-                <tr key={mapping.id}>
-                  <td>{mapping.guild.name}</td>
-                  <td>
-                    <code>{mapping.roleDiscordId}</code>
-                  </td>
-                  <td>{KIND_LABELS[mapping.kind] ?? mapping.kind}</td>
-                  <td>{mapping.value}</td>
-                  <td>{mapping.faction?.code ?? "—"}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      disabled={pending}
-                      onClick={() => onArchive(mapping.id)}
-                    >
-                      Архив
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="stack" style={{ gap: "1.25rem" }}>
+            {factions.map((faction) => (
+              <div key={faction.code} className="role-faction-block">
+                <h3 className="role-faction-title">
+                  {faction.code}
+                  <span className="muted"> — {faction.name}</span>
+                </h3>
+                <div className="stack" style={{ gap: "0.85rem" }}>
+                  {FACTION_KINDS.map((item) => {
+                    const key = mappingKey(item.kind, "true", faction.code);
+                    return (
+                      <RoleMultiSelect
+                        key={`${faction.code}-${item.kind}`}
+                        label={item.label}
+                        selected={selectedFor.get(key) ?? []}
+                        options={roleOptions}
+                        disabled={pending}
+                        onAdd={(roleDiscordId) =>
+                          addRole(roleDiscordId, item.kind, "true", faction.code)
+                        }
+                        onRemove={removeRole}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
+
+      <div className="panel">
+        <h2 className="panel-title" style={{ marginTop: 0 }}>
+          Отделы, ранги и права
+        </h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Создайте цель привязки, затем добавьте одну или несколько ролей.
+        </p>
+
+        <form className="role-extra-form" onSubmit={registerExtraTarget}>
+          <div className="field">
+            <label htmlFor="extraKind">Тип</label>
+            <select
+              id="extraKind"
+              value={extraKind}
+              onChange={(event) => setExtraKind(event.target.value)}
+            >
+              <option value="DEPARTMENT">Отдел</option>
+              <option value="RANK">Ранг</option>
+              <option value="PERMISSION">Право</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="extraValue">Значение</label>
+            <input
+              id="extraValue"
+              value={extraValue}
+              onChange={(event) => setExtraValue(event.target.value)}
+              placeholder={extraKind === "RANK" ? "1–20" : "код или название"}
+              required
+            />
+          </div>
+          {extraKind === "DEPARTMENT" || extraKind === "RANK" ? (
+            <div className="field">
+              <label htmlFor="extraFaction">Фракция</label>
+              <select
+                id="extraFaction"
+                value={extraFaction}
+                onChange={(event) => setExtraFaction(event.target.value)}
+                required
+              >
+                {factions.map((faction) => (
+                  <option key={faction.code} value={faction.code}>
+                    {faction.code} — {faction.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          <button type="submit" className="btn btn-secondary" disabled={pending}>
+            Добавить цель
+          </button>
+        </form>
+
+        {extraTargets.length === 0 ? (
+          <p className="muted" style={{ marginTop: "1rem" }}>
+            Пока нет целей отдела / ранга / права.
+          </p>
+        ) : (
+          <div className="stack" style={{ gap: "1rem", marginTop: "1rem" }}>
+            {extraTargets.map((target) => {
+              const key = mappingKey(target.kind, target.value, target.factionCode);
+              const title = `${KIND_LABELS[target.kind] ?? target.kind}: ${target.value}${
+                target.factionCode ? ` · ${target.factionCode}` : ""
+              }`;
+              return (
+                <RoleMultiSelect
+                  key={key}
+                  label={title}
+                  selected={selectedFor.get(key) ?? []}
+                  options={roleOptions}
+                  disabled={pending}
+                  onAdd={(roleDiscordId) =>
+                    addRole(roleDiscordId, target.kind, target.value, target.factionCode)
+                  }
+                  onRemove={removeRole}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {guilds.length === 0 ? (
+        <p className="muted">Нет синхронизированных серверов — роли появятся после синка бота.</p>
+      ) : null}
     </div>
   );
 }

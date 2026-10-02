@@ -31,10 +31,7 @@ export default async function SettingsSystemPage() {
           <span>Система</span>
         </p>
         <h1>Система</h1>
-        <p className="muted">
-          Главный сервер и сервер ЧП. Изменения пишутся в журнал аудита. Привязка ролей — на отдельной
-          странице.
-        </p>
+        <p className="muted">Главный сервер и сервер ЧП. Изменения пишутся в журнал аудита.</p>
         <div className="row" style={{ marginTop: "0.75rem" }}>
           <Link href="/settings/roles" className="btn btn-secondary">
             К привязке ролей

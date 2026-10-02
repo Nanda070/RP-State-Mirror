@@ -1,5 +1,5 @@
 import { canManageSystemSettings, listActiveRoleMappings } from "@mirror/core";
-import { RecordStatus, RoleMappingKind, prisma } from "@mirror/db";
+import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -45,15 +45,7 @@ export default async function SettingsRolesPage() {
           <span>Роли</span>
         </p>
         <h1>Роли</h1>
-        <p className="muted">
-          Привязка Discord-ролей к уровням доступа и фракциям. Системные серверы настраиваются
-          отдельно.
-        </p>
-        <div className="row" style={{ marginTop: "0.75rem" }}>
-          <Link href="/settings/system" className="btn btn-secondary">
-            К системным серверам
-          </Link>
-        </div>
+        <p className="muted">Привязка Discord-ролей к уровням доступа и фракциям.</p>
       </div>
       <SettingsRolesForm
         initialMappings={mappings.map((m) => ({
@@ -67,7 +59,6 @@ export default async function SettingsRolesPage() {
         guilds={guilds}
         factions={factions}
         roles={roles}
-        kinds={Object.values(RoleMappingKind)}
       />
     </div>
   );

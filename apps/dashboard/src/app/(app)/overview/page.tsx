@@ -1,4 +1,4 @@
-import { ADMIN_LEVEL_LABELS_RU, buildStatusBadge, canManageSystemSettings } from "@mirror/core";
+import { buildStatusBadge, canManageSystemSettings } from "@mirror/core";
 import { JobStatus, RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -33,8 +33,7 @@ export default async function OverviewPage() {
         <h1>Обзор</h1>
         <p className="muted">
           Добро пожаловать, {displayName}. Статус:{" "}
-          <strong style={{ color: "var(--ink)" }}>{badge.primary}</strong>
-          {identity.adminLevel ? ` (${ADMIN_LEVEL_LABELS_RU[identity.adminLevel]})` : null}.
+          <strong style={{ color: "var(--ink)" }}>{badge.primary}</strong>.
         </p>
       </div>
 
