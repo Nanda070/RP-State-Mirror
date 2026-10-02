@@ -4,13 +4,11 @@ Discord-бот и веб-дашборд для государственных ф
 
 ## Текущий статус
 
-Этап 1 закрыт. Готовы:
-- монорепозиторий, PostgreSQL, Prisma с миграциями и S3-хранилище;
-- журнал аудита, атомарная очередь задач и типизированные настройки;
-- снимок Discord-серверов и вычисление прав по ролям;
-- бот, тесты и CI.
+Этап 1 закрыт; фундамент этапа 2 (дашборд) готов:
+- монорепозиторий, PostgreSQL, Prisma, S3, бот, аудит, очередь, снимок Discord;
+- дашборд Next.js: Discord OAuth (Auth.js), профиль, настройки серверов/ролей, темы, юридические страницы.
 
-Следующий этап: вход в дашборд через Discord. Старый Python-бот временно хранится как справочный слой и не запускается.
+Подробности этапа 2: [docs/STAGE_2.md](docs/STAGE_2.md). Старый Python-бот временно хранится как справочный слой и не запускается.
 
 ## Новый workspace
 
@@ -34,10 +32,14 @@ pnpm db:generate
 pnpm db:deploy                  # применить миграции
 pnpm build
 pnpm db:seed                    # фракции, настройки по умолчанию, суперадмин
-pnpm bot:start
+pnpm bot:start                  # снимок серверов для настроек дашборда
+pnpm dashboard:dev              # http://localhost:3000
 ```
 
-Боту в Discord Developer Portal нужен включённый **Server Members Intent**.
+В Discord Developer Portal:
+- включите **Server Members Intent** для бота;
+- в OAuth2 → Redirects добавьте `http://localhost:3000/api/auth/callback/discord`;
+- в `.env` те же `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` и `OAUTH_REDIRECT_URL` с этим callback.
 
 Проверки и тесты:
 

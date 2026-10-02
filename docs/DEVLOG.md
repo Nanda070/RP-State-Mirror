@@ -1,5 +1,34 @@
 # Mirror: dev blog
 
+## 2026-10-03: этап 2 — фундамент дашборда
+
+### Цель
+
+Собрать основу веб-дашборда: вход через Discord, права, профиль, системные настройки, юридические страницы и визуальную систему — без переноса модулей бота.
+
+### Что сделано
+
+- `apps/dashboard` переведён на Next.js 15 App Router + Auth.js (Discord), JWT-сессии, middleware на защищённые маршруты.
+- `dashboardEnvSchema`: `DISCORD_CLIENT_*`, `SESSION_SECRET`, `OAUTH_REDIRECT_URL` (строго callback Auth.js), `DATABASE_URL`, `SUPER_ADMIN_USER_IDS`.
+- После OAuth: upsert пользователя, `resolveIdentity`; без главного сервера пускаем только bootstrap-суперадминов.
+- Настройки главного сервера / ЧП и редактор привязок ролей (`ADMIN_LEVEL` и фракционные kinds); запись через `setSetting` / audited upsert; доступ — главный и старший админ.
+- Миграция `role_mapping_status`: привязки архивируются, не удаляются физически.
+- Профиль со статус-бейджем, темы, cookie-баннер, `/terms` `/privacy` `/cookies`, заготовки уведомлений и Ctrl+K по разделам.
+- Документация: `docs/STAGE_2.md`, обновлены PLAN / README / TECHNICAL_FOUNDATION.
+
+### Проверка
+
+- `pnpm lint`, `pnpm check`, `pnpm build` (включая `next build`), `pnpm test`: 39 тестов (добавлены access, dashboard settings gate, role-mappings, dashboard env).
+
+### Что осталось на потом
+
+- Полный глобальный поиск по данным, живые уведомления, вкладки профиля и редактор юридических текстов из админки.
+- Redirect в Discord Portal уже добавлен пользователем; production-токен не трогали по запросу.
+
+### Следующий шаг
+
+Этап 3: embed-менеджер и базовые модули бота с разделами в дашборде.
+
 ## 2026-10-03: этап 1 закрыт
 
 ### Что было не так после первой итерации
@@ -66,11 +95,11 @@
 ### Что осталось на потом
 
 - Ротация токена production-бота из `.env.legacy`: он лежал в рабочей папке открытым текстом.
-- Для этапа 2 в Discord Developer Portal нужно добавить redirect URL дашборда (`http://localhost:3000/api/auth/callback/discord`).
+- Redirect URL дашборда в Discord Developer Portal добавлен пользователем при старте этапа 2.
 
 ### Следующий шаг
 
-Этап 2: вход в дашборд через Discord (Auth.js), сессии, проверка уровня доступа через `resolveIdentity`, первые страницы настроек (главный сервер, сервер ЧП, привязка ролей).
+~~Этап 2~~ — см. запись выше.
 
 ## 2026-10-03: старт этапа 1
 

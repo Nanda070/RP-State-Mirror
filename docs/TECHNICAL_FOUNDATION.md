@@ -31,7 +31,7 @@ Python-файлы временно хранятся как справочник 
 ```text
 apps/
   bot/                 Discord-бот: снимок серверов, воркер очереди
-  dashboard/           Next.js-дашборд и API (этап 2)
+  dashboard/           Next.js-дашборд и API (см. docs/STAGE_2.md)
 packages/
   core/                аудит, настройки, очередь, снимок Discord, «кто есть кто», seed
   db/                  Prisma-схема, миграции, клиент
@@ -58,8 +58,8 @@ docker-compose.test.yml изолированный тестовый контур
 | `APP_ENV`, `LOG_LEVEL` | окружение и уровень логов |
 | `DATABASE_URL` | PostgreSQL |
 | `DISCORD_BOT_TOKEN` | токен бота (обязателен для `apps/bot`) |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `OAUTH_REDIRECT_URL` | вход в дашборд (этап 2) |
-| `SESSION_SECRET` | подпись сессий (этап 2) |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `OAUTH_REDIRECT_URL` | вход в дашборд (Auth.js callback) |
+| `SESSION_SECRET` | подпись JWT-сессий дашборда |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` | хранилище файлов |
 | `SUPER_ADMIN_USER_IDS` | Discord ID главных админов через запятую (по умолчанию `1219803151180370021`) |
 
@@ -170,17 +170,20 @@ docker compose -f docker-compose.test.yml up -d   # PostgreSQL :55432, S3 :59000
 | `pnpm check` | проверка типов пакетов и тестов |
 | `pnpm test` | интеграционные тесты на тестовой БД (`TEST_DATABASE_URL`, по умолчанию `localhost:55432`); миграции применяются автоматически |
 | `pnpm bot:start` | запуск бота |
+| `pnpm dashboard:dev` / `dashboard:start` | дашборд на `:3000` |
 
 CI (`.github/workflows/ci.yml`) на каждый push в `main` и каждый PR выполняет install, generate, validate, lint, build, check и test на сервисе PostgreSQL.
 
 ## 10. Что сознательно не входит в этап 1
 
 - slash-команды и перенос модулей;
-- OAuth, сессии и UI дашборда;
+- ~~OAuth, сессии и UI дашборда~~ → перенесено в этап 2 ([STAGE_2.md](STAGE_2.md));
 - работа с файлами в S3 (только инфраструктура);
 - ротация журнала аудита;
 - миграция исторической SQLite-базы (проект стартует с чистыми данными);
 - удаление старого Python-кода.
+
+Дополнения схемы после этапа 1: у `role_mappings` появился `status` (мягкое архивирование привязок из дашборда).
 
 ## 11. Критерии готовности этапа 1 (выполнены)
 
