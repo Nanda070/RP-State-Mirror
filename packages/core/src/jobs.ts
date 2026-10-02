@@ -1,4 +1,4 @@
-import { JobStatus, Prisma, prisma, type Job } from "@mirror/db";
+import { JobStatus, type Prisma, prisma, type Job } from "@mirror/db";
 import { z } from "zod";
 import { toJsonValue, type Db } from "./db.js";
 

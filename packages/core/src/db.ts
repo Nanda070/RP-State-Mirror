@@ -1,4 +1,4 @@
-import { Prisma, prisma } from "@mirror/db";
+import { Prisma, type prisma } from "@mirror/db";
 
 export type Db = Prisma.TransactionClient | typeof prisma;
 

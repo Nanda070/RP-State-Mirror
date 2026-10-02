@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["node"],
+    "paths": {
+      "@mirror/db": ["./packages/db/src/index.ts"],
+      "@mirror/core": ["./packages/core/src/index.ts"]
+    }
+  },
+  "include": ["test/**/*.ts", "packages/*/test/**/*.ts", "apps/*/test/**/*.ts", "vitest.config.ts"]
+}

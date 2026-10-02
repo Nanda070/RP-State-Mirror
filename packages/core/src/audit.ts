@@ -1,4 +1,4 @@
-import { AuditActorType, Prisma, prisma } from "@mirror/db";
+import { AuditActorType, type Prisma, prisma } from "@mirror/db";
 import { z } from "zod";
 import { toJsonValue, type Db } from "./db.js";
 
