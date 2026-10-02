@@ -20,6 +20,9 @@
     "db:seed": "pnpm --filter @mirror/core seed",
     "bot:dev": "pnpm --filter @mirror/bot dev",
     "bot:start": "pnpm --filter @mirror/bot start",
+    "dashboard:dev": "pnpm --filter @mirror/dashboard dev",
+    "dashboard:build": "pnpm --filter @mirror/dashboard build",
+    "dashboard:start": "pnpm --filter @mirror/dashboard start",
     "format": "prettier --write ."
   },
   "devDependencies": {
