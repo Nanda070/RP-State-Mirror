@@ -4,6 +4,7 @@ import {
   SettingValidationError,
   auditedMutation,
   getSetting,
+  setMainAndIncidentGuilds,
   setSetting,
   type AuditContext,
 } from "@mirror/core";
@@ -84,5 +85,21 @@ describe("settings", () => {
       SettingValidationError,
     );
     expect(await getSetting("core.incidentGuildId")).toBeNull();
+  });
+
+  it("sets main and incident guilds atomically and rejects equal ids before write", async () => {
+    await expect(
+      setMainAndIncidentGuilds("100000000000000010", "100000000000000010", ctx),
+    ).rejects.toBeInstanceOf(SettingValidationError);
+    expect(await prisma.systemSetting.count()).toBe(0);
+
+    const result = await setMainAndIncidentGuilds("100000000000000010", "100000000000000011", ctx);
+    expect(result).toEqual({
+      mainGuildId: "100000000000000010",
+      incidentGuildId: "100000000000000011",
+    });
+    expect(await getSetting("core.mainGuildId")).toBe("100000000000000010");
+    expect(await getSetting("core.incidentGuildId")).toBe("100000000000000011");
+    expect(await prisma.auditLog.count({ where: { action: "setting.updated" } })).toBe(2);
   });
 });

@@ -5,6 +5,7 @@ import {
   canAccessAdminArea,
   canBootstrapDashboard,
   canManageSystemSettings,
+  canMapSuperAdminLevel,
   hasMinAdminLevel,
   type Identity,
 } from "@mirror/core";
@@ -28,12 +29,15 @@ describe("access gates", () => {
     expect(hasMinAdminLevel(helper, AdminLevel.ADMIN)).toBe(false);
   });
 
-  it("allows senior and super admins to manage system settings", () => {
-    expect(canManageSystemSettings(identity({ adminLevel: AdminLevel.SENIOR_ADMIN }))).toBe(true);
+  it("allows only super admins to manage system settings", () => {
+    expect(canManageSystemSettings(identity({ adminLevel: AdminLevel.SENIOR_ADMIN }))).toBe(false);
+    expect(canManageSystemSettings(identity({ adminLevel: AdminLevel.ADMIN }))).toBe(false);
+    expect(canManageSystemSettings(identity({ adminLevel: AdminLevel.SUPER_ADMIN }))).toBe(true);
     expect(canManageSystemSettings(identity({ isSuperAdmin: true, adminLevel: AdminLevel.SUPER_ADMIN }))).toBe(
       true,
     );
-    expect(canManageSystemSettings(identity({ adminLevel: AdminLevel.ADMIN }))).toBe(false);
+    expect(canMapSuperAdminLevel(identity({ adminLevel: AdminLevel.SENIOR_ADMIN }))).toBe(false);
+    expect(canMapSuperAdminLevel(identity({ adminLevel: AdminLevel.SUPER_ADMIN }))).toBe(true);
   });
 
   it("blocks non-super-admins while main guild is unset", () => {

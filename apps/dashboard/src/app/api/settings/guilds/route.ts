@@ -1,4 +1,4 @@
-import { getSetting, setSetting, snowflakeSchema } from "@mirror/core";
+import { getSetting, setMainAndIncidentGuilds, snowflakeSchema } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
@@ -35,13 +35,8 @@ export async function PUT(request: Request) {
     const body = bodySchema.parse(await request.json());
     const ctx = await dashboardAuditContext(session.user.id);
 
-    await setSetting("core.mainGuildId", body.mainGuildId, ctx);
-    await setSetting("core.incidentGuildId", body.incidentGuildId, ctx);
-
-    return Response.json({
-      mainGuildId: body.mainGuildId,
-      incidentGuildId: body.incidentGuildId,
-    });
+    const result = await setMainAndIncidentGuilds(body.mainGuildId, body.incidentGuildId, ctx);
+    return Response.json(result);
   } catch (error) {
     return jsonError(error);
   }

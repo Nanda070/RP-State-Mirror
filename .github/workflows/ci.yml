@@ -30,6 +30,12 @@ jobs:
     env:
       DATABASE_URL: postgresql://mirror_test:mirror_test_password@localhost:55432/mirror_test
       TEST_DATABASE_URL: postgresql://mirror_test:mirror_test_password@localhost:55432/mirror_test
+      # Dummy dashboard OAuth env so `next build` can import auth without secrets.
+      DISCORD_CLIENT_ID: "1000000000000000001"
+      DISCORD_CLIENT_SECRET: "ci-discord-client-secret"
+      SESSION_SECRET: "ci-session-secret-16+"
+      OAUTH_REDIRECT_URL: http://localhost:3000/api/auth/callback/discord
+      SUPER_ADMIN_USER_IDS: "1000000000000000001"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

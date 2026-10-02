@@ -44,7 +44,7 @@ export async function requireSystemSettings() {
   const session = await requireSession();
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) {
-    throw new ForbiddenError("Системные настройки доступны главному и старшему админу");
+    throw new ForbiddenError("Системные настройки доступны только главному администратору");
   }
   return { session, identity };
 }

@@ -82,8 +82,24 @@ export async function listActiveRoleMappings(guildDiscordId?: string) {
   });
 }
 
-export async function upsertRoleMapping(input: RoleMappingInput, context: AuditContext): Promise<RoleMapping> {
+export type UpsertRoleMappingOptions = {
+  /** Required to create/reactivate ADMIN_LEVEL=SUPER_ADMIN mappings. */
+  allowSuperAdminLevel?: boolean;
+};
+
+export async function upsertRoleMapping(
+  input: RoleMappingInput,
+  context: AuditContext,
+  options: UpsertRoleMappingOptions = {},
+): Promise<RoleMapping> {
   const parsed = roleMappingInputSchema.parse(input);
+  if (
+    parsed.kind === RoleMappingKind.ADMIN_LEVEL &&
+    parsed.value === "SUPER_ADMIN" &&
+    !options.allowSuperAdminLevel
+  ) {
+    throw new RoleMappingError("Привязку уровня главного администратора может менять только главный админ");
+  }
   const { guild, factionId } = await resolveGuildAndFaction(parsed);
 
   return auditedMutation(context, "role_mapping.upserted", "role_mapping", async (tx) => {
@@ -135,4 +151,37 @@ export async function archiveRoleMapping(id: string, context: AuditContext): Pro
     });
     return { entityId: updated.id, before: existing, after: updated, result: updated };
   });
+}
+
+/** Soft-archive every active mapping for a department/rank/permission target. */
+export async function archiveRoleMappingsForTarget(
+  input: { kind: RoleMappingKind; value: string; factionCode: string | null },
+  context: AuditContext,
+): Promise<{ archivedIds: string[] }> {
+  const faction = input.factionCode
+    ? await prisma.faction.findFirst({
+        where: { code: input.factionCode, status: RecordStatus.ACTIVE },
+        select: { id: true },
+      })
+    : null;
+  if (input.factionCode && !faction) {
+    throw new RoleMappingError("Фракция не найдена");
+  }
+
+  const matches = await prisma.roleMapping.findMany({
+    where: {
+      status: RecordStatus.ACTIVE,
+      kind: input.kind,
+      value: input.value,
+      factionId: faction?.id ?? null,
+    },
+    select: { id: true },
+  });
+
+  const archivedIds: string[] = [];
+  for (const row of matches) {
+    await archiveRoleMapping(row.id, context);
+    archivedIds.push(row.id);
+  }
+  return { archivedIds };
 }

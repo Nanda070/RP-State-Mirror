@@ -1,5 +1,7 @@
 import {
   archiveRoleMapping,
+  archiveRoleMappingsForTarget,
+  canMapSuperAdminLevel,
   listActiveRoleMappings,
   roleMappingInputSchema,
   upsertRoleMapping,
@@ -58,10 +60,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { session } = await requireSystemSettings();
+    const { session, identity } = await requireSystemSettings();
     const body = roleMappingInputSchema.parse(await request.json());
     const ctx = await dashboardAuditContext(session.user.id);
-    const mapping = await upsertRoleMapping(body, ctx);
+    const mapping = await upsertRoleMapping(body, ctx, {
+      allowSuperAdminLevel: canMapSuperAdminLevel(identity),
+    });
     return Response.json({ mapping });
   } catch (error) {
     return jsonError(error);
@@ -69,14 +73,44 @@ export async function POST(request: Request) {
 }
 
 const archiveSchema = z.object({ id: z.string().min(1) });
+const archiveTargetSchema = z.object({
+  kind: z.nativeEnum(RoleMappingKind),
+  value: z.string().min(1).max(128),
+  factionCode: z.string().min(1).max(32).nullable(),
+});
 
 export async function DELETE(request: Request) {
   try {
     const { session } = await requireSystemSettings();
-    const body = archiveSchema.parse(await request.json());
     const ctx = await dashboardAuditContext(session.user.id);
-    const mapping = await archiveRoleMapping(body.id, ctx);
-    return Response.json({ mapping });
+    const url = new URL(request.url);
+    const idFromQuery = url.searchParams.get("id");
+
+    if (idFromQuery) {
+      const mapping = await archiveRoleMapping(idFromQuery, ctx);
+      return Response.json({ mapping });
+    }
+
+    let body: unknown = null;
+    try {
+      body = await request.json();
+    } catch {
+      body = null;
+    }
+
+    const asId = archiveSchema.safeParse(body);
+    if (asId.success) {
+      const mapping = await archiveRoleMapping(asId.data.id, ctx);
+      return Response.json({ mapping });
+    }
+
+    const asTarget = archiveTargetSchema.safeParse(body);
+    if (asTarget.success) {
+      const result = await archiveRoleMappingsForTarget(asTarget.data, ctx);
+      return Response.json(result);
+    }
+
+    return Response.json({ error: "Укажите id привязки или цель (kind/value/factionCode)" }, { status: 400 });
   } catch (error) {
     return jsonError(error);
   }

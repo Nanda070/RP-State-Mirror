@@ -1,6 +1,6 @@
 import { prisma } from "@mirror/db";
 import { z } from "zod";
-import { auditedMutation, type AuditContext } from "./audit.js";
+import { auditedMutation, writeAuditEvents, type AuditContext } from "./audit.js";
 import { toJsonValue, type Db } from "./db.js";
 import { snowflakeSchema } from "./env.js";
 
@@ -78,5 +78,77 @@ export async function setSetting<K extends SettingKey>(
       update: { value: toJsonValue(next), updatedById: context.actorUserId ?? null },
     });
     return { entityId: key, before, after: next, result: next };
+  });
+}
+
+/**
+ * Persist main + incident guild ids in one transaction.
+ * Validates they differ before any write.
+ */
+export async function setMainAndIncidentGuilds(
+  mainGuildId: string | null,
+  incidentGuildId: string | null,
+  context: AuditContext,
+): Promise<{ mainGuildId: string | null; incidentGuildId: string | null }> {
+  const mainParsed = settingDefinitions["core.mainGuildId"].schema.safeParse(mainGuildId);
+  const incidentParsed = settingDefinitions["core.incidentGuildId"].schema.safeParse(incidentGuildId);
+  if (!mainParsed.success) {
+    throw new SettingValidationError(
+      `core.mainGuildId: ${mainParsed.error.issues.map((i) => i.message).join("; ")}`,
+    );
+  }
+  if (!incidentParsed.success) {
+    throw new SettingValidationError(
+      `core.incidentGuildId: ${incidentParsed.error.issues.map((i) => i.message).join("; ")}`,
+    );
+  }
+  const main = mainParsed.data;
+  const incident = incidentParsed.data;
+  if (main !== null && incident !== null && main === incident) {
+    throw new SettingValidationError("Главный сервер и сервер ЧП должны быть разными серверами");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const mainBefore = await getSetting("core.mainGuildId", tx);
+    const incidentBefore = await getSetting("core.incidentGuildId", tx);
+
+    await tx.systemSetting.upsert({
+      where: { key: "core.mainGuildId" },
+      create: { key: "core.mainGuildId", value: toJsonValue(main), updatedById: context.actorUserId ?? null },
+      update: { value: toJsonValue(main), updatedById: context.actorUserId ?? null },
+    });
+    await tx.systemSetting.upsert({
+      where: { key: "core.incidentGuildId" },
+      create: {
+        key: "core.incidentGuildId",
+        value: toJsonValue(incident),
+        updatedById: context.actorUserId ?? null,
+      },
+      update: { value: toJsonValue(incident), updatedById: context.actorUserId ?? null },
+    });
+
+    await writeAuditEvents(
+      [
+        {
+          ...context,
+          action: "setting.updated",
+          entityType: "system_setting",
+          entityId: "core.mainGuildId",
+          before: mainBefore,
+          after: main,
+        },
+        {
+          ...context,
+          action: "setting.updated",
+          entityType: "system_setting",
+          entityId: "core.incidentGuildId",
+          before: incidentBefore,
+          after: incident,
+        },
+      ],
+      tx,
+    );
+
+    return { mainGuildId: main, incidentGuildId: incident };
   });
 }

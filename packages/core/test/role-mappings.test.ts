@@ -2,11 +2,13 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { AuditActorType, RoleMappingKind } from "@mirror/db";
 import {
   archiveRoleMapping,
+  archiveRoleMappingsForTarget,
   listActiveRoleMappings,
   resolveIdentity,
   upsertGuild,
   upsertRoleMapping,
   syncGuildRoles,
+  RoleMappingError,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
 
@@ -81,5 +83,74 @@ describe("role mapping soft-delete", () => {
 
     await archiveRoleMapping(mapping.id, CTX);
     expect((await resolveIdentity(USER, { superAdminUserIds: [] })).adminLevel).toBeNull();
+  });
+
+  it("refuses SUPER_ADMIN mappings without allowSuperAdminLevel", async () => {
+    await upsertGuild({ discordId: GUILD, name: "Main", iconUrl: null });
+    await syncGuildRoles(GUILD, [{ discordId: ROLE, name: "Admin", color: 0, position: 1, managed: false }]);
+
+    await expect(
+      upsertRoleMapping(
+        {
+          guildDiscordId: GUILD,
+          roleDiscordId: ROLE,
+          kind: RoleMappingKind.ADMIN_LEVEL,
+          value: "SUPER_ADMIN",
+        },
+        CTX,
+      ),
+    ).rejects.toBeInstanceOf(RoleMappingError);
+
+    const created = await upsertRoleMapping(
+      {
+        guildDiscordId: GUILD,
+        roleDiscordId: ROLE,
+        kind: RoleMappingKind.ADMIN_LEVEL,
+        value: "SUPER_ADMIN",
+      },
+      CTX,
+      { allowSuperAdminLevel: true },
+    );
+    expect(created.value).toBe("SUPER_ADMIN");
+  });
+
+  it("archives every mapping for a department target", async () => {
+    const ROLE_B = "400000000000000011";
+    await upsertGuild({ discordId: GUILD, name: "Main", iconUrl: null });
+    await syncGuildRoles(GUILD, [
+      { discordId: ROLE, name: "A", color: 0, position: 1, managed: false },
+      { discordId: ROLE_B, name: "B", color: 0, position: 2, managed: false },
+    ]);
+    await prisma.faction.create({
+      data: { code: "GOV", name: "Правительство", sortOrder: 1 },
+    });
+
+    await upsertRoleMapping(
+      {
+        guildDiscordId: GUILD,
+        roleDiscordId: ROLE,
+        kind: RoleMappingKind.DEPARTMENT,
+        value: "ogp",
+        factionCode: "GOV",
+      },
+      CTX,
+    );
+    await upsertRoleMapping(
+      {
+        guildDiscordId: GUILD,
+        roleDiscordId: ROLE_B,
+        kind: RoleMappingKind.DEPARTMENT,
+        value: "ogp",
+        factionCode: "GOV",
+      },
+      CTX,
+    );
+
+    const result = await archiveRoleMappingsForTarget(
+      { kind: RoleMappingKind.DEPARTMENT, value: "ogp", factionCode: "GOV" },
+      CTX,
+    );
+    expect(result.archivedIds).toHaveLength(2);
+    expect(await listActiveRoleMappings(GUILD)).toEqual([]);
   });
 });

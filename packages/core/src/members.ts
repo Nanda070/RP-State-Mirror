@@ -59,38 +59,48 @@ async function requireGuild(guildDiscordId: string) {
 }
 
 export async function upsertGuild(snapshot: GuildSnapshot) {
-  const existing = await prisma.guild.findUnique({ where: { discordId: snapshot.discordId } });
-  const guild = await prisma.guild.upsert({
-    where: { discordId: snapshot.discordId },
-    create: { discordId: snapshot.discordId, name: snapshot.name, iconUrl: snapshot.iconUrl },
-    update: { name: snapshot.name, iconUrl: snapshot.iconUrl, status: RecordStatus.ACTIVE },
-  });
-  if (!existing || existing.status !== RecordStatus.ACTIVE) {
-    await writeAuditEvent({
-      ...DISCORD_CONTEXT,
-      guildId: snapshot.discordId,
-      action: existing ? "guild.reconnected" : "guild.connected",
-      entityType: "guild",
-      entityId: snapshot.discordId,
-      before: existing ? { status: existing.status } : undefined,
-      after: { name: snapshot.name, status: RecordStatus.ACTIVE },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.guild.findUnique({ where: { discordId: snapshot.discordId } });
+    const guild = await tx.guild.upsert({
+      where: { discordId: snapshot.discordId },
+      create: { discordId: snapshot.discordId, name: snapshot.name, iconUrl: snapshot.iconUrl },
+      update: { name: snapshot.name, iconUrl: snapshot.iconUrl, status: RecordStatus.ACTIVE },
     });
-  }
-  return guild;
+    if (!existing || existing.status !== RecordStatus.ACTIVE) {
+      await writeAuditEvent(
+        {
+          ...DISCORD_CONTEXT,
+          guildId: snapshot.discordId,
+          action: existing ? "guild.reconnected" : "guild.connected",
+          entityType: "guild",
+          entityId: snapshot.discordId,
+          before: existing ? { status: existing.status } : undefined,
+          after: { name: snapshot.name, status: RecordStatus.ACTIVE },
+        },
+        tx,
+      );
+    }
+    return guild;
+  });
 }
 
 export async function markGuildUnavailable(guildDiscordId: string) {
-  const existing = await prisma.guild.findUnique({ where: { discordId: guildDiscordId } });
-  if (!existing || existing.status === RecordStatus.ARCHIVED) return;
-  await prisma.guild.update({ where: { id: existing.id }, data: { status: RecordStatus.ARCHIVED } });
-  await writeAuditEvent({
-    ...DISCORD_CONTEXT,
-    guildId: guildDiscordId,
-    action: "guild.disconnected",
-    entityType: "guild",
-    entityId: guildDiscordId,
-    before: { status: existing.status },
-    after: { status: RecordStatus.ARCHIVED },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.guild.findUnique({ where: { discordId: guildDiscordId } });
+    if (!existing || existing.status === RecordStatus.ARCHIVED) return;
+    await tx.guild.update({ where: { id: existing.id }, data: { status: RecordStatus.ARCHIVED } });
+    await writeAuditEvent(
+      {
+        ...DISCORD_CONTEXT,
+        guildId: guildDiscordId,
+        action: "guild.disconnected",
+        entityType: "guild",
+        entityId: guildDiscordId,
+        before: { status: existing.status },
+        after: { status: RecordStatus.ARCHIVED },
+      },
+      tx,
+    );
   });
 }
 

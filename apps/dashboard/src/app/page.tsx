@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { LoginHero } from "@/components/login-hero";
+import { safeNextPath } from "@/lib/safe-next-path";
 
 export default async function HomePage({
   searchParams,
@@ -9,8 +10,9 @@ export default async function HomePage({
 }) {
   const session = await auth();
   const params = await searchParams;
+  const next = safeNextPath(params.next);
   if (session?.user) {
-    redirect(params.next && params.next.startsWith("/") ? params.next : "/overview");
+    redirect(next ?? "/overview");
   }
-  return <LoginHero {...(params.next ? { nextPath: params.next } : {})} />;
+  return <LoginHero {...(next ? { nextPath: next } : {})} />;
 }

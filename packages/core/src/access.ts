@@ -25,11 +25,16 @@ export function canAccessAdminArea(identity: Pick<Identity, "adminLevel">): bool
 }
 
 /**
- * System settings for stage 2: main guild, incident guild, role mappings.
- * PLAN defaults: главный и старший админ; не обычный админ/хелпер.
+ * System settings: main guild, incident guild, role mappings.
+ * PLAN: только главный админ (старший — без системных настроек).
  */
 export function canManageSystemSettings(identity: Pick<Identity, "adminLevel" | "isSuperAdmin">): boolean {
-  return identity.isSuperAdmin || hasMinAdminLevel(identity, AdminLevel.SENIOR_ADMIN);
+  return identity.isSuperAdmin || identity.adminLevel === AdminLevel.SUPER_ADMIN;
+}
+
+/** Only a super admin may create/update ADMIN_LEVEL=SUPER_ADMIN role mappings. */
+export function canMapSuperAdminLevel(identity: Pick<Identity, "adminLevel" | "isSuperAdmin">): boolean {
+  return canManageSystemSettings(identity);
 }
 
 /**
