@@ -1,5 +1,29 @@
 # Mirror: dev blog
 
+## 2026-10-03: этап 2 — закрытие по ревью + UX ролей
+
+### Цель
+
+Закрыть критические замечания ревью этапа 2 и добить UX привязок ролей; Stage 3 WIP оставлен в `stash` до чистого инкремента.
+
+### Что сделано
+
+- Системные настройки и API guilds/role-mappings — только `SUPER_ADMIN` (старший больше не эскалирует через маппинг `SUPER_ADMIN`).
+- CI: dummy Discord/session env для `next build`; lazy init Auth.js без env на import.
+- Open redirect: `safeNextPath` отклоняет `//` и `/\`.
+- PUT guilds: `setMainAndIncidentGuilds` атомарно; `jsonError` не отдаёт сырые Prisma-сообщения.
+- `upsertGuild` / `markGuildUnavailable` пишут аудит в той же транзакции.
+- UX: soft-archive чипов и «Удалить цель» в «Отделы, ранги и права»; у GOV — поля Огп / Судебный Корпус / Финансы (`DEPARTMENT`).
+- Документы в дашборде: только отправка + реестр, не шаблоны/генерация.
+
+### Stage 3
+
+Незавершённый WIP модулей бота сохранён в git stash `wip-stage3-modules` (не в working tree), чтобы не ломать typecheck/migrate.
+
+### Проверка
+
+- `pnpm lint`, `pnpm check`, `pnpm build`, `pnpm test`.
+
 ## 2026-10-03: UI — единая тёмная тема
 
 ### Цель
@@ -33,7 +57,7 @@
 - `apps/dashboard` переведён на Next.js 15 App Router + Auth.js (Discord), JWT-сессии, middleware на защищённые маршруты.
 - `dashboardEnvSchema`: `DISCORD_CLIENT_*`, `SESSION_SECRET`, `OAUTH_REDIRECT_URL` (строго callback Auth.js), `DATABASE_URL`, `SUPER_ADMIN_USER_IDS`.
 - После OAuth: upsert пользователя, `resolveIdentity`; без главного сервера пускаем только bootstrap-суперадминов.
-- Настройки главного сервера / ЧП и редактор привязок ролей (`ADMIN_LEVEL` и фракционные kinds); запись через `setSetting` / audited upsert; доступ — главный и старший админ.
+- Настройки главного сервера / ЧП и редактор привязок ролей (`ADMIN_LEVEL` и фракционные kinds); запись через `setSetting` / audited upsert; доступ — только главный админ (позже уточнено по PLAN/ревью).
 - Миграция `role_mapping_status`: привязки архивируются, не удаляются физически.
 - Профиль со статус-бейджем, cookie-баннер, `/terms` `/privacy` `/cookies`, заготовки уведомлений и Ctrl+K по разделам (темы позже заменены единым тёмным UI — см. запись выше).
 - Документация: `docs/STAGE_2.md`, обновлены PLAN / README / TECHNICAL_FOUNDATION.
