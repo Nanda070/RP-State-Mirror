@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+*.sqlite3
+__pycache__/
+node_modules/
+.next/
+dist/
+.turbo/
+coverage/
+.pnpm-store/

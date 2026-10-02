@@ -1,0 +1,28 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mirror_test
+      POSTGRES_USER: mirror_test
+      POSTGRES_PASSWORD: mirror_test_password
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirror_test -d mirror_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  minio-test:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: mirror_test
+      MINIO_ROOT_PASSWORD: mirror_test_password
+    ports:
+      - "59000:9000"
+      - "59001:9001"
+    tmpfs:
+      - /data

@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordStatus {
+  ACTIVE
+  CLOSED
+  EXPIRED
+  REVOKED
+  ARCHIVED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AuditActorType {
+  USER
+  BOT
+  SYSTEM
+}
+
+model User {
+  id             String      @id @default(cuid())
+  discordId      String      @unique @map("discord_id")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  auditEvents    AuditLog[]  @relation("AuditActor")
+  initiatedJobs  Job[]       @relation("JobInitiator")
+
+  @@map("users")
+}
+
+model Guild {
+  id          String   @id @default(cuid())
+  discordId   String   @unique @map("discord_id")
+  name        String
+  isMain      Boolean  @default(false) @map("is_main")
+  isIncident  Boolean  @default(false) @map("is_incident")
+  status      RecordStatus @default(ACTIVE)
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  factions    Faction[]
+
+  @@map("guilds")
+}
+
+model Faction {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  color       String?
+  status      RecordStatus @default(ACTIVE)
+  guildId     String?  @map("guild_id")
+  guild       Guild?   @relation(fields: [guildId], references: [id])
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([guildId])
+  @@map("factions")
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedById String?  @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+model AuditLog {
+  id            String         @id @default(cuid())
+  actorType     AuditActorType @map("actor_type")
+  actorUserId   String?        @map("actor_user_id")
+  actorUser     User?          @relation("AuditActor", fields: [actorUserId], references: [id])
+  action        String
+  entityType    String         @map("entity_type")
+  entityId      String         @map("entity_id")
+  source        String
+  ipAddress     String?        @map("ip_address")
+  guildId       String?        @map("guild_id")
+  channelId     String?        @map("channel_id")
+  before        Json?
+  after         Json?
+  metadata      Json           @default("{}")
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+model Job {
+  id            String     @id @default(cuid())
+  type          String
+  payload       Json
+  status        JobStatus  @default(PENDING)
+  attempts      Int        @default(0)
+  availableAt   DateTime   @default(now()) @map("available_at")
+  lockedAt      DateTime?  @map("locked_at")
+  lockedBy      String?    @map("locked_by")
+  completedAt   DateTime?  @map("completed_at")
+  lastError     String?    @map("last_error")
+  initiatedById String?    @map("initiated_by_id")
+  initiatedBy   User?      @relation("JobInitiator", fields: [initiatedById], references: [id])
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  @@index([status, availableAt])
+  @@map("jobs")
+}
+
+model AuditLogArchive {
+  id          String   @id
+  payload     Json
+  archivedAt  DateTime @default(now()) @map("archived_at")
+
+  @@map("audit_log_archive")
+}

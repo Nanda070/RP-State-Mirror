@@ -1,6 +1,50 @@
-# Межсерверный Discord-бот
+# Mirror · GTA5RP
 
-Бот на Python для межсерверных документов и розыска.
+Discord-бот и веб-дашборд для государственных фракций. Проект развивается по плану в [docs/PLAN.md](docs/PLAN.md).
+
+## Текущий статус
+
+Завершается этап 1: фундамент монорепозитория, PostgreSQL, Prisma, MinIO, аудит и очередь задач. Старый Python-бот временно хранится как справочный слой и не запускается новым workspace.
+
+## Новый workspace
+
+```text
+apps/bot              Discord-бот
+apps/dashboard        Next.js dashboard и API
+packages/core         общая доменная логика
+packages/db           Prisma-схема и клиент
+docs/PLAN.md          полный план проекта
+docs/TECHNICAL_FOUNDATION.md  технические решения этапа 1
+docs/DEVLOG.md        журнал разработки
+```
+
+Требования: Node.js 20+, pnpm 11+ и Docker с Docker Compose.
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d
+pnpm install
+pnpm db:validate
+pnpm db:generate
+pnpm check
+pnpm build
+```
+
+Локальные сервисы: PostgreSQL `localhost:5432`, MinIO API `localhost:9000`, MinIO Console `localhost:9001`.
+
+Тестовый контур запускается отдельно:
+
+```powershell
+docker compose -f docker-compose.test.yml up -d
+```
+
+Он использует PostgreSQL `localhost:55432` и MinIO API `localhost:59000`.
+
+Подробные решения этапа описаны в [docs/TECHNICAL_FOUNDATION.md](docs/TECHNICAL_FOUNDATION.md), история разработки ведётся в [docs/DEVLOG.md](docs/DEVLOG.md).
+
+## Legacy Python-код
+
+Разделы ниже описывают старого Python-бота и нужны только для сверки поведения при миграции. Python-файлы не удаляются до завершения всех этапов, переноса команд и финального аудита.
 
 ## Что умеет
 - `/пост` — отправляет документ в нужную фракцию через её webhook
@@ -15,7 +59,7 @@
 - `.env.example` — пример конфига
 - `requirements.txt` — зависимости
 
-## Установка
+## Установка legacy-бота
 1. Установи Python 3.11+.
 2. Создай папку проекта и скопируй туда файлы.
 3. Создай виртуальное окружение:
