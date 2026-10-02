@@ -61,7 +61,11 @@ export async function resolveIdentity(discordUserId: string, options: ResolveIde
       ? []
       : (
           await prisma.roleMapping.findMany({
-            where: { roleDiscordId: { in: allRoleIds }, guild: { status: RecordStatus.ACTIVE } },
+            where: {
+              status: RecordStatus.ACTIVE,
+              roleDiscordId: { in: allRoleIds },
+              guild: { status: RecordStatus.ACTIVE },
+            },
             include: { guild: true },
           })
         ).filter((m) => heldRoles.has(`${m.guildId}:${m.roleDiscordId}`));

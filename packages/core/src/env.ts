@@ -31,6 +31,18 @@ export const botEnvSchema = baseEnvSchema.extend({
   DISCORD_BOT_TOKEN: z.string().min(1),
 });
 
+export const dashboardEnvSchema = baseEnvSchema.extend({
+  DISCORD_CLIENT_ID: snowflakeSchema,
+  DISCORD_CLIENT_SECRET: z.string().min(1),
+  SESSION_SECRET: z.string().min(16),
+  OAUTH_REDIRECT_URL: z
+    .string()
+    .url()
+    .refine((url) => url.includes("/api/auth/callback/discord"), {
+      message: "must be the Auth.js Discord callback URL (.../api/auth/callback/discord)",
+    }),
+});
+
 export const storageEnvSchema = z.object({
   S3_ENDPOINT: z.string().url(),
   S3_REGION: z.string().min(1).default("us-east-1"),
@@ -41,6 +53,7 @@ export const storageEnvSchema = z.object({
 
 export type BaseEnv = z.output<typeof baseEnvSchema>;
 export type BotEnv = z.output<typeof botEnvSchema>;
+export type DashboardEnv = z.output<typeof dashboardEnvSchema>;
 
 export class EnvError extends Error {
   override name = "EnvError";

@@ -1,5 +1,14 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_FACTIONS, EnvError, SETTING_KEYS, baseEnvSchema, botEnvSchema, parseEnv, seedFoundation } from "@mirror/core";
+import {
+  DEFAULT_FACTIONS,
+  EnvError,
+  SETTING_KEYS,
+  baseEnvSchema,
+  botEnvSchema,
+  dashboardEnvSchema,
+  parseEnv,
+  seedFoundation,
+} from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
 
 beforeEach(resetDatabase);
@@ -52,5 +61,25 @@ describe("parseEnv", () => {
 
   it("requires a database URL", () => {
     expect(() => parseEnv(baseEnvSchema, {})).toThrow(/DATABASE_URL/);
+  });
+
+  it("requires dashboard OAuth secrets and Auth.js callback URL", () => {
+    const env = parseEnv(dashboardEnvSchema, {
+      ...valid,
+      DISCORD_CLIENT_ID: SUPER_ADMIN,
+      DISCORD_CLIENT_SECRET: "secret",
+      SESSION_SECRET: "0123456789abcdef",
+      OAUTH_REDIRECT_URL: "http://localhost:3000/api/auth/callback/discord",
+    });
+    expect(env.DISCORD_CLIENT_ID).toBe(SUPER_ADMIN);
+    expect(() =>
+      parseEnv(dashboardEnvSchema, {
+        ...valid,
+        DISCORD_CLIENT_ID: SUPER_ADMIN,
+        DISCORD_CLIENT_SECRET: "secret",
+        SESSION_SECRET: "0123456789abcdef",
+        OAUTH_REDIRECT_URL: "http://localhost:8080/",
+      }),
+    ).toThrow(/OAUTH_REDIRECT_URL/);
   });
 });

@@ -123,11 +123,13 @@ model RoleMapping {
   value         String          @default("")
   factionId     String?         @map("faction_id")
   faction       Faction?        @relation(fields: [factionId], references: [id])
+  status        RecordStatus    @default(ACTIVE)
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
   @@unique([roleDiscordId, kind, value])
   @@index([guildId])
+  @@index([status])
   @@map("role_mappings")
 }
 
