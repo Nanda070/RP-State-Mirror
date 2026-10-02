@@ -105,9 +105,14 @@ export function RoleMultiSelect({
                   className="role-chip-x"
                   aria-label={`Убрать ${role.name}`}
                   disabled={disabled}
-                  onClick={(event) => {
+                  onMouseDown={(event) => {
+                    event.preventDefault();
                     event.stopPropagation();
-                    onRemove(role.mappingId);
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!disabled) onRemove(role.mappingId);
                   }}
                 >
                   ×

@@ -47,7 +47,7 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/documents",
       title: "Документы",
-      description: "Реестр и шаблоны документов государственных фракций.",
+      description: "Отправка документов и реестр. Без шаблонов и генерации.",
       status: "soon",
     },
     {

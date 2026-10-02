@@ -13,7 +13,7 @@ export default async function SettingsDocumentsPage() {
   return (
     <SettingsModuleStub
       title="Документы"
-      description="Настройки реестра документов будут на этой странице, а не в общей форме системы."
+      description="Модуль «Документы» — только отправка документов и реестр. Шаблоны и генерация сюда не входят."
     />
   );
 }

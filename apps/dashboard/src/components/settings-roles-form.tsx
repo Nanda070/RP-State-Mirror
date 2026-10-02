@@ -53,8 +53,21 @@ const FACTION_KINDS = [
   { kind: "FACTION_DEPUTY", label: "Заместители" },
 ] as const;
 
+/** GOV-specific department role targets (same chip UI as faction members). */
+const GOV_DEPARTMENT_PRESETS = [
+  { value: "ogp", label: "Огп" },
+  { value: "judicial", label: "Судебный Корпус" },
+  { value: "finance", label: "Финансы" },
+] as const;
+
+const GOV_PRESET_VALUES = new Set<string>(GOV_DEPARTMENT_PRESETS.map((item) => item.value));
+
 function mappingKey(kind: string, value: string, factionCode: string | null | undefined): string {
   return `${kind}|${value}|${factionCode ?? ""}`;
+}
+
+function isGovDepartmentPreset(kind: string, value: string, factionCode: string | null): boolean {
+  return kind === "DEPARTMENT" && factionCode === "GOV" && GOV_PRESET_VALUES.has(value);
 }
 
 export function SettingsRolesForm({
@@ -115,16 +128,19 @@ export function SettingsRolesForm({
     const items: { kind: string; value: string; factionCode: string | null }[] = [];
     for (const mapping of mappings) {
       if (!["DEPARTMENT", "RANK", "PERMISSION"].includes(mapping.kind)) continue;
-      const key = mappingKey(mapping.kind, mapping.value, mapping.faction?.code);
+      const factionCode = mapping.faction?.code ?? null;
+      if (isGovDepartmentPreset(mapping.kind, mapping.value, factionCode)) continue;
+      const key = mappingKey(mapping.kind, mapping.value, factionCode);
       if (keys.has(key)) continue;
       keys.add(key);
       items.push({
         kind: mapping.kind,
         value: mapping.value,
-        factionCode: mapping.faction?.code ?? null,
+        factionCode,
       });
     }
     for (const target of emptyTargets) {
+      if (isGovDepartmentPreset(target.kind, target.value, target.factionCode)) continue;
       const key = mappingKey(target.kind, target.value, target.factionCode);
       if (keys.has(key)) continue;
       keys.add(key);
@@ -168,6 +184,9 @@ export function SettingsRolesForm({
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось сохранить");
       await refreshMappings();
+      setEmptyTargets((prev) =>
+        prev.filter((t) => mappingKey(t.kind, t.value, t.factionCode) !== mappingKey(kind, value, factionCode)),
+      );
       setMessage("Привязка сохранена.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка");
@@ -179,16 +198,62 @@ export function SettingsRolesForm({
   async function removeRole(mappingId: string) {
     setPending(true);
     setMessage(null);
+    const removed = mappings.find((item) => item.id === mappingId);
+    try {
+      const response = await fetch(
+        `/api/settings/role-mappings?id=${encodeURIComponent(mappingId)}`,
+        { method: "DELETE" },
+      );
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось архивировать");
+      setMappings((items) => items.filter((item) => item.id !== mappingId));
+      if (
+        removed &&
+        ["DEPARTMENT", "RANK", "PERMISSION"].includes(removed.kind) &&
+        !isGovDepartmentPreset(removed.kind, removed.value, removed.faction?.code ?? null)
+      ) {
+        const key = mappingKey(removed.kind, removed.value, removed.faction?.code);
+        const stillPresent = mappings.some(
+          (item) => item.id !== mappingId && mappingKey(item.kind, item.value, item.faction?.code) === key,
+        );
+        if (!stillPresent) {
+          setEmptyTargets((prev) => {
+            if (prev.some((t) => mappingKey(t.kind, t.value, t.factionCode) === key)) return prev;
+            return [
+              ...prev,
+              {
+                kind: removed.kind,
+                value: removed.value,
+                factionCode: removed.faction?.code ?? null,
+              },
+            ];
+          });
+        }
+      }
+      setMessage("Привязка архивирована.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function removeTarget(kind: string, value: string, factionCode: string | null) {
+    setPending(true);
+    setMessage(null);
+    const key = mappingKey(kind, value, factionCode);
     try {
       const response = await fetch("/api/settings/role-mappings", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: mappingId }),
+        body: JSON.stringify({ kind, value, factionCode }),
       });
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Не удалось архивировать");
-      setMappings((items) => items.filter((item) => item.id !== mappingId));
-      setMessage("Привязка архивирована.");
+      const data = (await response.json()) as { archivedIds?: string[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось архивировать цель");
+      const archived = new Set(data.archivedIds ?? []);
+      setMappings((items) => items.filter((item) => !archived.has(item.id)));
+      setEmptyTargets((prev) => prev.filter((t) => mappingKey(t.kind, t.value, t.factionCode) !== key));
+      setMessage("Цель и её привязки архивированы.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка");
     } finally {
@@ -209,12 +274,14 @@ export function SettingsRolesForm({
       setMessage("Выберите фракцию");
       return;
     }
+    if (isGovDepartmentPreset(extraKind, value, factionCode)) {
+      setMessage("Эта цель GOV уже есть в блоке «Фракции» — добавьте роли там.");
+      return;
+    }
     const key = mappingKey(extraKind, value, factionCode);
     setEmptyTargets((prev) => {
       if (prev.some((t) => mappingKey(t.kind, t.value, t.factionCode) === key)) return prev;
-      if (
-        mappings.some((m) => mappingKey(m.kind, m.value, m.faction?.code) === key)
-      ) {
+      if (mappings.some((m) => mappingKey(m.kind, m.value, m.faction?.code) === key)) {
         return prev;
       }
       return [...prev, { kind: extraKind, value, factionCode }];
@@ -232,7 +299,8 @@ export function SettingsRolesForm({
           Уровни доступа
         </h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Несколько Discord-ролей могут соответствовать одному уровню.
+          Несколько Discord-ролей могут соответствовать одному уровню. Системные настройки и уровень
+          главного администратора доступны только главному админу.
         </p>
         <div className="stack" style={{ gap: "1rem" }}>
           {ADMIN_VALUES.map((level) => {
@@ -258,7 +326,7 @@ export function SettingsRolesForm({
           Фракции
         </h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Роли участников, лидеров и заместителей по каждой фракции.
+          Роли участников, лидеров и заместителей по каждой фракции. Для GOV — дополнительные отделы.
         </p>
         {factions.length === 0 ? (
           <p className="muted">Нет активных фракций.</p>
@@ -287,6 +355,25 @@ export function SettingsRolesForm({
                       />
                     );
                   })}
+                  {faction.code === "GOV"
+                    ? GOV_DEPARTMENT_PRESETS.map((dept) => {
+                        const key = mappingKey("DEPARTMENT", dept.value, "GOV");
+                        return (
+                          <RoleMultiSelect
+                            key={`GOV-dept-${dept.value}`}
+                            label={dept.label}
+                            hint={`DEPARTMENT · ${dept.value} · GOV`}
+                            selected={selectedFor.get(key) ?? []}
+                            options={roleOptions}
+                            disabled={pending}
+                            onAdd={(roleDiscordId) =>
+                              addRole(roleDiscordId, "DEPARTMENT", dept.value, "GOV")
+                            }
+                            onRemove={removeRole}
+                          />
+                        );
+                      })
+                    : null}
                 </div>
               </div>
             ))}
@@ -299,7 +386,8 @@ export function SettingsRolesForm({
           Отделы, ранги и права
         </h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Создайте цель привязки, затем добавьте одну или несколько ролей.
+          Создайте цель привязки, затем добавьте одну или несколько ролей. Удаление архивирует
+          привязку (не стирает запись).
         </p>
 
         <form className="role-extra-form" onSubmit={registerExtraTarget}>
@@ -342,9 +430,12 @@ export function SettingsRolesForm({
               </select>
             </div>
           ) : null}
-          <button type="submit" className="btn btn-secondary" disabled={pending}>
-            Добавить цель
-          </button>
+          <div className="field role-extra-action">
+            <label htmlFor="extraAddTarget">&nbsp;</label>
+            <button id="extraAddTarget" type="submit" className="btn btn-secondary" disabled={pending}>
+              Добавить цель
+            </button>
+          </div>
         </form>
 
         {extraTargets.length === 0 ? (
@@ -359,17 +450,29 @@ export function SettingsRolesForm({
                 target.factionCode ? ` · ${target.factionCode}` : ""
               }`;
               return (
-                <RoleMultiSelect
-                  key={key}
-                  label={title}
-                  selected={selectedFor.get(key) ?? []}
-                  options={roleOptions}
-                  disabled={pending}
-                  onAdd={(roleDiscordId) =>
-                    addRole(roleDiscordId, target.kind, target.value, target.factionCode)
-                  }
-                  onRemove={removeRole}
-                />
+                <div key={key} className="role-target-block">
+                  <div className="role-target-head">
+                    <span className="role-target-title">{title}</span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost role-target-remove"
+                      disabled={pending}
+                      onClick={() => void removeTarget(target.kind, target.value, target.factionCode)}
+                    >
+                      Удалить цель
+                    </button>
+                  </div>
+                  <RoleMultiSelect
+                    label="Роли"
+                    selected={selectedFor.get(key) ?? []}
+                    options={roleOptions}
+                    disabled={pending}
+                    onAdd={(roleDiscordId) =>
+                      addRole(roleDiscordId, target.kind, target.value, target.factionCode)
+                    }
+                    onRemove={removeRole}
+                  />
+                </div>
               );
             })}
           </div>
