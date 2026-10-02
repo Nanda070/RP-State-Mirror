@@ -1,5 +1,6 @@
 import { canManageSystemSettings, listActiveRoleMappings } from "@mirror/core";
 import { RecordStatus, RoleMappingKind, prisma } from "@mirror/db";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SettingsRolesForm } from "@/components/settings-roles-form";
@@ -36,19 +37,38 @@ export default async function SettingsRolesPage() {
   ]);
 
   return (
-    <SettingsRolesForm
-      initialMappings={mappings.map((m) => ({
-        id: m.id,
-        roleDiscordId: m.roleDiscordId,
-        kind: m.kind,
-        value: m.value,
-        guild: m.guild,
-        faction: m.faction,
-      }))}
-      guilds={guilds}
-      factions={factions}
-      roles={roles}
-      kinds={Object.values(RoleMappingKind)}
-    />
+    <div className="stack">
+      <div className="section-head">
+        <p className="crumb-inline muted">
+          <Link href="/settings">Настройки</Link>
+          <span aria-hidden> › </span>
+          <span>Роли</span>
+        </p>
+        <h1>Роли</h1>
+        <p className="muted">
+          Привязка Discord-ролей к уровням доступа и фракциям. Системные серверы настраиваются
+          отдельно.
+        </p>
+        <div className="row" style={{ marginTop: "0.75rem" }}>
+          <Link href="/settings/system" className="btn btn-secondary">
+            К системным серверам
+          </Link>
+        </div>
+      </div>
+      <SettingsRolesForm
+        initialMappings={mappings.map((m) => ({
+          id: m.id,
+          roleDiscordId: m.roleDiscordId,
+          kind: m.kind,
+          value: m.value,
+          guild: m.guild,
+          faction: m.faction,
+        }))}
+        guilds={guilds}
+        factions={factions}
+        roles={roles}
+        kinds={Object.values(RoleMappingKind)}
+      />
+    </div>
   );
 }

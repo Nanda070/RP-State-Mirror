@@ -10,6 +10,7 @@ import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 import type { JWT } from "next-auth/jwt";
 import { authBaseUrl, getDashboardEnv } from "./env";
+import { discordAccentCss, discordAvatarUrl, discordBannerUrl } from "./lib/discord-cdn";
 
 export type SessionIdentity = Pick<
   Identity,
@@ -20,7 +21,18 @@ type MirrorJWT = JWT & {
   discordId?: string;
   username?: string | null;
   userId?: string;
+  bannerUrl?: string | null;
+  accentColor?: string | null;
   identity?: SessionIdentity;
+};
+
+type DiscordMe = {
+  id: string;
+  username?: string;
+  global_name?: string | null;
+  avatar?: string | null;
+  banner?: string | null;
+  accent_color?: number | null;
 };
 
 declare module "next-auth" {
@@ -32,6 +44,8 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
       username?: string | null;
+      bannerUrl?: string | null;
+      accentColor?: string | null;
     };
     identity: SessionIdentity;
   }
@@ -49,10 +63,18 @@ async function loadIdentity(discordId: string): Promise<SessionIdentity> {
   };
 }
 
-function discordAvatarUrl(id: string, avatar: string | null | undefined): string | null {
-  if (!avatar) return null;
-  const ext = avatar.startsWith("a_") ? "gif" : "png";
-  return `https://cdn.discordapp.com/avatars/${id}/${avatar}.${ext}`;
+/** Fetch raw Discord user (includes banner hash) — Auth.js profile omits it. */
+async function fetchDiscordMe(accessToken: string): Promise<DiscordMe | null> {
+  try {
+    const response = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as DiscordMe;
+  } catch {
+    return null;
+  }
 }
 
 const env = getDashboardEnv();
@@ -92,30 +114,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true;
     },
-    async jwt({ token, profile, trigger }) {
+    async jwt({ token, profile, account, trigger }) {
       const mirrorToken = token as MirrorJWT;
       const discordId =
         (typeof profile?.id === "string" ? profile.id : undefined) ?? mirrorToken.discordId;
       if (!discordId) return mirrorToken;
 
-      if (profile || trigger === "update" || !mirrorToken.identity) {
+      if (profile || account || trigger === "update" || !mirrorToken.identity) {
         const { user } = await ensureUserByDiscordId(discordId);
         mirrorToken.discordId = discordId;
         mirrorToken.userId = user.id;
 
-        if (profile) {
+        // Prefer live Discord /users/@me for banner + display fields on sign-in.
+        const me = account?.access_token ? await fetchDiscordMe(account.access_token) : null;
+
+        if (me) {
+          mirrorToken.username = me.username ?? mirrorToken.username ?? null;
+          mirrorToken.name = me.global_name ?? me.username ?? mirrorToken.name ?? null;
+          const picture = discordAvatarUrl(discordId, me.avatar);
+          if (picture) mirrorToken.picture = picture;
+          mirrorToken.bannerUrl = discordBannerUrl(discordId, me.banner);
+          mirrorToken.accentColor = discordAccentCss(me.accent_color);
+        } else if (profile) {
           const p = profile as {
             username?: string;
             global_name?: string | null;
             name?: string | null;
             image?: string | null;
             avatar?: string | null;
+            banner?: string | null;
+            accent_color?: number | null;
           };
           mirrorToken.username = p.username ?? mirrorToken.username ?? null;
           const displayName = p.global_name ?? p.name ?? p.username ?? mirrorToken.name ?? null;
           if (displayName !== undefined) mirrorToken.name = displayName;
           const picture = p.image ?? discordAvatarUrl(discordId, p.avatar) ?? mirrorToken.picture;
           if (picture !== undefined) mirrorToken.picture = picture;
+          if (p.banner !== undefined) {
+            mirrorToken.bannerUrl = discordBannerUrl(discordId, p.banner);
+          }
+          if (p.accent_color !== undefined) {
+            mirrorToken.accentColor = discordAccentCss(p.accent_color);
+          }
         }
 
         mirrorToken.identity = await loadIdentity(discordId);
@@ -137,6 +177,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           (typeof mirrorToken.picture === "string" ? mirrorToken.picture : null) ??
           session.user?.image ??
           null,
+        bannerUrl: mirrorToken.bannerUrl ?? null,
+        accentColor: mirrorToken.accentColor ?? null,
       };
       session.identity = mirrorToken.identity;
       return session;

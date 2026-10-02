@@ -29,27 +29,38 @@ export default async function ProfilePage() {
     memberships.find((m) => m.guildAvatarUrl)?.guildAvatarUrl ??
     null;
 
+  const bannerUrl = session.user.bannerUrl ?? null;
+  const accent = session.user.accentColor ?? badge.accentColor ?? null;
+  const displayName = session.user.name ?? session.user.username ?? "Discord";
+
   return (
     <div className="stack">
       <div
         className="profile-hero"
+        data-has-banner={Boolean(bannerUrl)}
         style={
-          badge.accentColor
-            ? ({
-                ["--profile-accent" as string]: badge.accentColor,
-              } as CSSProperties)
-            : undefined
+          {
+            ...(accent ? ({ ["--profile-accent" as string]: accent } as CSSProperties) : null),
+            ...(bannerUrl
+              ? ({ ["--profile-banner" as string]: `url(${bannerUrl})` } as CSSProperties)
+              : null),
+          } as CSSProperties
         }
       >
+        <div className="profile-banner" aria-hidden />
         <div className="profile-identity">
           {avatar ? (
-            <Image className="avatar" src={avatar} alt="" width={88} height={88} unoptimized />
+            <Image className="avatar" src={avatar} alt="" width={72} height={72} unoptimized />
           ) : (
-            <div className="avatar" aria-hidden />
+            <div className="avatar avatar-fallback" aria-hidden>
+              {(displayName.trim().charAt(0) || "?").toUpperCase()}
+            </div>
           )}
           <div className="profile-meta">
-            <h1>{session.user.name ?? session.user.username}</h1>
-            <p className="muted handle">
+            <h1 className="truncate" title={displayName}>
+              {displayName}
+            </h1>
+            <p className="muted handle truncate" title={`@${session.user.username ?? "discord"}`}>
               @{session.user.username ?? "discord"} · {session.user.discordId}
             </p>
             <div className="row">
@@ -75,26 +86,33 @@ export default async function ProfilePage() {
           <p className="muted">Нет данных снимка. Запустите бота на серверах, где вы состоите.</p>
         ) : (
           <div className="server-grid">
-            {memberships.map((member) => (
-              <div className="server-card" key={member.id}>
-                <div>
-                  <span className="label">Сервер</span>
-                  <strong>{member.guild.name}</strong>
+            {memberships.map((member) => {
+              const nick = member.nickname ?? member.globalName ?? member.username;
+              return (
+                <div className="server-card" key={member.id}>
+                  <div className="min-w-0">
+                    <span className="label">Сервер</span>
+                    <strong className="truncate" title={member.guild.name}>
+                      {member.guild.name}
+                    </strong>
+                  </div>
+                  <div className="min-w-0">
+                    <span className="label">Ник</span>
+                    <span className="truncate" title={nick}>
+                      {nick}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="label">Вход</span>
+                    <span>{formatMoscow(member.joinedAt)}</span>
+                  </div>
+                  <div>
+                    <span className="label">Ролей</span>
+                    <strong>{member.roleIds.length}</strong>
+                  </div>
                 </div>
-                <div>
-                  <span className="label">Ник</span>
-                  <span>{member.nickname ?? member.globalName ?? member.username}</span>
-                </div>
-                <div>
-                  <span className="label">Вход</span>
-                  <span>{formatMoscow(member.joinedAt)}</span>
-                </div>
-                <div>
-                  <span className="label">Ролей</span>
-                  <strong>{member.roleIds.length}</strong>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

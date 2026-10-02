@@ -10,12 +10,11 @@ function DiscordGlyph() {
   );
 }
 
-export function LoginButton({ label = "Войти через Discord" }: { label?: string }) {
+export function LoginButton({ label = "Продолжить через Discord" }: { label?: string }) {
   return (
     <button type="button" className="btn btn-discord" onClick={() => signIn("discord")}>
       <DiscordGlyph />
       {label}
-      <span aria-hidden>→</span>
     </button>
   );
 }

@@ -6,9 +6,15 @@ import { useEffect, useMemo, useState } from "react";
 const ITEMS = [
   { href: "/overview", label: "Обзор" },
   { href: "/profile", label: "Профиль" },
-  { href: "/settings", label: "Настройки" },
-  { href: "/settings/guilds", label: "Серверы: главный и ЧП" },
+  { href: "/settings", label: "Настройки — каталог модулей" },
+  { href: "/settings/system", label: "Система: главный сервер и ЧП" },
   { href: "/settings/roles", label: "Привязка ролей" },
+  { href: "/settings/documents", label: "Документы (скоро)" },
+  { href: "/settings/wanted", label: "Розыск (скоро)" },
+  { href: "/settings/fines", label: "Штрафы (скоро)" },
+  { href: "/settings/tokens", label: "Токены (скоро)" },
+  { href: "/settings/registrations", label: "Регистрации (скоро)" },
+  { href: "/settings/embeds", label: "Эмбеды (скоро)" },
   { href: "/terms", label: "Условия использования" },
   { href: "/privacy", label: "Конфиденциальность" },
   { href: "/cookies", label: "Cookie" },
@@ -52,7 +58,7 @@ export function CommandPalette() {
       >
         <input
           autoFocus
-          placeholder="Поиск разделов… (полный поиск данных — позже)"
+          placeholder="Поиск разделов…"
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);

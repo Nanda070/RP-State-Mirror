@@ -12,14 +12,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const identity = await resolveFreshIdentity(session.user.discordId);
-  const label =
-    session.user.name ??
-    session.user.username ??
-    session.user.discordId;
+  const displayName =
+    session.user.name ?? session.user.username ?? session.user.discordId;
+  const username = session.user.username ?? null;
+  const avatarUrl = session.user.image ?? null;
 
-  // Helpers and above see admin nav; others still get profile via /profile route group later.
+  // Keep identity helpers warm for route gates; shell itself is available to all signed-in users.
   void canAccessAdminArea(identity);
   void canManageSystemSettings(identity);
 
-  return <AppShell userLabel={label}>{children}</AppShell>;
+  return (
+    <AppShell displayName={displayName} username={username} avatarUrl={avatarUrl}>
+      {children}
+    </AppShell>
+  );
 }
