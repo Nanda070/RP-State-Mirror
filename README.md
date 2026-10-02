@@ -4,7 +4,13 @@ Discord-бот и веб-дашборд для государственных ф
 
 ## Текущий статус
 
-Завершается этап 1: фундамент монорепозитория, PostgreSQL, Prisma, MinIO, аудит и очередь задач. Старый Python-бот временно хранится как справочный слой и не запускается новым workspace.
+Этап 1 закрыт. Готовы:
+- монорепозиторий, PostgreSQL, Prisma с миграциями и S3-хранилище;
+- журнал аудита, атомарная очередь задач и типизированные настройки;
+- снимок Discord-серверов и вычисление прав по ролям;
+- бот, тесты и CI.
+
+Следующий этап: вход в дашборд через Discord. Старый Python-бот временно хранится как справочный слой и не запускается.
 
 ## Новый workspace
 
@@ -18,27 +24,31 @@ docs/TECHNICAL_FOUNDATION.md  технические решения этапа 1
 docs/DEVLOG.md        журнал разработки
 ```
 
-Требования: Node.js 20+, pnpm 11+ и Docker с Docker Compose.
+Требования: Node.js 22.9+, pnpm 11+ и Docker с Docker Compose.
 
 ```powershell
-Copy-Item .env.example .env
-docker compose up -d
+Copy-Item .env.example .env     # затем вписать DISCORD_BOT_TOKEN и прочие секреты
+docker compose up -d            # PostgreSQL :5432, S3 (SeaweedFS) :9000
 pnpm install
-pnpm db:validate
 pnpm db:generate
-pnpm check
+pnpm db:deploy                  # применить миграции
 pnpm build
+pnpm db:seed                    # фракции, настройки по умолчанию, суперадмин
+pnpm bot:start
 ```
 
-Локальные сервисы: PostgreSQL `localhost:5432`, MinIO API `localhost:9000`, MinIO Console `localhost:9001`.
+Боту в Discord Developer Portal нужен включённый **Server Members Intent**.
 
-Тестовый контур запускается отдельно:
+Проверки и тесты:
 
 ```powershell
-docker compose -f docker-compose.test.yml up -d
+docker compose -f docker-compose.test.yml up -d   # PostgreSQL :55432, S3 :59000
+pnpm lint
+pnpm check
+pnpm test
 ```
 
-Он использует PostgreSQL `localhost:55432` и MinIO API `localhost:59000`.
+Все порты слушают только `127.0.0.1`.
 
 Подробные решения этапа описаны в [docs/TECHNICAL_FOUNDATION.md](docs/TECHNICAL_FOUNDATION.md), история разработки ведётся в [docs/DEVLOG.md](docs/DEVLOG.md).
 
