@@ -16,11 +16,12 @@ import {
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { UserError } from "./errors.js";
-import { cancelFine, markFinePaid } from "./fines.js";
+import { cancelFine, markFinePaid, updateFineAmount } from "./fines.js";
 import { cancelJob, enqueueJob } from "./jobs.js";
 import {
   MODULE_JOB_TYPES,
   enqueueFineEditPaid,
+  enqueuePersonnelPublish,
   enqueueWantedEditClosed,
 } from "./module-jobs.js";
 import { revokePersonnelEvent } from "./personnel.js";
@@ -39,8 +40,8 @@ export class RegistryActionError extends UserError {
 
 export const REGISTRY_ACTIONS = {
   wanted: ["close", "cancel"],
-  fine: ["paid", "cancel"],
-  personnel: ["revoke"],
+  fine: ["paid", "cancel", "set_amount"],
+  personnel: ["revoke", "resend", "kick"],
   registration: ["approve", "reject", "revoke"],
   transfer: ["approve_source", "reject_source", "approve_target", "reject_target", "cancel"],
   token: ["revoke"],
@@ -204,6 +205,29 @@ export async function runRegistryAction(input: RegistryActionInput, context: Aud
     case "fine.cancel": {
       const cancelled = await cancelFine(id, context);
       return `Штраф ${cancelled.number} отменён.`;
+    }
+    case "fine.set_amount": {
+      const amount = Number(need(text, "Укажите новую сумму.").replace(/[\s$.,]/g, ""));
+      const updated = await updateFineAmount(id, amount, context);
+      return `Сумма штрафа ${updated.number} изменена.`;
+    }
+    case "personnel.resend": {
+      const event = await prisma.personnelEvent.findUnique({ where: { id }, select: { status: true } });
+      if (!event || event.status !== RecordStatus.ACTIVE) throw new RegistryActionError("Событие не найдено или отозвано.");
+      await enqueuePersonnelPublish(id);
+      return "Событие будет опубликовано заново.";
+    }
+    case "personnel.kick": {
+      const event = await prisma.personnelEvent.findUnique({ where: { id }, select: { type: true, status: true } });
+      if (!event || event.status !== RecordStatus.ACTIVE || event.type !== "dismissal") {
+        throw new RegistryActionError("Исключить с сервера можно по действующему событию об увольнении.");
+      }
+      await enqueueJob({
+        type: MODULE_JOB_TYPES.PERSONNEL_KICK,
+        payload: { personnelEventId: id, requestedByDiscordId: actorDiscordId },
+        maxAttempts: 2,
+      });
+      return "Бот исключит сотрудника с сервера фракции. Результат — в журнале аудита.";
     }
     case "personnel.revoke":
       await revokePersonnelEvent(id, context);

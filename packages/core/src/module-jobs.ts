@@ -12,6 +12,8 @@ export const MODULE_JOB_TYPES = {
   FINE_PUBLISH: "fine.publish",
   FINE_EDIT_PAID: "fine.edit_paid",
   FINE_OVERDUE: "fine.overdue",
+  FINE_REFRESH: "fine.refresh",
+  PERSONNEL_KICK: "personnel.kick",
   CP_RECONCILE: "cp.reconcile",
   PERSONNEL_PUBLISH: "personnel.publish",
   MESSAGE_DESIGN_SEND: "message_design.send",

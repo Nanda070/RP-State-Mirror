@@ -31,8 +31,49 @@ function hasSessionCookie(req: NextRequest): boolean {
   );
 }
 
+// Rate limit for requests that change something. Counted per session cookie (per visitor for the
+// public form), in memory: one dashboard process serves the site. Reads are not limited.
+const WINDOW_MS = 60_000;
+const MAX_WRITES_PER_WINDOW = 90;
+const writes = new Map<string, { count: number; resetAt: number }>();
+
+function sessionCookie(req: NextRequest): string | undefined {
+  return (
+    req.cookies.get("__Secure-authjs.session-token")?.value ??
+    req.cookies.get("authjs.session-token")?.value ??
+    req.cookies.get("__Secure-next-auth.session-token")?.value ??
+    req.cookies.get("next-auth.session-token")?.value
+  );
+}
+
+/** True when this caller has used up the minute's allowance. */
+function overLimit(req: NextRequest): boolean {
+  // The tail of the signed cookie is unique per session; no personal data is kept as the key.
+  const key = sessionCookie(req)?.slice(-48) ?? "guest";
+  const now = Date.now();
+  const entry = writes.get(key);
+  if (!entry || entry.resetAt <= now) {
+    writes.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    if (writes.size > 5_000) {
+      for (const [stale, value] of writes) if (value.resetAt <= now) writes.delete(stale);
+    }
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > MAX_WRITES_PER_WINDOW;
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  if (pathname.startsWith("/api/")) {
+    if (req.method !== "GET" && req.method !== "HEAD" && !pathname.startsWith("/api/auth/") && overLimit(req)) {
+      return NextResponse.json(
+        { error: "Слишком много действий подряд. Подождите минуту." },
+        { status: 429, headers: { "Retry-After": "60" } },
+      );
+    }
+    return NextResponse.next();
+  }
   const needsAuth = PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
   if (!needsAuth || hasSessionCookie(req)) {
     return NextResponse.next();
@@ -47,6 +88,7 @@ export function middleware(req: NextRequest) {
 // Next.js requires a static literal here; keep it in sync with PROTECTED_PREFIXES.
 export const config = {
   matcher: [
+    "/api/:path*",
     "/settings/:path*",
     "/profile/:path*",
     "/overview/:path*",

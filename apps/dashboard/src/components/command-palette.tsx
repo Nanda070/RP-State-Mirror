@@ -123,16 +123,46 @@ export function CommandPalette({
     [canManageSystemSettings, canViewModules, canManageModules],
   );
 
+  // Records found on the server for the typed text: numbers, statics, names.
+  const [hits, setHits] = useState<PaletteItem[]>([]);
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) {
+      setHits([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : { hits: [] }))
+        .then((data: { hits?: { kind: string; title: string; detail: string; href: string }[] }) => {
+          setHits(
+            (data.hits ?? []).map((hit) => ({
+              href: hit.href,
+              label: hit.detail ? `${hit.title} — ${hit.detail}` : hit.title,
+              group: hit.kind,
+            })),
+          );
+        })
+        .catch(() => undefined);
+    }, 180);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [open, query]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return allowedItems;
-    return allowedItems.filter(
+    const sections = allowedItems.filter(
       (item) =>
         item.label.toLowerCase().includes(q) ||
         item.href.includes(q) ||
         item.group.toLowerCase().includes(q),
     );
-  }, [allowedItems, query]);
+    return [...sections, ...hits];
+  }, [allowedItems, query, hits]);
 
   useEffect(() => {
     const openPalette = () => {
@@ -169,7 +199,7 @@ export function CommandPalette({
       >
         <input
           autoFocus
-          placeholder="Поиск разделов…"
+          placeholder="Раздел, статик, номер документа, ФИО…"
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -201,7 +231,7 @@ export function CommandPalette({
           ) : (
             results.map((item, index) => (
               <button
-                key={item.href}
+                key={`${item.group}:${item.href}:${item.label}`}
                 type="button"
                 data-active={index === active}
                 onMouseEnter={() => setActive(index)}

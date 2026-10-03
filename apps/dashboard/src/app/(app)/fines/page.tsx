@@ -100,6 +100,12 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                                         confirm: `Отметить штраф ${row.number} на ${formatMoney(row.amount)} оплаченным? Карточка в Discord обновится.`,
                                       },
                                       {
+                                        action: "set_amount",
+                                        label: "Сумма",
+                                        confirm: `Изменить сумму штрафа ${row.number} (сейчас ${formatMoney(row.amount)})? Карточка в Discord обновится.`,
+                                        input: { label: "Новая сумма", placeholder: "Например, 15000" },
+                                      },
+                                      {
                                         action: "cancel",
                                         label: "Отменить",
                                         tone: "danger",

@@ -431,3 +431,61 @@ describe("settings cache", () => {
     }
   });
 });
+
+describe("later registry actions and search", () => {
+  it("changes the amount of an unpaid fine and queues the card redraw", async () => {
+    const { MODULE_JOB_TYPES: types } = await import("@mirror/core");
+    const fine = await makeFine("F-1");
+    await expect(act("fine", fine.id, "set_amount")).rejects.toThrow("сумму");
+    await expect(act("fine", fine.id, "set_amount", "0")).rejects.toThrow("больше нуля");
+    await expect(act("fine", fine.id, "set_amount", "5000")).rejects.toThrow("не изменилась");
+    await act("fine", fine.id, "set_amount", "15 000");
+    expect((await prisma.fine.findUniqueOrThrow({ where: { id: fine.id } })).amount).toBe(15000);
+    expect(await jobsOf(types.FINE_REFRESH)).toBe(1);
+    await act("fine", fine.id, "paid");
+    await expect(act("fine", fine.id, "set_amount", "1")).rejects.toThrow("неоплаченный");
+  });
+
+  it("re-publishes a personnel event and kicks only after a dismissal", async () => {
+    const { MODULE_JOB_TYPES: types } = await import("@mirror/core");
+    const make = (type: "dismissal" | "reinstatement", details: Record<string, unknown>) =>
+      createPersonnelEvent(
+        { factionCode: "LSPD", type, subjectDiscordId: PLAYER, subjectName: "Ivan", actorDiscordId: ADMIN, details },
+        context,
+      );
+    const dismissal = await make("dismissal", { reason: "прогулы" });
+    const reinstatement = await make("reinstatement", {});
+
+    await act("personnel", reinstatement.id, "resend");
+    expect(await jobsOf(types.PERSONNEL_PUBLISH)).toBe(1);
+    await expect(act("personnel", reinstatement.id, "kick")).rejects.toThrow("увольнении");
+
+    await act("personnel", dismissal.id, "kick");
+    const job = await prisma.job.findFirstOrThrow({ where: { type: types.PERSONNEL_KICK } });
+    expect(job.payload).toEqual({ personnelEventId: dismissal.id, requestedByDiscordId: ADMIN });
+
+    await act("personnel", dismissal.id, "revoke");
+    await expect(act("personnel", dismissal.id, "resend")).rejects.toThrow("отозвано");
+  });
+
+  it("finds records across registries, and only the public one for a player", async () => {
+    const { searchRecords } = await import("@mirror/core");
+    await makeCharacter("9001");
+    await makeWanted("W-9001", "9001");
+    await makeFine("F-77", "9001");
+    await createIcBlacklistEntry(
+      { fullName: "Ivan Petrov", staticId: "9001", reason: "нарушения", forumLink: "https://forum.example/t", createdByDiscordId: ADMIN },
+      context,
+    );
+
+    const staff = await searchRecords("9001", { staff: true });
+    expect(new Set(staff.map((hit) => hit.kind))).toEqual(new Set(["Персонаж", "Розыск", "Штраф", "IC ЧС"]));
+    expect(staff.find((hit) => hit.kind === "Розыск")?.href).toBe("/wanted?q=W-9001");
+
+    const player = await searchRecords("9001", { staff: false });
+    expect(player.map((hit) => hit.kind)).toEqual(["IC ЧС"]);
+
+    expect(await searchRecords("9", { staff: true })).toEqual([]);
+    expect(await searchRecords("нет такого", { staff: true })).toEqual([]);
+  });
+});

@@ -45,3 +45,4 @@ export * from "./vehicles.js";
 export * from "./wanted.js";
 export * from "./registry-actions.js";
 export * from "./read-cache.js";
+export * from "./search.js";

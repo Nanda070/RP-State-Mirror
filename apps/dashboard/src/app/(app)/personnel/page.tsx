@@ -1,8 +1,10 @@
 import { canManageModules, canViewModules, listPersonnelPage, PERSONNEL_EVENT_LABELS_RU } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import { redirect } from "next/navigation";
-import { RegistryActions } from "@/components/registry-actions";
+import { PersonnelAddForm } from "@/components/personnel-add-form";
+import { RegistryActions, type RegistryActionButton } from "@/components/registry-actions";
 import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/components/registry-toolbar";
+import { getActiveFactionOptions } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
@@ -22,7 +24,37 @@ export default async function PersonnelRegistryPage({ searchParams }: { searchPa
   const query = registryQuery(await searchParams);
   const { items, total, page, pages } = await listPersonnelPage(query);
   const canAct = canManageModules(identity);
-  const labels = await resolveAuthorLabels(items.map((item) => item.actorDiscordId));
+  const [labels, factions] = await Promise.all([
+    resolveAuthorLabels(items.map((item) => item.actorDiscordId)),
+    canAct ? getActiveFactionOptions() : Promise.resolve([]),
+  ]);
+
+  const actionsFor = (event: (typeof items)[number]): RegistryActionButton[] => {
+    if (event.status !== RecordStatus.ACTIVE) return [];
+    return [
+      {
+        action: "resend",
+        label: "Переотправить",
+        confirm: `Опубликовать событие по сотруднику ${event.subjectName} в канале фракции ещё раз?`,
+      },
+      ...(event.type === "dismissal"
+        ? [
+            {
+              action: "kick",
+              label: "Кикнуть",
+              tone: "danger" as const,
+              confirm: `Исключить ${event.subjectName} с сервера фракции ${event.factionCode}? Бот сделает это через несколько секунд.`,
+            },
+          ]
+        : []),
+      {
+        action: "revoke",
+        label: "Отозвать",
+        tone: "danger" as const,
+        confirm: `Отозвать событие по сотруднику ${event.subjectName}? Запись останется в реестре с пометкой «Отозвано».`,
+      },
+    ];
+  };
 
   return (
     <div className="stack">
@@ -32,6 +64,8 @@ export default async function PersonnelRegistryPage({ searchParams }: { searchPa
           Кадровый аудит фракций: события создаются командой <code>/кадровый-аудит</code>.
         </p>
       </div>
+
+      {canAct ? <PersonnelAddForm factions={factions.map((faction) => ({ code: faction.code, name: faction.name }))} /> : null}
 
       <RegistryToolbar
         path="/personnel"
@@ -75,22 +109,7 @@ export default async function PersonnelRegistryPage({ searchParams }: { searchPa
                     <td className="nowrap">{formatMoscowShort(event.createdAt)}</td>
                     {canAct ? (
                       <td>
-                        <RegistryActions
-                          entity="personnel"
-                          id={event.id}
-                          actions={
-                            event.status === RecordStatus.ACTIVE
-                              ? [
-                                  {
-                                    action: "revoke",
-                                    label: "Отозвать",
-                                    tone: "danger",
-                                    confirm: `Отозвать событие по сотруднику ${event.subjectName}? Запись останется в реестре с пометкой «Отозвано».`,
-                                  },
-                                ]
-                              : []
-                          }
-                        />
+                        <RegistryActions entity="personnel" id={event.id} actions={actionsFor(event)} />
                       </td>
                     ) : null}
                   </tr>

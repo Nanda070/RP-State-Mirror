@@ -13,7 +13,7 @@ import {
   type Client,
   type TextChannel,
 } from "discord.js";
-import { prisma, RecordStatus, type Job } from "@mirror/db";
+import { AuditActorType, prisma, RecordStatus, type Job } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
   PERSONNEL_AUDIT_META,
@@ -25,6 +25,7 @@ import {
   formatRoleMentions,
   makeFineOverdueEmbed,
   parseCustomId,
+  writeAuditEvent,
   createButtonAction,
   getSetting,
   makeCompactAuditEmbed,
@@ -678,6 +679,80 @@ const cpReconcile: JobHandler = async (_payload, { client, log }) => {
     return { status: "skipped", reason: "Синхронизация выключена, сервер ЧП не задан или нет привязок ролей." };
   }
   return { status: "done", ...summary };
+};
+
+/** The amount was corrected in the dashboard: the original card shows the new one. */
+const fineRefresh: JobHandler = async (payload, { client, log }) => {
+  const fineId = String(payload.fineId ?? "");
+  const fine = await prisma.fine.findUnique({ where: { id: fineId } });
+  if (!fine) throw new Error(`Fine ${fineId} not found`);
+  const link = await findLinkedFineMessage(fine.id);
+  if (!link?.sentMessage || link.sentMessage.status !== RecordStatus.ACTIVE) {
+    return { status: "skipped", reason: "the fine has no published message" };
+  }
+  const actor = await resolveAuthor(client, fine.issuedByDiscordId);
+  const classic = makeFineEmbed({
+    actor,
+    faction: fine.factionCode,
+    fineNumber: fine.number,
+    fio: fine.characterName,
+    passport: fine.staticId,
+    article: fine.reason,
+    amount: fine.amount,
+    paymentDeadlineText: fine.paymentDeadlineText,
+  });
+  const guild = await client.guilds.fetch(link.sentMessage.guildDiscordId);
+  const channel = (await guild.channels.fetch(link.sentMessage.channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) return { status: "skipped", reason: "channel is gone" };
+  const message = await channel.messages.fetch(link.sentMessage.messageDiscordId).catch(() => null);
+  if (!message) {
+    log.warn({ fineId }, "fine message was deleted in Discord; nothing to refresh");
+    return { status: "skipped", reason: "message is gone" };
+  }
+  await message.edit({ embeds: [classicToEmbed(classic)] });
+  return { status: "edited", fineNumber: fine.number };
+};
+
+/** «Кикнуть» pressed in the dashboard: removes the dismissed person from the faction's guild. */
+const personnelKick: JobHandler = async (payload, { client, log }) => {
+  const event = await prisma.personnelEvent.findUnique({ where: { id: String(payload.personnelEventId ?? "") } });
+  if (!event) throw new Error("Personnel event not found");
+  const faction = await prisma.faction.findFirst({
+    where: { code: event.factionCode, status: RecordStatus.ACTIVE },
+    include: { guild: { select: { discordId: true } } },
+  });
+  const guildDiscordId = faction?.guild?.discordId;
+  if (!guildDiscordId) return { status: "skipped", reason: `У фракции ${event.factionCode} не задан сервер.` };
+
+  const guild = await client.guilds.fetch(guildDiscordId);
+  const member = await guild.members.fetch(event.subjectDiscordId).catch(() => null);
+  let outcome: "kicked" | "not_member" | "not_kickable";
+  if (!member) outcome = "not_member";
+  else if (!member.kickable) outcome = "not_kickable";
+  else {
+    await member.kick("Увольнение: кадровый аудит, исключение из дашборда");
+    outcome = "kicked";
+  }
+  await writeAuditEvent({
+    actorType: AuditActorType.BOT,
+    source: "personnel.kick",
+    guildId: guildDiscordId,
+    action: outcome === "kicked" ? "personnel.kicked" : "personnel.kick_skipped",
+    entityType: "personnel_event",
+    entityId: event.id,
+    after: {
+      outcome,
+      subjectDiscordId: event.subjectDiscordId,
+      factionCode: event.factionCode,
+      requestedByDiscordId: String(payload.requestedByDiscordId ?? ""),
+    },
+  });
+  if (outcome === "not_kickable") {
+    // Not a failure of the queue: the bot's role is too low. Say it where the admins look.
+    log.warn({ personnelEventId: event.id }, "cannot kick: the member's role is above the bot's or the permission is missing");
+    throw new Error("Бот не может исключить участника: его роль выше роли бота или нет права «Исключать участников».");
+  }
+  return { status: outcome };
 };
 
 const fineEditPaid: JobHandler = async (payload, { client, log, job }) => {
@@ -1578,6 +1653,8 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FINE_PUBLISH, finePublish],
   [MODULE_JOB_TYPES.FINE_EDIT_PAID, fineEditPaid],
   [MODULE_JOB_TYPES.FINE_OVERDUE, fineOverdue],
+  [MODULE_JOB_TYPES.FINE_REFRESH, fineRefresh],
+  [MODULE_JOB_TYPES.PERSONNEL_KICK, personnelKick],
   [MODULE_JOB_TYPES.CP_RECONCILE, cpReconcile],
   [MODULE_JOB_TYPES.PERSONNEL_PUBLISH, personnelPublish],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, messageDesignSend],

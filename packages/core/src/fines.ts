@@ -9,7 +9,8 @@
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
-import { enqueueFineOverdue } from "./module-jobs.js";
+import { enqueueJob } from "./jobs.js";
+import { MODULE_JOB_TYPES, enqueueFineOverdue } from "./module-jobs.js";
 import { type Db } from "./db.js";
 import { recordNumberSchema } from "./text.js";
 import { UserError } from "./errors.js";
@@ -201,5 +202,18 @@ export async function claimOverdueFines(now: Date = new Date(), limit = 50): Pro
       await enqueueFineOverdue(fine.id, tx);
     }
     return fines.length;
+  });
+}
+
+/** Corrects the amount of a fine that is not paid yet; the card in Discord is redrawn by a job. */
+export async function updateFineAmount(id: string, amount: number, context: AuditContext) {
+  if (!Number.isInteger(amount) || amount <= 0) throw new UserError("Сумма — целое число больше нуля.");
+  return auditedMutation(context, "fine.amount_changed", "fine", async (tx) => {
+    const fine = await tx.fine.findUnique({ where: { id } });
+    if (!fine || fine.status !== RecordStatus.ACTIVE) throw new UserError("Изменить можно только неоплаченный штраф.");
+    if (fine.amount === amount) throw new UserError("Сумма не изменилась.");
+    const updated = await tx.fine.update({ where: { id }, data: { amount } });
+    await enqueueJob({ type: MODULE_JOB_TYPES.FINE_REFRESH, payload: { fineId: id } }, tx);
+    return { entityId: id, before: { amount: fine.amount }, after: { amount }, result: updated };
   });
 }

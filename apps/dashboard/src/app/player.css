@@ -1025,3 +1025,12 @@ pre code {
     transition: none;
   }
 }
+
+.notice-inline {
+  max-width: 34rem;
+  margin: 3rem auto;
+}
+
+.notice-inline h1 {
+  margin: 0.4rem 0 0.6rem;
+}
