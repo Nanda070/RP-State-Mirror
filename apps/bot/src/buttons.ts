@@ -16,9 +16,13 @@ import {
   decideTransfer,
   createFeedbackTicket,
   canManageModules,
+  ensureUserByDiscordId,
+  formatTokenDisplay,
+  getCharacterForUser,
   getSetting,
   getDiscordForm,
   getButtonAction,
+  issueToken,
   parseCustomId,
   submitDiscordForm,
   resolveIdentity,
@@ -227,6 +231,22 @@ function reasonModal(customId: string) {
     );
 }
 
+function tokenReceiveModal(actionId: string) {
+  return new ModalBuilder()
+    .setCustomId(`mirror:token.receive:${actionId}`)
+    .setTitle("Получить нашивку")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("static")
+          .setLabel("Статик персонажа")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(32),
+      ),
+    );
+}
+
 async function handleRegistrationDecision(
   interaction: ButtonInteraction,
   params: Record<string, unknown>,
@@ -381,6 +401,27 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     await finishTransferDecision(interaction, ctx, transferId, "Решение об отказе сохранено.");
     return true;
   }
+  if (parsed.action === "token.receive") {
+    if (!(await getButtonAction(parsed.id))) throw new Error("Кнопка устарела или отключена.");
+    const staticId = interaction.fields.getTextInputValue("static").trim();
+    const { user } = await ensureUserByDiscordId(interaction.user.id);
+    const character = await getCharacterForUser(user.id, staticId);
+    if (!character) {
+      await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+      return true;
+    }
+    const token = await issueToken(character.id, auditContext(interaction, "discord.modal"));
+    await interaction.reply(
+      ephemeral(
+        `Выдан номер нашивки: **${formatTokenDisplay({
+          factionCode: character.factionCode,
+          department: character.department,
+          number: token.number,
+        })}**.`,
+      ),
+    );
+    return true;
+  }
   return false;
 }
 
@@ -423,6 +464,8 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     await handleTransferDecision(interaction, params, action, parsed.id, ctx);
   } else if (action === "feedback.open") {
     await handleFeedbackOpen(interaction);
+  } else if (action === "token.receive") {
+    await interaction.showModal(tokenReceiveModal(parsed.id));
   } else if (action === "callback") {
     await handleCallback(interaction, params);
   } else {

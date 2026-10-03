@@ -27,6 +27,11 @@ export const settingDefinitions = {
     10,
     "Порог свободных номеров нашивок для перехода на следующую длину, %",
   ),
+  "tokens.finderRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли на сервере GOV (ОГП/Юстиция): право /token find",
+  ),
   "backups.retentionDays": defineSetting(z.number().int().positive(), 14, "Срок хранения бэкапов, дни"),
   "fines.dueDays": defineSetting(z.number().int().positive(), 14, "Срок оплаты штрафа, дни"),
   "fines.channelId": defineSetting(

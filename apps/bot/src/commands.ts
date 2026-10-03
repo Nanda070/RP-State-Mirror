@@ -252,7 +252,14 @@ export const characterCommand = new SlashCommandBuilder()
       .addStringOption((o) => o.setName("статик").setDescription("Уникальный статик персонажа").setRequired(true).setMaxLength(32))
       .addStringOption((o) => o.setName("имя").setDescription("Имя персонажа").setRequired(true).setMaxLength(128)),
   )
-  .addSubcommand((sub) => sub.setName("список").setDescription("Показать своих персонажей"));
+  .addSubcommand((sub) => sub.setName("список").setDescription("Показать своих персонажей"))
+  .addSubcommand((sub) =>
+    sub
+      .setName("статик")
+      .setDescription("Изменить статик персонажа (только администратор)")
+      .addStringOption((o) => o.setName("текущий").setDescription("Текущий статик").setRequired(true).setMaxLength(32))
+      .addStringOption((o) => o.setName("новый").setDescription("Новый статик").setRequired(true).setMaxLength(32)),
+  );
 
 export const tokenCommand = new SlashCommandBuilder()
   .setName("token")
@@ -268,6 +275,14 @@ export const tokenCommand = new SlashCommandBuilder()
       .setName("get")
       .setDescription("Показать номер нашивки")
       .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32)),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("find")
+      .setDescription("Найти владельца нашивки (ОГП/Юстиция/админы)")
+      .addStringOption((o) =>
+        o.setName("запрос").setDescription("Номер нашивки, Discord ID или статик").setRequired(true).setMaxLength(64),
+      ),
   )
   .addSubcommand((sub) =>
     sub

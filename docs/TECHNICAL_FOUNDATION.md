@@ -96,6 +96,7 @@ docker-compose.test.yml изолированный тестовый контур
 | `documents.ttlHours` | `72` | срок жизни документов |
 | `registrations.ttlDays` | `31` | через сколько дней регистрация ТС или формы неактуальна |
 | `tokens.expandThresholdPercent` | `10` | при каком остатке свободных номеров токены удлиняются на цифру |
+| `tokens.finderRoleIds` | `[]` | роли (ОГП/Юстиция), которым доступен `/token find` |
 | `transfers.approvalDmText` | текст про холл/собеседование | ЛС игроку после одобрения перевода обеими фракциями |
 | `backups.retentionDays` | `14` | срок хранения бэкапов |
 

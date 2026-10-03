@@ -1,5 +1,23 @@
 # Mirror: dev blog
 
+## 2026-10-03: этап 4 — `/token find` и статики (§4.4)
+
+### Цель
+
+Закрыть пробелы нашивок и персонажей: поиск, формат бейджа, кнопка выдачи, правка статика админом.
+
+### Что сделано
+
+- `formatTokenDisplay` / `findTokens` / `updateCharacterStaticId`; настройка `tokens.finderRoleIds`;
+- slash: `token find`, улучшенный `get`/`receive`, `/персонаж статик`;
+- button action `token.receive` → модалка со статиком (для закреплённого сообщения в embed-менеджере).
+
+### Проверка
+
+- `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm db:status` — см. коммит.
+
+Этап 4 остаётся **в работе**.
+
 ## 2026-10-03: этап 4 — переводы между фракциями (§4.8)
 
 ### Цель

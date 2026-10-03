@@ -61,6 +61,16 @@ export function canManageModules(identity: Pick<Identity, "adminLevel" | "isSupe
   return identity.isSuperAdmin || hasMinAdminLevel(identity, AdminLevel.ADMIN);
 }
 
+/** /token find: admins, or holders of roles from `tokens.finderRoleIds` (ОГП/Юстиция). */
+export function canFindTokens(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
+  heldRoleIds: readonly string[],
+  finderRoleIds: readonly string[],
+): boolean {
+  if (canManageModules(identity)) return true;
+  return finderRoleIds.some((roleId) => heldRoleIds.includes(roleId));
+}
+
 /**
  * Can view module records (read-only).
  * PLAN: Хелпер и выше.

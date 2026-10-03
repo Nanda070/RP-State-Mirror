@@ -77,6 +77,119 @@ export async function getCharacterForUser(userId: string, staticId: string) {
   });
 }
 
+/** Faction badge for token get/find: `[LSPD | Отдел | 1234]`. */
+export function formatTokenDisplay(input: {
+  factionCode?: string | null;
+  department?: string | null;
+  number: string;
+}): string {
+  const faction = input.factionCode?.trim() || "—";
+  const department = input.department?.trim() || "—";
+  return `[${faction} | ${department} | ${input.number}]`;
+}
+
+export const updateCharacterStaticSchema = z.object({
+  currentStaticId: nonEmptyText(32),
+  newStaticId: nonEmptyText(32),
+});
+
+/** Admin-only: change an ACTIVE character's static id (partial unique index still applies). */
+export async function updateCharacterStaticId(
+  input: z.input<typeof updateCharacterStaticSchema>,
+  context: AuditContext,
+) {
+  const data = updateCharacterStaticSchema.parse(input);
+  if (data.currentStaticId === data.newStaticId) throw new Error("Новый статик совпадает с текущим.");
+  return auditedMutation(context, "character.static_updated", "character", async (tx) => {
+    const current = await tx.character.findFirst({
+      where: { staticId: data.currentStaticId, status: RecordStatus.ACTIVE },
+    });
+    if (!current) throw new Error("Активный персонаж с таким статиком не найден.");
+    const taken = await tx.character.findFirst({
+      where: { staticId: data.newStaticId, status: RecordStatus.ACTIVE },
+      select: { id: true },
+    });
+    if (taken) throw new Error("Новый статик уже занят другим активным персонажем.");
+    const updated = await tx.character.update({
+      where: { id: current.id },
+      data: { staticId: data.newStaticId },
+    });
+    return { entityId: current.id, before: current, after: updated, result: updated };
+  });
+}
+
+export type TokenLookupResult = {
+  token: { id: string; number: string; status: RecordStatus; issuedAt: Date };
+  character: {
+    id: string;
+    name: string;
+    staticId: string;
+    factionCode: string | null;
+    department: string | null;
+    rank: number | null;
+  };
+  ownerDiscordId: string;
+  display: string;
+};
+
+/** Look up by token number, character static id, or owner Discord snowflake. */
+export async function findTokens(query: string): Promise<TokenLookupResult[]> {
+  const q = nonEmptyText(64).parse(query);
+  const include = {
+    character: { include: { user: { select: { discordId: true } } } },
+  } as const;
+
+  const byNumber = await prisma.token.findMany({
+    where: { number: q, status: RecordStatus.ACTIVE },
+    include,
+    take: 10,
+  });
+  const byStatic = await prisma.token.findMany({
+    where: {
+      status: RecordStatus.ACTIVE,
+      character: { staticId: q, status: RecordStatus.ACTIVE },
+    },
+    include,
+    take: 10,
+  });
+  const byDiscord =
+    /^\d{17,20}$/.test(q)
+      ? await prisma.token.findMany({
+          where: {
+            status: RecordStatus.ACTIVE,
+            character: { status: RecordStatus.ACTIVE, user: { discordId: q } },
+          },
+          include,
+          take: 10,
+        })
+      : [];
+
+  const seen = new Set<string>();
+  const results: TokenLookupResult[] = [];
+  for (const token of [...byNumber, ...byStatic, ...byDiscord]) {
+    if (seen.has(token.id)) continue;
+    seen.add(token.id);
+    results.push({
+      token: { id: token.id, number: token.number, status: token.status, issuedAt: token.issuedAt },
+      character: {
+        id: token.character.id,
+        name: token.character.name,
+        staticId: token.character.staticId,
+        factionCode: token.character.factionCode,
+        department: token.character.department,
+        rank: token.character.rank,
+      },
+      ownerDiscordId: token.character.user.discordId,
+      display: formatTokenDisplay({
+        factionCode: token.character.factionCode,
+        department: token.character.department,
+        number: token.number,
+      }),
+    });
+  }
+  return results;
+}
+
 const MIN_TOKEN_LENGTH = 4;
 const MAX_TOKEN_LENGTH = 9;
 

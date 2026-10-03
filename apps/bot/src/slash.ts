@@ -18,6 +18,7 @@ import {
   resolveVehicleModelName,
   storeMediaFromUrl,
   canActOnModuleRecord,
+  canFindTokens,
   canManageModules,
   closeWanted,
   createCharacter,
@@ -25,6 +26,8 @@ import {
   createTransfer,
   createWebhookRequest,
   createIcBlacklistEntry,
+  findTokens,
+  formatTokenDisplay,
   createDocument,
   createDocumentResponse,
   createFine,
@@ -61,6 +64,7 @@ import {
   revokeToken,
   revokeIcBlacklistByStatic,
   sameDeliveryChannel,
+  updateCharacterStaticId,
   type Identity,
   type Logger,
   type PersonnelEventType,
@@ -268,7 +272,7 @@ export async function handleSlashCommand(
         await handlePersonnel(interaction, ctx);
         break;
       case "персонаж":
-        await handleCharacter(interaction);
+        await handleCharacter(interaction, ctx);
         break;
       case "token":
         await handleToken(interaction, ctx);
@@ -302,7 +306,7 @@ export async function handleSlashCommand(
   }
 }
 
-async function handleCharacter(interaction: ChatInputCommandInteraction) {
+async function handleCharacter(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   const { user } = await ensureUserByDiscordId(interaction.user.id);
   const subcommand = interaction.options.getSubcommand();
   if (subcommand === "создать") {
@@ -316,6 +320,22 @@ async function handleCharacter(interaction: ChatInputCommandInteraction) {
       auditFromInteraction(interaction),
     );
     await interaction.reply(ephemeral(`Персонаж **${character.name}** создан. Статик: **${character.staticId}**.`));
+    return;
+  }
+  if (subcommand === "статик") {
+    const identity = await loadIdentity(interaction.user.id, ctx);
+    if (!canManageModules(identity)) {
+      await interaction.reply(ephemeral("Изменить статик могут только администраторы."));
+      return;
+    }
+    const updated = await updateCharacterStaticId(
+      {
+        currentStaticId: interaction.options.getString("текущий", true),
+        newStaticId: interaction.options.getString("новый", true),
+      },
+      auditFromInteraction(interaction),
+    );
+    await interaction.reply(ephemeral(`Статик персонажа **${updated.name}** изменён на **${updated.staticId}**.`));
     return;
   }
 
@@ -347,6 +367,36 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     await interaction.reply(ephemeral("Нашивка отозвана."));
     return;
   }
+  if (subcommand === "find") {
+    const identity = await loadIdentity(interaction.user.id, ctx);
+    const finderRoleIds = await getSetting("tokens.finderRoleIds");
+    const roleIds =
+      interaction.member && typeof interaction.member !== "string"
+        ? Array.isArray(interaction.member.roles)
+          ? interaction.member.roles
+          : [...interaction.member.roles.cache.keys()]
+        : [];
+    if (!canFindTokens(identity, roleIds, finderRoleIds)) {
+      await interaction.reply(ephemeral("Поиск нашивок доступен ролям ОГП/Юстиция и администраторам."));
+      return;
+    }
+    const results = await findTokens(interaction.options.getString("запрос", true));
+    if (results.length === 0) {
+      await interaction.reply(ephemeral("Ничего не найдено."));
+      return;
+    }
+    await interaction.reply(
+      ephemeral(
+        results
+          .map(
+            (item) =>
+              `**${item.display}**\nПерсонаж: ${item.character.name} · статик ${item.character.staticId}\nВладелец: <@${item.ownerDiscordId}> (\`${item.ownerDiscordId}\`)`,
+          )
+          .join("\n\n"),
+      ),
+    );
+    return;
+  }
 
   const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
   if (!character) {
@@ -355,11 +405,29 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
   }
   if (subcommand === "get") {
     const token = character.tokens[0];
-    await interaction.reply(ephemeral(token ? `Номер нашивки: **${token.number}**.` : "У персонажа ещё нет нашивки."));
+    await interaction.reply(
+      ephemeral(
+        token
+          ? `Нашивка: **${formatTokenDisplay({
+              factionCode: character.factionCode,
+              department: character.department,
+              number: token.number,
+            })}**`
+          : "У персонажа ещё нет нашивки.",
+      ),
+    );
     return;
   }
   const token = await issueToken(character.id, auditFromInteraction(interaction));
-  await interaction.reply(ephemeral(`Выдан номер нашивки: **${token.number}**.`));
+  await interaction.reply(
+    ephemeral(
+      `Выдан номер нашивки: **${formatTokenDisplay({
+        factionCode: character.factionCode,
+        department: character.department,
+        number: token.number,
+      })}**.`,
+    ),
+  );
 }
 
 /** Validates a slash attachment as an image ≤ 10 MB and stores it in media_files. */
