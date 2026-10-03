@@ -1,5 +1,10 @@
-import type { Guild, GuildMember, Role } from "discord.js";
-import type { GuildSnapshot, MemberSnapshot, RoleSnapshot } from "@mirror/core";
+import { ChannelType, type Guild, type GuildBasedChannel, type GuildMember, type Role } from "discord.js";
+import type { ChannelSnapshot, GuildSnapshot, MemberSnapshot, RoleSnapshot } from "@mirror/core";
+
+const TEXT_CHANNEL_TYPES = new Set<number>([
+  ChannelType.GuildText,
+  ChannelType.GuildAnnouncement,
+]);
 
 export function toGuildSnapshot(guild: Guild): GuildSnapshot {
   return { discordId: guild.id, name: guild.name, iconUrl: guild.iconURL() };
@@ -12,6 +17,16 @@ export function toRoleSnapshot(role: Role): RoleSnapshot {
     color: role.colors.primaryColor,
     position: role.position,
     managed: role.managed,
+  };
+}
+
+export function toChannelSnapshot(channel: GuildBasedChannel): ChannelSnapshot | null {
+  if (!TEXT_CHANNEL_TYPES.has(channel.type)) return null;
+  return {
+    discordId: channel.id,
+    name: channel.name,
+    type: channel.type,
+    position: "position" in channel ? channel.position : 0,
   };
 }
 
@@ -31,4 +46,11 @@ export function toMemberSnapshot(member: GuildMember): MemberSnapshot {
 /** Roles of a guild without the implicit @everyone role. */
 export function guildRoles(guild: Guild): RoleSnapshot[] {
   return guild.roles.cache.filter((role) => role.id !== guild.id).map(toRoleSnapshot);
+}
+
+/** Text/announcement channels for dashboard pickers. */
+export function guildChannels(guild: Guild): ChannelSnapshot[] {
+  return guild.channels.cache
+    .map((ch) => toChannelSnapshot(ch))
+    .filter((ch): ch is ChannelSnapshot => ch !== null);
 }

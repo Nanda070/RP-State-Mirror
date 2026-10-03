@@ -1,0 +1,72 @@
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { AuditActorType } from "@mirror/db";
+import {
+  checkDiscordLimits,
+  createMessageDesign,
+  makeCustomId,
+  materializeEmbedSpecButtons,
+  parseCustomId,
+  seedFoundation,
+} from "@mirror/core";
+import { prisma, resetDatabase } from "../../../test/db.js";
+
+beforeEach(resetDatabase);
+afterAll(() => prisma.$disconnect());
+
+const ctx = { actorType: AuditActorType.SYSTEM, source: "test" } as const;
+
+describe("embed buttons + designs", () => {
+  it("parses mirror custom ids", () => {
+    const id = makeCustomId("role.toggle", "abc123");
+    expect(id).toBe("mirror:role.toggle:abc123");
+    expect(parseCustomId(id)).toEqual({ action: "role.toggle", id: "abc123" });
+    expect(parseCustomId("other:x:y")).toBeNull();
+  });
+
+  it("materializes role.toggle buttons into persisted button_actions", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    const spec = {
+      version: 1 as const,
+      embeds: [{ type: "embed" as const, title: "Роли", description: "Нажмите кнопку" }],
+      components: [
+        {
+          type: "action_row" as const,
+          components: [
+            {
+              type: "button" as const,
+              label: "LSPD",
+              style: "primary" as const,
+              action: "role.toggle" as const,
+              params: { roleDiscordId: "111111111111111111" },
+            },
+          ],
+        },
+      ],
+    };
+
+    const ready = await materializeEmbedSpecButtons(spec);
+    expect(ready.version).toBe(1);
+    if (ready.version !== 1) return;
+    const btn = ready.components?.[0]?.components[0];
+    expect(btn?.customId?.startsWith("mirror:role.toggle:")).toBe(true);
+    expect(btn?.action).toBeUndefined();
+    expect(await prisma.buttonAction.count()).toBe(1);
+  });
+
+  it("creates audited message designs", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    const design = await createMessageDesign(
+      {
+        name: "Приветствие",
+        spec: {
+          version: 1,
+          embeds: [{ type: "embed", title: "Hi", color: 0xff6a1a }],
+        },
+      },
+      ctx,
+    );
+    expect(design.name).toBe("Приветствие");
+    expect(checkDiscordLimits(design.spec as never)).toEqual([]);
+    expect(await prisma.auditLog.count({ where: { action: "message_design.created" } })).toBe(1);
+  });
+});

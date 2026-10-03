@@ -3,6 +3,13 @@
  * Always returns every ACTIVE faction — no membership filtering.
  */
 import { RecordStatus, prisma } from "@mirror/db";
+import { z } from "zod";
+import { auditedMutation, type AuditContext } from "./audit.js";
+import { toJsonValue } from "./db.js";
+import {
+  factionDeliverySettingsSchema,
+  type FactionDeliverySettings,
+} from "./delivery.js";
 
 export interface FactionChoice {
   /** Discord choice label (shown to the user). */
@@ -39,5 +46,87 @@ export async function listActiveFactionsForAutocomplete(query = ""): Promise<Fac
 export async function getActiveFactionByCode(code: string) {
   return prisma.faction.findFirst({
     where: { code: code.toUpperCase(), status: RecordStatus.ACTIVE },
+  });
+}
+
+export async function listActiveFactions() {
+  return prisma.faction.findMany({
+    where: { status: RecordStatus.ACTIVE },
+    include: { guild: { select: { discordId: true, name: true } } },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+  });
+}
+
+export const updateFactionDeliverySchema = z.object({
+  factionCode: z.string().min(1).max(32),
+  documentsChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
+  personnelChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
+  documentsWebhookUrl: z.string().url().nullable().optional(),
+  personnelWebhookUrl: z.string().url().nullable().optional(),
+  guildDiscordId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
+});
+export type UpdateFactionDeliveryInput = z.infer<typeof updateFactionDeliverySchema>;
+
+function mergeDeliverySettings(
+  raw: unknown,
+  patch: UpdateFactionDeliveryInput,
+): FactionDeliverySettings {
+  const current = factionDeliverySettingsSchema.safeParse(raw ?? {});
+  const base: Record<string, unknown> = current.success ? { ...current.data } : {};
+
+  const apply = (key: keyof FactionDeliverySettings, value: string | null | undefined) => {
+    if (value === undefined) return;
+    if (value === null || value === "") delete base[key];
+    else base[key] = value;
+  };
+
+  apply("documentsChannelId", patch.documentsChannelId);
+  apply("personnelChannelId", patch.personnelChannelId);
+  apply("documentsWebhookUrl", patch.documentsWebhookUrl);
+  apply("personnelWebhookUrl", patch.personnelWebhookUrl);
+
+  return factionDeliverySettingsSchema.parse(base);
+}
+
+export async function updateFactionDeliverySettings(
+  input: UpdateFactionDeliveryInput,
+  context: AuditContext,
+) {
+  const data = updateFactionDeliverySchema.parse(input);
+  return auditedMutation(context, "faction.delivery_updated", "faction", async (tx) => {
+    const faction = await tx.faction.findFirst({
+      where: { code: data.factionCode.toUpperCase(), status: RecordStatus.ACTIVE },
+    });
+    if (!faction) throw new Error("Фракция не найдена");
+
+    let guildId = faction.guildId;
+    if (data.guildDiscordId !== undefined) {
+      if (data.guildDiscordId === null) {
+        guildId = null;
+      } else {
+        const guild = await tx.guild.findFirst({
+          where: { discordId: data.guildDiscordId, status: RecordStatus.ACTIVE },
+        });
+        if (!guild) throw new Error("Сервер фракции не найден");
+        guildId = guild.id;
+      }
+    }
+
+    const beforeSettings = faction.settings;
+    const nextSettings = mergeDeliverySettings(faction.settings, data);
+    const updated = await tx.faction.update({
+      where: { id: faction.id },
+      data: {
+        guildId,
+        settings: toJsonValue(nextSettings),
+      },
+      include: { guild: { select: { discordId: true, name: true } } },
+    });
+    return {
+      entityId: faction.id,
+      before: { settings: beforeSettings, guildId: faction.guildId },
+      after: { settings: nextSettings, guildId },
+      result: updated,
+    };
   });
 }

@@ -16,6 +16,7 @@ const TABLES = [
   "role_mappings",
   "discord_guild_members",
   "discord_roles",
+  "discord_channels",
   "factions",
   "guilds",
   "system_settings",

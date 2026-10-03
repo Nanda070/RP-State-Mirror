@@ -41,6 +41,16 @@ export const settingDefinitions = {
     "Канал на сервере ЧП для публикации розысков",
   ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
+  "cp.excludedRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли на сервере ЧП: участники с ними не синхронизируются и не кикаются",
+  ),
+  "cp.logChannelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал на сервере ЧП для логов синхронизации ролей",
+  ),
 };
 
 export type SettingKey = keyof typeof settingDefinitions;

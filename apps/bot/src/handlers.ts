@@ -5,6 +5,7 @@
  */
 import {
   EmbedBuilder,
+  MessageFlags,
   type Client,
   type ColorResolvable,
   type TextChannel,
@@ -13,6 +14,9 @@ import { prisma, RecordStatus } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
   PERSONNEL_EVENT_LABELS_RU,
+  checkDiscordLimits,
+  embedSpecSchema,
+  materializeEmbedSpecButtons,
   normalizeLinkOrText,
   spoilerLink,
   recordSentMessage,
@@ -25,6 +29,7 @@ import {
   type Logger,
   type PersonnelEventType,
 } from "@mirror/core";
+import { embedSpecToMessageOptions } from "./embed-payload.js";
 import type { JobHandler } from "./worker.js";
 
 /** Legacy embeds.py COLOR_DEFAULT / COLOR_RESPONSE */
@@ -433,6 +438,95 @@ const personnelPublish: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", personnelEventId: event.id, messageId: result.messageId };
 };
 
+const messageDesignSend: JobHandler = async (payload, { client, log }) => {
+  const designId = String(payload.designId ?? "");
+  const guildDiscordId = String(payload.guildDiscordId ?? "");
+  const channelDiscordId = String(payload.channelDiscordId ?? "");
+  const design = await prisma.messageDesign.findUnique({ where: { id: designId } });
+  if (!design || design.status !== RecordStatus.ACTIVE) {
+    throw new Error(`Design ${designId} not found`);
+  }
+
+  const parsed = embedSpecSchema.parse(design.spec);
+  const violations = checkDiscordLimits(parsed);
+  if (violations.length > 0) {
+    throw new Error(violations.map((v) => v.message).join("; "));
+  }
+  const ready = await materializeEmbedSpecButtons(parsed);
+  const options = embedSpecToMessageOptions(ready);
+
+  const guild = await client.guilds.fetch(guildDiscordId);
+  const channel = (await guild.channels.fetch(channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) {
+    throw new Error(`Канал ${channelDiscordId} недоступен`);
+  }
+
+  const message = await channel.send(options);
+  await recordSentMessage({
+    guildDiscordId: guild.id,
+    channelDiscordId: channel.id,
+    messageDiscordId: message.id,
+    designId: design.id,
+    spec: ready,
+  });
+  log.info({ designId, messageId: message.id, channelId: channel.id }, "message design sent");
+  return { status: "sent", messageId: message.id, channelId: channel.id };
+};
+
+const messageDesignResend: JobHandler = async (payload, { client, log }) => {
+  const sentMessageId = String(payload.sentMessageId ?? "");
+  const sent = await prisma.sentMessage.findUnique({ where: { id: sentMessageId } });
+  if (!sent || sent.status !== RecordStatus.ACTIVE) {
+    throw new Error(`Sent message ${sentMessageId} not found`);
+  }
+
+  const parsed = embedSpecSchema.parse(sent.spec);
+  const ready = await materializeEmbedSpecButtons(parsed);
+  const options = embedSpecToMessageOptions(ready);
+
+  const guild = await client.guilds.fetch(sent.guildDiscordId);
+  const channel = (await guild.channels.fetch(sent.channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) {
+    throw new Error(`Канал ${sent.channelDiscordId} недоступен`);
+  }
+
+  try {
+    const existing = await channel.messages.fetch(sent.messageDiscordId);
+    const editPayload: {
+      content?: string | null;
+      embeds?: typeof options.embeds;
+      components?: typeof options.components;
+      flags?: MessageFlags.IsComponentsV2;
+    } = {
+      content: options.content ?? null,
+    };
+    if (options.embeds) editPayload.embeds = options.embeds;
+    if (options.components) editPayload.components = options.components;
+    if (ready.version === 2) editPayload.flags = MessageFlags.IsComponentsV2;
+    await existing.edit(editPayload);
+    await recordSentMessage({
+      guildDiscordId: guild.id,
+      channelDiscordId: channel.id,
+      messageDiscordId: existing.id,
+      ...(sent.designId ? { designId: sent.designId } : {}),
+      spec: ready,
+    });
+    log.info({ sentMessageId, messageId: existing.id }, "message design resent (edit)");
+    return { status: "edited", messageId: existing.id };
+  } catch {
+    const message = await channel.send(options);
+    await recordSentMessage({
+      guildDiscordId: guild.id,
+      channelDiscordId: channel.id,
+      messageDiscordId: message.id,
+      ...(sent.designId ? { designId: sent.designId } : {}),
+      spec: ready,
+    });
+    log.info({ sentMessageId, messageId: message.id }, "message design resent (new)");
+    return { status: "sent", messageId: message.id };
+  }
+};
+
 export const jobHandlers = new Map<string, JobHandler>([
   [
     "system.ping",
@@ -450,4 +544,6 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FINE_PUBLISH, finePublish],
   [MODULE_JOB_TYPES.FINE_EDIT_PAID, fineEditPaid],
   [MODULE_JOB_TYPES.PERSONNEL_PUBLISH, personnelPublish],
+  [MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, messageDesignSend],
+  [MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND, messageDesignResend],
 ]);

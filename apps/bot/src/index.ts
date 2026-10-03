@@ -7,13 +7,16 @@ import {
   markGuildUnavailable,
   markMemberLeft,
   parseEnv,
+  syncGuildChannels,
   syncGuildRoles,
   upsertGuild,
   upsertMember,
 } from "@mirror/core";
+import { handleButtonInteraction } from "./buttons.js";
+import { evaluateMemberCpAccess, isCpRelevantGuild, reconcileCpAccess } from "./cp-sync.js";
 import { jobHandlers } from "./handlers.js";
 import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
-import { guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
+import { guildChannels, guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
 import { syncAllGuilds, syncGuild } from "./sync.js";
 import { JobWorker } from "./worker.js";
 
@@ -42,13 +45,27 @@ client.once(Events.ClientReady, (ready) => {
     await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
     log.info({ commands: 7 }, "slash commands registered");
     worker.start();
-    reconcileTimer = setInterval(() => guarded("reconcile", () => syncAllGuilds(ready, log)), RECONCILE_INTERVAL_MS);
+    reconcileTimer = setInterval(
+      () =>
+        guarded("reconcile", async () => {
+          await syncAllGuilds(ready, log);
+          await reconcileCpAccess(ready, log.child({ component: "cp-sync" }));
+        }),
+      RECONCILE_INTERVAL_MS,
+    );
+    guarded("cp-reconcile-initial", () => reconcileCpAccess(ready, log.child({ component: "cp-sync" })));
   });
 });
 
 client.on(Events.InteractionCreate, (interaction) => {
   if (interaction.isAutocomplete()) {
     guarded("autocomplete", () => handleFactionAutocomplete(interaction));
+    return;
+  }
+  if (interaction.isButton()) {
+    guarded("button", () =>
+      handleButtonInteraction(interaction, client, log.child({ component: "buttons" })),
+    );
     return;
   }
   if (!interaction.isChatInputCommand()) return;
@@ -63,7 +80,6 @@ client.on(Events.InteractionCreate, (interaction) => {
 client.on(Events.GuildCreate, (guild) => guarded("guildCreate", () => syncGuild(guild, log)));
 client.on(Events.GuildUpdate, (_old, guild) => guarded("guildUpdate", () => upsertGuild(toGuildSnapshot(guild))));
 client.on(Events.GuildDelete, (guild) => {
-  // An unavailable guild is a Discord outage, not a removal.
   if (!guild.available) return;
   guarded("guildDelete", () => markGuildUnavailable(guild.id));
 });
@@ -75,16 +91,45 @@ client.on(Events.GuildRoleCreate, (role) => resyncRoles("guildRoleCreate", role)
 client.on(Events.GuildRoleUpdate, (_old, role) => resyncRoles("guildRoleUpdate", role));
 client.on(Events.GuildRoleDelete, (role) => resyncRoles("guildRoleDelete", role));
 
+client.on(Events.ChannelCreate, (channel) => {
+  if (!channel.isDMBased() && channel.guild) {
+    guarded("channelCreate", () => syncGuildChannels(channel.guild.id, guildChannels(channel.guild)));
+  }
+});
+client.on(Events.ChannelUpdate, (_old, channel) => {
+  if (!("guild" in channel) || !channel.guild) return;
+  guarded("channelUpdate", () => syncGuildChannels(channel.guild.id, guildChannels(channel.guild)));
+});
+client.on(Events.ChannelDelete, (channel) => {
+  if (!("guild" in channel) || !channel.guild) return;
+  guarded("channelDelete", () => syncGuildChannels(channel.guild.id, guildChannels(channel.guild)));
+});
+
 client.on(Events.GuildMemberAdd, (member) => {
   if (member.user.bot) return;
-  guarded("guildMemberAdd", () => upsertMember(member.guild.id, toMemberSnapshot(member)));
+  guarded("guildMemberAdd", async () => {
+    await upsertMember(member.guild.id, toMemberSnapshot(member));
+    if (await isCpRelevantGuild(member.guild.id)) {
+      await evaluateMemberCpAccess(client, member.id, log.child({ component: "cp-sync" }));
+    }
+  });
 });
 client.on(Events.GuildMemberUpdate, (_old, member) => {
   if (member.user.bot) return;
-  guarded("guildMemberUpdate", () => upsertMember(member.guild.id, toMemberSnapshot(member)));
+  guarded("guildMemberUpdate", async () => {
+    await upsertMember(member.guild.id, toMemberSnapshot(member));
+    if (await isCpRelevantGuild(member.guild.id)) {
+      await evaluateMemberCpAccess(client, member.id, log.child({ component: "cp-sync" }));
+    }
+  });
 });
 client.on(Events.GuildMemberRemove, (member) =>
-  guarded("guildMemberRemove", () => markMemberLeft(member.guild.id, member.id)),
+  guarded("guildMemberRemove", async () => {
+    await markMemberLeft(member.guild.id, member.id);
+    if (await isCpRelevantGuild(member.guild.id)) {
+      await evaluateMemberCpAccess(client, member.id, log.child({ component: "cp-sync" }));
+    }
+  }),
 );
 
 client.on(Events.Error, (error) => log.error({ err: error }, "discord client error"));

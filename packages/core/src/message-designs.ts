@@ -5,8 +5,17 @@
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
-import { embedSpecSchema, makeCustomId, type EmbedSpec } from "./embeds.js";
-import { toJsonValue } from "./db.js";
+import { toJsonValue, type Db } from "./db.js";
+import {
+  embedSpecSchema,
+  makeCustomId,
+  type EmbedSpec,
+  type V2ActionRow,
+  type V2Button,
+  type V2Component,
+} from "./embeds.js";
+import { enqueueJob } from "./jobs.js";
+import { MODULE_JOB_TYPES } from "./module-jobs.js";
 
 // ──────────────────────────────────────────────────────────────
 // Design CRUD
@@ -92,7 +101,12 @@ export interface RecordSentMessageInput {
 
 export async function recordSentMessage(input: RecordSentMessageInput) {
   return prisma.sentMessage.upsert({
-    where: { channelDiscordId_messageDiscordId: { channelDiscordId: input.channelDiscordId, messageDiscordId: input.messageDiscordId } },
+    where: {
+      channelDiscordId_messageDiscordId: {
+        channelDiscordId: input.channelDiscordId,
+        messageDiscordId: input.messageDiscordId,
+      },
+    },
     create: {
       guildDiscordId: input.guildDiscordId,
       channelDiscordId: input.channelDiscordId,
@@ -104,6 +118,7 @@ export async function recordSentMessage(input: RecordSentMessageInput) {
     update: {
       spec: toJsonValue(input.spec),
       designId: input.designId ?? null,
+      status: RecordStatus.ACTIVE,
     },
   });
 }
@@ -111,6 +126,27 @@ export async function recordSentMessage(input: RecordSentMessageInput) {
 export async function getSentMessage(channelDiscordId: string, messageDiscordId: string) {
   return prisma.sentMessage.findUnique({
     where: { channelDiscordId_messageDiscordId: { channelDiscordId, messageDiscordId } },
+  });
+}
+
+export async function listSentMessages(limit = 50) {
+  return prisma.sentMessage.findMany({
+    where: { status: RecordStatus.ACTIVE },
+    include: { design: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+  });
+}
+
+export async function archiveSentMessage(id: string, context: AuditContext) {
+  return auditedMutation(context, "sent_message.archived", "sent_message", async (tx) => {
+    const existing = await tx.sentMessage.findUnique({ where: { id } });
+    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new Error("Сообщение не найдено");
+    const updated = await tx.sentMessage.update({
+      where: { id },
+      data: { status: RecordStatus.ARCHIVED },
+    });
+    return { entityId: id, before: existing, after: updated, result: updated };
   });
 }
 
@@ -126,9 +162,108 @@ export async function createButtonAction(action: string, params: Record<string, 
 }
 
 export async function getButtonAction(id: string) {
-  return prisma.buttonAction.findUnique({ where: { id, status: RecordStatus.ACTIVE } });
+  return prisma.buttonAction.findFirst({ where: { id, status: RecordStatus.ACTIVE } });
 }
 
 export async function deactivateButtonAction(id: string) {
   return prisma.buttonAction.update({ where: { id }, data: { status: RecordStatus.ARCHIVED } });
+}
+
+async function materializeButton(button: V2Button): Promise<V2Button> {
+  if (button.style === "link" || button.url) {
+    return { ...button, customId: undefined, action: undefined, params: undefined };
+  }
+  if (button.customId && !button.action) {
+    return button;
+  }
+  const action = button.action ?? "callback";
+  const params = button.params ?? {};
+  const created = await createButtonAction(action, params);
+  return {
+    ...button,
+    customId: created.customId,
+    action: undefined,
+    params: undefined,
+  };
+}
+
+async function materializeActionRows(rows: V2ActionRow[]): Promise<V2ActionRow[]> {
+  const out: V2ActionRow[] = [];
+  for (const row of rows) {
+    const components: V2Button[] = [];
+    for (const btn of row.components) {
+      components.push(await materializeButton(btn));
+    }
+    out.push({ type: "action_row", components });
+  }
+  return out;
+}
+
+/**
+ * Persist button_actions for interactive buttons and rewrite customIds.
+ * Safe to call before Discord send — link buttons keep their url.
+ */
+export async function materializeEmbedSpecButtons(spec: EmbedSpec): Promise<EmbedSpec> {
+  if (spec.version === 1) {
+    if (!spec.components?.length) return spec;
+    return {
+      ...spec,
+      components: await materializeActionRows(spec.components),
+    };
+  }
+
+  const containers = [];
+  for (const container of spec.components) {
+    const components: V2Component[] = [];
+    for (const node of container.components) {
+      if (node.type === "action_row") {
+        const [row] = await materializeActionRows([node]);
+        if (row) components.push(row);
+      } else {
+        components.push(node);
+      }
+    }
+    containers.push({ ...container, components });
+  }
+  return { version: 2, components: containers };
+}
+
+// ──────────────────────────────────────────────────────────────
+// Send / resend jobs
+// ──────────────────────────────────────────────────────────────
+
+export const sendMessageDesignSchema = z.object({
+  designId: z.string().min(1),
+  guildDiscordId: z.string().regex(/^\d{17,20}$/),
+  channelDiscordId: z.string().regex(/^\d{17,20}$/),
+});
+export type SendMessageDesignInput = z.infer<typeof sendMessageDesignSchema>;
+
+export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db?: Db) {
+  const data = sendMessageDesignSchema.parse(input);
+  const design = await prisma.messageDesign.findUnique({ where: { id: data.designId } });
+  if (!design || design.status !== RecordStatus.ACTIVE) throw new Error("Шаблон не найден");
+  return enqueueJob(
+    {
+      type: MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND,
+      payload: {
+        designId: data.designId,
+        guildDiscordId: data.guildDiscordId,
+        channelDiscordId: data.channelDiscordId,
+      },
+    },
+    db,
+  );
+}
+
+export async function enqueueMessageDesignResend(sentMessageId: string, db?: Db) {
+  const sent = await prisma.sentMessage.findUnique({ where: { id: sentMessageId } });
+  if (!sent || sent.status !== RecordStatus.ACTIVE) throw new Error("Отправленное сообщение не найдено");
+  return enqueueJob(
+    {
+      type: MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND,
+      payload: { sentMessageId },
+    },
+    db,
+  );
 }

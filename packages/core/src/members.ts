@@ -15,6 +15,13 @@ export interface RoleSnapshot {
   managed: boolean;
 }
 
+export interface ChannelSnapshot {
+  discordId: string;
+  name: string;
+  type: number;
+  position: number;
+}
+
 export interface MemberSnapshot {
   userDiscordId: string;
   username: string;
@@ -302,4 +309,52 @@ export async function reconcileGuildMembers(
   );
 
   return { created: toCreate.length, updated, left, initial };
+}
+
+/**
+ * Upsert text-capable channels for a guild. Channels missing from the snapshot
+ * are soft-archived (same pattern as roles).
+ */
+export async function syncGuildChannels(guildDiscordId: string, channels: ChannelSnapshot[]) {
+  const guild = await requireGuild(guildDiscordId);
+  const existing = await prisma.discordChannel.findMany({ where: { guildId: guild.id } });
+  const incomingIds = new Set(channels.map((c) => c.discordId));
+
+  await prisma.$transaction(async (tx) => {
+    for (const channel of channels) {
+      const data = {
+        name: channel.name,
+        type: channel.type,
+        position: channel.position,
+        status: RecordStatus.ACTIVE,
+      };
+      await tx.discordChannel.upsert({
+        where: { discordId: channel.discordId },
+        create: { discordId: channel.discordId, guildId: guild.id, ...data },
+        update: data,
+      });
+    }
+
+    const removed = existing.filter((c) => c.status === RecordStatus.ACTIVE && !incomingIds.has(c.discordId));
+    if (removed.length > 0) {
+      await tx.discordChannel.updateMany({
+        where: { id: { in: removed.map((c) => c.id) } },
+        data: { status: RecordStatus.ARCHIVED },
+      });
+    }
+  });
+}
+
+export async function listActiveChannels(guildDiscordId?: string) {
+  return prisma.discordChannel.findMany({
+    where: {
+      status: RecordStatus.ACTIVE,
+      guild: {
+        status: RecordStatus.ACTIVE,
+        ...(guildDiscordId ? { discordId: guildDiscordId } : {}),
+      },
+    },
+    include: { guild: { select: { discordId: true, name: true } } },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+  });
 }

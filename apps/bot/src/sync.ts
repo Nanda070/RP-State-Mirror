@@ -1,10 +1,17 @@
 import type { Client, Guild } from "discord.js";
-import { reconcileGuildMembers, syncGuildRoles, upsertGuild, type Logger } from "@mirror/core";
-import { guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
+import {
+  reconcileGuildMembers,
+  syncGuildChannels,
+  syncGuildRoles,
+  upsertGuild,
+  type Logger,
+} from "@mirror/core";
+import { guildChannels, guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
 
 export async function syncGuild(guild: Guild, log: Logger) {
   await upsertGuild(toGuildSnapshot(guild));
   await syncGuildRoles(guild.id, guildRoles(guild));
+  await syncGuildChannels(guild.id, guildChannels(guild));
   const members = await guild.members.fetch();
   const result = await reconcileGuildMembers(
     guild.id,

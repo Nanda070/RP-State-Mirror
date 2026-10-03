@@ -58,21 +58,40 @@ model User {
 }
 
 model Guild {
-  id           String          @id @default(cuid())
-  discordId    String          @unique @map("discord_id")
+  id           String           @id @default(cuid())
+  discordId    String           @unique @map("discord_id")
   name         String
-  iconUrl      String?         @map("icon_url")
-  status       RecordStatus    @default(ACTIVE)
-  settings     Json            @default("{}")
-  lastSyncedAt DateTime?       @map("last_synced_at")
-  createdAt    DateTime        @default(now()) @map("created_at")
-  updatedAt    DateTime        @updatedAt @map("updated_at")
+  iconUrl      String?          @map("icon_url")
+  status       RecordStatus     @default(ACTIVE)
+  settings     Json             @default("{}")
+  lastSyncedAt DateTime?        @map("last_synced_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
   factions     Faction[]
   roles        DiscordRole[]
+  channels     DiscordChannel[]
   members      GuildMember[]
   roleMappings RoleMapping[]
 
   @@map("guilds")
+}
+
+/// Text-capable guild channels synced from Discord for dashboard pickers.
+model DiscordChannel {
+  id        String       @id @default(cuid())
+  discordId String       @unique @map("discord_id")
+  guildId   String       @map("guild_id")
+  guild     Guild        @relation(fields: [guildId], references: [id])
+  name      String
+  /// Discord channel type enum value (0 = GuildText, 5 = GuildAnnouncement, …)
+  type      Int          @default(0)
+  position  Int          @default(0)
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@index([guildId, status])
+  @@map("discord_channels")
 }
 
 model DiscordRole {

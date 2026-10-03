@@ -76,15 +76,21 @@ export const v2SeparatorSchema = z.object({
   spacing: z.enum(["small", "large"]).optional(),
 });
 
+export const BUTTON_ACTIONS = ["role.toggle", "callback"] as const;
+export type ButtonActionName = (typeof BUTTON_ACTIONS)[number];
+
 export const v2ButtonSchema = z.object({
   type: z.literal("button"),
   label: z.string().min(1).max(80),
   style: z.enum(["primary", "secondary", "success", "danger", "link"]).optional(),
-  /** Either a customId (for interactive) or url (for link style). */
+  /** Resolved interactive id: mirror:<action>:<id>. Set on send if action+params given. */
   customId: z.string().max(100).optional(),
   url: z.string().url().optional(),
   emoji: z.string().optional(),
   disabled: z.boolean().optional(),
+  /** Logical action stored in button_actions (role.toggle / callback). */
+  action: z.enum(BUTTON_ACTIONS).optional(),
+  params: z.record(z.unknown()).optional(),
 });
 export type V2Button = z.infer<typeof v2ButtonSchema>;
 
@@ -92,6 +98,7 @@ export const v2ActionRowSchema = z.object({
   type: z.literal("action_row"),
   components: z.array(v2ButtonSchema).min(1).max(5),
 });
+export type V2ActionRow = z.infer<typeof v2ActionRowSchema>;
 
 export type V2Component =
   | z.infer<typeof v2TextDisplaySchema>
@@ -119,6 +126,8 @@ export const v2ContainerSchema = z.object({
 export const embedSpecV1Schema = z.object({
   version: z.literal(1),
   embeds: z.array(classicEmbedSchema).min(1).max(10),
+  /** Optional action rows (role toggle / callback buttons) attached under classic embeds. */
+  components: z.array(v2ActionRowSchema).max(5).optional(),
 });
 export type EmbedSpecV1 = z.infer<typeof embedSpecV1Schema>;
 
