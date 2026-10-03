@@ -1,6 +1,6 @@
 # Mirror: этап 4 — новые модули бота
 
-Статус: **в работе**. Ранее этап был ошибочно отмечен закрытым: проверка нашла баги и незакрытые пункты плана (§4.4–4.8, 4.11–4.14).
+Статус: **в работе**. Этап не закрывается автоматически; изменение статуса требует отдельного разрешения пользователя.
 
 ## Цель
 
@@ -15,6 +15,8 @@
 - `registrations` — общий поток ТС/униформы: решение `PENDING/APPROVED/REJECTED`, `decided_at`, `expires_at`, расположение review-сообщения (`review_guild_id/channel_id/message_id`) и id кнопок; одна `ACTIVE` регистрация типа на персонажа, отказ закрывает запись (`CLOSED`);
 - `transfers` — решения обеих сторон и кто их принял, расположение review-сообщения, одна `PENDING` заявка на персонажа;
 - `media_files`, `webhook_requests`, `ic_blacklist`, `role_panels`, `feedback_tickets/messages`, `forms/form_fields/form_submissions`.
+
+Дополнительно: `forms.delivery_channel_id` (`20261003090000_form_delivery_channel`) — доставка ответа формы в канал ботом.
 
 Частичные индексы Prisma-схемой не выражаются и заданы в SQL миграции. При генерации следующих миграций `prisma migrate dev` может предложить их удалить — такие строки из сгенерированного SQL нужно убирать.
 
@@ -49,11 +51,25 @@
 - `/создать-webhook` (§4.7): бот создаёт Discord webhook в канале, сохраняет URL в `webhook_requests`, уведомляет админов в `webhooks.notifyChannelId`;
 - IC чёрный список (§4.13): `/чс-добавить|снять|найти`, роли `icBlacklist.managerRoleIds` / `searchRoleIds`, доказательства-фото, пометка в `/персонаж список`, истечение по TTL;
 - `/проверить-фракции`, `/инвайт-админ` (§4.11): пересечения состава по role_mappings; временные инвайты на серверы из `invites.guildIds`;
-- button engine: `form.open`, `form.submit`, `feedback.open` (базово; полноценные панели/формы/feedback — ниже).
+- §4.14 панели ролей:
+  - публикация/архив через `ROLE_PANEL_PUBLISH` / `ROLE_PANEL_ARCHIVE`;
+  - `role.toggle` с `allowedRoleIds` (кто может нажимать) и `exclusiveRoleIds` (взаимоисключающие);
+  - создание/архив из `/settings/stage4` и ограничения в embed button-manager;
+- §4.14 формы в Discord (до 5 полей — лимит одной модалки):
+  - `form.open` / `form.submit`, сохранение в БД с аудитом;
+  - доставка ответа в канал и/или webhook через `FORM_SUBMISSION_DELIVER`;
+- §4.14 обратная связь:
+  - `feedback.open` → тикет; `FEEDBACK_TICKET_NOTIFY` в `feedback.notifyChannelId`;
+  - ответ админа → `FEEDBACK_REPLY_SEND` в ЛС; закрытие → `FEEDBACK_CLOSED_SEND` в ЛС;
+  - UI тикетов в `/settings/stage4`;
+- `/settings/stage4`, `/settings/tokens`, `/settings/registrations` — рабочие настройки Stage 4
+  (`registrations.*`, `transfers.*`, `feedback.notifyChannelId`, IC blacklist roles, invites, tokens).
 
-## Осталось
+## Осталось (этап не закрыт)
 
-Ведётся по порядку из обзора; список обновляется после каждого коммита. Этап **не закрыт**.
+- многошаговые Discord-формы **>5 полей** (§5.10 «лучше») — этап 5;
+- полноценный публичный конструктор форм / публичные страницы (§5.5) — этап 5;
+- выпадающие списки ролей вместо кнопок (§4.14 / §5.10) — этап 5 или полировка;
+- §4.12 глобальные admin-роли (только дашборд) — этап 6 по плану этапов.
 
-- панели ролей, формы и обратная связь (§4.14) — довести до полного сценария плана;
-- разделы настроек этапа 4 в дашборде.
+Этап **не закрыт**. Список обновляется после коммитов.

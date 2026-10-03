@@ -85,6 +85,11 @@ export const settingDefinitions = {
     null,
     "Канал уведомлений админам о новых запросах форм (/создать-webhook)",
   ),
+  "feedback.notifyChannelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал уведомлений о новых обращениях обратной связи",
+  ),
   "icBlacklist.managerRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],

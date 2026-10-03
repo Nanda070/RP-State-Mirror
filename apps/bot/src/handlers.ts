@@ -44,6 +44,7 @@ import {
   setRegistrationReviewThread,
   setRegistrationReviewMessage,
   setTransferReviewMessage,
+  toJsonValue,
   type ClassicEmbed,
   type DeliveryTarget,
   type EmbedSpec,
@@ -824,6 +825,213 @@ const transferDecided: JobHandler = async (payload, { client, log }) => {
   return { status: "skipped", reason: "pending" };
 };
 
+const rolePanelPublish: JobHandler = async (payload, { client, log }) => {
+  const panelId = String(payload.rolePanelId ?? "");
+  const panel = await prisma.rolePanel.findUnique({ where: { id: panelId } });
+  if (!panel || panel.status !== RecordStatus.ACTIVE) {
+    return { status: "skipped", reason: "panel not found or not active" };
+  }
+  const spec = embedSpecSchema.parse(panel.spec);
+  const materializedSpec = await materializeEmbedSpecButtons(spec);
+
+  const channel = await client.channels.fetch(panel.channelDiscordId).catch(() => null);
+  if (!channel || !channel.isTextBased() || !("send" in channel)) {
+    throw new Error(`Канал ${panel.channelDiscordId} не найден или недоступен`);
+  }
+
+  const messageOptions = embedSpecToMessageOptions(materializedSpec);
+  let message = null;
+  if (panel.messageDiscordId && "messages" in channel) {
+    const existing = await channel.messages.fetch(panel.messageDiscordId).catch(() => null);
+    if (existing) {
+      message = await existing.edit(messageOptions as Parameters<typeof existing.edit>[0]);
+    }
+  }
+  if (!message) {
+    message = await channel.send(messageOptions);
+  }
+
+  await prisma.rolePanel.update({
+    where: { id: panel.id },
+    data: {
+      messageDiscordId: message.id,
+      spec: toJsonValue(materializedSpec),
+    },
+  });
+
+  await recordSentMessage({
+    guildDiscordId: panel.guildDiscordId,
+    channelDiscordId: panel.channelDiscordId,
+    messageDiscordId: message.id,
+    spec: materializedSpec,
+  });
+
+  log.info({ panelId: panel.id, messageId: message.id }, "role panel published");
+  return { status: "sent", panelId: panel.id, messageId: message.id };
+};
+
+const rolePanelArchive: JobHandler = async (payload, { client, log }) => {
+  const panelId = String(payload.rolePanelId ?? "");
+  const panel = await prisma.rolePanel.findUnique({ where: { id: panelId } });
+  if (!panel || !panel.messageDiscordId) {
+    return { status: "skipped", reason: "panel not found or message not published" };
+  }
+  try {
+    const channel = await client.channels.fetch(panel.channelDiscordId).catch(() => null);
+    if (channel && channel.isTextBased() && "messages" in channel) {
+      const message = await channel.messages.fetch(panel.messageDiscordId).catch(() => null);
+      if (message) {
+        await message.edit({ components: [] });
+      }
+    }
+    log.info({ panelId }, "role panel archived and components removed");
+    return { status: "archived", panelId };
+  } catch (error) {
+    log.warn({ err: error, panelId }, "failed to clean up archived role panel message");
+    return { status: "deferred", reason: String(error) };
+  }
+};
+
+const feedbackTicketNotify: JobHandler = async (payload, { client, log }) => {
+  const ticketId = String(payload.ticketId ?? "");
+  const ticket = await prisma.feedbackTicket.findUnique({
+    where: { id: ticketId },
+    include: { messages: { orderBy: { createdAt: "asc" } } },
+  });
+  if (!ticket) return { status: "skipped", reason: "ticket not found" };
+
+  const notifyChannelId = await getSetting("feedback.notifyChannelId");
+  if (!notifyChannelId || typeof notifyChannelId !== "string") {
+    return { status: "deferred", reason: "feedback.notifyChannelId is not configured" };
+  }
+
+  const channel = await client.channels.fetch(notifyChannelId).catch(() => null);
+  if (!channel || !channel.isTextBased() || !("send" in channel)) {
+    throw new Error(`Канал обратной связи ${notifyChannelId} недоступен`);
+  }
+
+  const initialContent = ticket.messages[0]?.content ?? "—";
+  const embed: ClassicEmbed = {
+    type: "embed",
+    title: `Новое обращение: ${ticket.category}`,
+    description: initialContent,
+    color: 0x5865f2,
+    fields: [
+      { name: "Автор", value: `<@${ticket.authorDiscordId}> (${ticket.authorDiscordId})`, inline: true },
+      { name: "Статус", value: ticket.status, inline: true },
+      { name: "ID тикета", value: ticket.id, inline: true },
+    ],
+    timestamp: true,
+  };
+
+  const message = await channel.send({ embeds: [classicToEmbed(embed)] });
+  log.info({ ticketId, messageId: message.id }, "feedback ticket notification sent");
+  return { status: "sent", ticketId, messageId: message.id };
+};
+
+const feedbackReplySend: JobHandler = async (payload, { client, log }) => {
+  const ticketId = String(payload.ticketId ?? "");
+  const messageId = String(payload.messageId ?? "");
+  const ticket = await prisma.feedbackTicket.findUnique({ where: { id: ticketId } });
+  const message = await prisma.feedbackMessage.findUnique({ where: { id: messageId } });
+  if (!ticket || !message) return { status: "skipped", reason: "ticket or message not found" };
+
+  const dm = await sendDirectMessage(
+    client,
+    ticket.authorDiscordId,
+    `Вам поступил ответ по обращению **«${ticket.category}»**:\n\n${message.content}`,
+    log,
+  );
+  log.info({ ticketId, dm }, "feedback reply DM delivered");
+  return { status: "sent", dm, ticketId };
+};
+
+const feedbackClosedSend: JobHandler = async (payload, { client, log }) => {
+  const ticketId = String(payload.ticketId ?? "");
+  const ticket = await prisma.feedbackTicket.findUnique({ where: { id: ticketId } });
+  if (!ticket) return { status: "skipped", reason: "ticket not found" };
+
+  const dm = await sendDirectMessage(
+    client,
+    ticket.authorDiscordId,
+    `Ваше обращение **«${ticket.category}»** было закрыто администрацией.`,
+    log,
+  );
+  log.info({ ticketId, dm }, "feedback closed DM delivered");
+  return { status: "sent", dm, ticketId };
+};
+
+const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
+  const submissionId = String(payload.submissionId ?? "");
+  const submission = await prisma.formSubmission.findUnique({
+    where: { id: submissionId },
+    include: { form: { include: { fields: { orderBy: { position: "asc" } } } } },
+  });
+  if (!submission) return { status: "skipped", reason: "submission not found" };
+
+  const form = submission.form;
+  if (!form.webhookUrl && !form.deliveryChannelId) {
+    return { status: "skipped", reason: "no delivery target" };
+  }
+
+  const values = (submission.values ?? {}) as Record<string, unknown>;
+  const fields = form.fields.map((field) => ({
+    name: field.label.slice(0, 256),
+    value: String(values[field.key] ?? "—").slice(0, 1024) || "—",
+    inline: false,
+  }));
+  const classic: ClassicEmbed = {
+    type: "embed",
+    title: `Ответ: ${form.name}`.slice(0, 256),
+    description: form.description?.slice(0, 4096) || undefined,
+    color: 0x5865f2,
+    fields: [
+      {
+        name: "Автор",
+        value: submission.authorDiscordId
+          ? `<@${submission.authorDiscordId}> (${submission.authorDiscordId})`
+          : "аноним",
+        inline: true,
+      },
+      { name: "ID ответа", value: submission.id, inline: true },
+      ...fields.slice(0, 23),
+    ],
+    timestamp: true,
+  };
+
+  const results: Array<{ via: string; status: string; messageId?: string | undefined }> = [];
+
+  if (form.deliveryChannelId) {
+    const channel = await client.channels.fetch(form.deliveryChannelId).catch(() => null);
+    if (!channel || !channel.isTextBased() || !("send" in channel)) {
+      throw new Error(`Канал доставки формы ${form.deliveryChannelId} недоступен`);
+    }
+    const message = await channel.send({ embeds: [classicToEmbed(classic)] });
+    results.push({ via: "channel", status: "sent", messageId: message.id });
+  }
+
+  if (form.webhookUrl) {
+    const target: DeliveryTarget = {
+      kind: "webhook",
+      webhookUrl: form.webhookUrl,
+      channelDiscordId: form.deliveryChannelId,
+      guildDiscordId: null,
+    };
+    const sent = await sendEmbed(client, target, classic, log);
+    results.push({
+      via: "webhook",
+      status: sent.status,
+      ...(sent.status === "sent" ? { messageId: sent.messageId } : {}),
+    });
+    if (sent.status === "deferred") {
+      return { status: "deferred", reason: sent.reason, results };
+    }
+  }
+
+  log.info({ submissionId, results }, "form submission delivered");
+  return { status: "sent", submissionId, results };
+};
+
 export const jobHandlers = new Map<string, JobHandler>([
   [
     "system.ping",
@@ -848,4 +1056,11 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.REGISTRATION_EXPIRED, registrationExpired],
   [MODULE_JOB_TYPES.TRANSFER_REVIEW, transferReview],
   [MODULE_JOB_TYPES.TRANSFER_DECIDED, transferDecided],
+  [MODULE_JOB_TYPES.ROLE_PANEL_PUBLISH, rolePanelPublish],
+  [MODULE_JOB_TYPES.ROLE_PANEL_ARCHIVE, rolePanelArchive],
+  [MODULE_JOB_TYPES.FEEDBACK_TICKET_NOTIFY, feedbackTicketNotify],
+  [MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND, feedbackReplySend],
+  [MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, feedbackClosedSend],
+  [MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, formSubmissionDeliver],
 ]);
+

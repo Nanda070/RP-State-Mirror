@@ -19,6 +19,12 @@ export const MODULE_JOB_TYPES = {
   REGISTRATION_EXPIRED: "registration.expired",
   TRANSFER_REVIEW: "transfer.review",
   TRANSFER_DECIDED: "transfer.decided",
+  ROLE_PANEL_PUBLISH: "role_panel.publish",
+  ROLE_PANEL_ARCHIVE: "role_panel.archive",
+  FEEDBACK_TICKET_NOTIFY: "feedback.ticket_notify",
+  FEEDBACK_REPLY_SEND: "feedback.reply_send",
+  FEEDBACK_CLOSED_SEND: "feedback.closed_send",
+  FORM_SUBMISSION_DELIVER: "form.submission_deliver",
 } as const;
 
 export type ModuleJobType = (typeof MODULE_JOB_TYPES)[keyof typeof MODULE_JOB_TYPES];
@@ -69,3 +75,46 @@ export function enqueuePersonnelPublish(personnelEventId: string, db?: Db) {
     db,
   );
 }
+
+export function enqueueRolePanelPublish(rolePanelId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.ROLE_PANEL_PUBLISH, payload: { rolePanelId } },
+    db,
+  );
+}
+
+export function enqueueRolePanelArchive(rolePanelId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.ROLE_PANEL_ARCHIVE, payload: { rolePanelId } },
+    db,
+  );
+}
+
+export function enqueueFeedbackTicketNotify(ticketId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.FEEDBACK_TICKET_NOTIFY, payload: { ticketId } },
+    db,
+  );
+}
+
+export function enqueueFeedbackReplySend(
+  payload: { ticketId: string; messageId: string },
+  db?: Db,
+) {
+  return enqueueJob({ type: MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND, payload }, db);
+}
+
+export function enqueueFeedbackClosedSend(ticketId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, payload: { ticketId } },
+    db,
+  );
+}
+
+export function enqueueFormSubmissionDeliver(submissionId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, payload: { submissionId } },
+    db,
+  );
+}
+

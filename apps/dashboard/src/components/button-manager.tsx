@@ -85,6 +85,8 @@ export function ButtonManager({
   const [guildId, setGuildId] = useState(guilds[0]?.discordId ?? "");
   const [channelId, setChannelId] = useState("");
   const [buttonStyle, setButtonStyle] = useState<ButtonStyle>("primary");
+  const [allowedRoleIdsRaw, setAllowedRoleIdsRaw] = useState("");
+  const [mutualExclusive, setMutualExclusive] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -124,9 +126,46 @@ export function ButtonManager({
     setSpec({ ...spec, embeds: [embed, ...spec.embeds.slice(1)] });
   }
 
-  function setRowsFromButtons(list: V2Button[]) {
+  function parseIdList(raw: string): string[] {
+    return raw
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter((item) => /^\d{17,20}$/.test(item));
+  }
+
+  function withRoleConstraints(
+    list: V2Button[],
+    options?: { allowedRaw?: string; exclusive?: boolean },
+  ): V2Button[] {
+    const allowedRoleIds = parseIdList(options?.allowedRaw ?? allowedRoleIdsRaw);
+    const exclusive = options?.exclusive ?? mutualExclusive;
+    const roleIds = list
+      .map((btn) => btn.params?.roleDiscordId)
+      .filter((id): id is string => typeof id === "string" && /^\d{17,20}$/.test(id));
+    return list.map((btn) => {
+      if (btn.action !== "role.toggle") return btn;
+      const roleDiscordId = String(btn.params?.roleDiscordId ?? "");
+      const exclusiveRoleIds = exclusive
+        ? roleIds.filter((id) => id !== roleDiscordId)
+        : [];
+      return {
+        ...btn,
+        params: {
+          roleDiscordId,
+          ...(allowedRoleIds.length ? { allowedRoleIds } : {}),
+          ...(exclusiveRoleIds.length ? { exclusiveRoleIds } : {}),
+        },
+      };
+    });
+  }
+
+  function setRowsFromButtons(
+    list: V2Button[],
+    options?: { allowedRaw?: string; exclusive?: boolean },
+  ) {
+    const constrained = withRoleConstraints(list, options);
     const rows: EmbedSpecV1["components"] = [];
-    for (const btn of list) {
+    for (const btn of constrained) {
       let last = rows[rows.length - 1];
       if (!last || last.components.length >= 5) {
         last = { type: "action_row", components: [] };
@@ -429,6 +468,30 @@ export function ButtonManager({
                 Очистить
               </button>
             </div>
+            <label className="field" style={{ marginTop: "0.75rem" }}>
+              <span>Кто может нажимать (ID ролей через запятую, пусто = все)</span>
+              <input
+                value={allowedRoleIdsRaw}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setAllowedRoleIdsRaw(next);
+                  setRowsFromButtons(flatButtons(spec), { allowedRaw: next });
+                }}
+                placeholder="123…, 456…"
+              />
+            </label>
+            <label className="row" style={{ marginTop: "0.5rem", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={mutualExclusive}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setMutualExclusive(next);
+                  setRowsFromButtons(flatButtons(spec), { exclusive: next });
+                }}
+              />
+              <span>Взаимоисключающие роли на панели</span>
+            </label>
             <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
               Роли с выбранного сервера отправки. При отправке пишутся в button_actions
               (custom_id: mirror:role.toggle:&lt;id&gt;).

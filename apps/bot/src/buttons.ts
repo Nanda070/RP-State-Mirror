@@ -137,6 +137,11 @@ async function applyReviewUpdate(
   }
 }
 
+function asSnowflakeArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && /^\d{17,20}$/.test(item));
+}
+
 async function handleRoleToggle(interaction: ButtonInteraction, params: Record<string, unknown>, log: Logger) {
   const roleDiscordId = String(params.roleDiscordId ?? "");
   if (!/^\d{17,20}$/.test(roleDiscordId)) {
@@ -160,10 +165,21 @@ async function handleRoleToggle(interaction: ButtonInteraction, params: Record<s
   }
 
   const member = await interaction.guild.members.fetch(interaction.user.id);
+  const allowedRoleIds = asSnowflakeArray(params.allowedRoleIds);
+  if (allowedRoleIds.length > 0 && !allowedRoleIds.some((id) => member.roles.cache.has(id))) {
+    await interaction.reply(ephemeral("У вас нет роли, необходимой для нажатия этой кнопки."));
+    return;
+  }
+
   const has = member.roles.cache.has(role.id);
   if (has) {
     await member.roles.remove(role, "Mirror: кнопка role.toggle");
   } else {
+    const exclusiveRoleIds = asSnowflakeArray(params.exclusiveRoleIds).filter((id) => id !== role.id);
+    const toRemove = exclusiveRoleIds.filter((id) => member.roles.cache.has(id));
+    if (toRemove.length > 0) {
+      await member.roles.remove(toRemove, "Mirror: взаимоисключающие роли");
+    }
     await member.roles.add(role, "Mirror: кнопка role.toggle");
   }
 
@@ -175,7 +191,11 @@ async function handleRoleToggle(interaction: ButtonInteraction, params: Record<s
     action: has ? "button.role_removed" : "button.role_added",
     entityType: "discord_role",
     entityId: role.id,
-    after: { userDiscordId: interaction.user.id, roleName: role.name },
+    after: {
+      userDiscordId: interaction.user.id,
+      roleName: role.name,
+      exclusiveRemoved: has ? [] : asSnowflakeArray(params.exclusiveRoleIds).filter((id) => id !== role.id),
+    },
   });
 
   await interaction.reply(ephemeral(has ? `Роль **${role.name}** снята.` : `Роль **${role.name}** выдана.`));

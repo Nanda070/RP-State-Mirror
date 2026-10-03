@@ -719,6 +719,7 @@ model DiscordForm {
   name               String
   description        String?
   webhookUrl         String?      @map("webhook_url")
+  deliveryChannelId  String?      @map("delivery_channel_id")
   status             RecordStatus @default(ACTIVE)
   expiresAt          DateTime?    @map("expires_at")
   responseLimit      Int?         @map("response_limit")

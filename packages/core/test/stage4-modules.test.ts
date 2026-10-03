@@ -4,10 +4,14 @@ import {
   MODULE_JOB_TYPES,
   allocateTokenNumber,
   createCharacter,
+  createDiscordForm,
   createFeedbackTicket,
   createRegistration,
   createTransfer,
   addFeedbackMessage,
+  closeFeedbackTicket,
+  createRolePanel,
+  archiveRolePanel,
   decideRegistration,
   decideTransfer,
   issueToken,
@@ -201,6 +205,7 @@ describe("stage 4 modules", () => {
     await expect(submitDiscordForm(form.id, {}, user.discordId)).rejects.toThrow(/Заполните поле/);
     await submitDiscordForm(form.id, { text: "hello" }, user.discordId);
     await expect(submitDiscordForm(form.id, { text: "second" }, user.discordId)).rejects.toThrow(/Лимит/);
+    expect(await prisma.job.count({ where: { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER } })).toBe(0);
 
     const ticket = await createFeedbackTicket(
       { authorDiscordId: user.discordId, category: "support", content: "Нужна помощь" },
@@ -210,6 +215,25 @@ describe("stage 4 modules", () => {
     await addFeedbackMessage(ticket.id, "admin", "Разбираемся", context);
     await prisma.feedbackTicket.update({ where: { id: ticket.id }, data: { status: "CLOSED" } });
     await expect(addFeedbackMessage(ticket.id, user.discordId, "Ещё вопрос", context)).rejects.toThrow(/закрыт/);
+  });
+
+  it("enqueues form submission delivery when webhook or channel is configured", async () => {
+    const form = await createDiscordForm(
+      {
+        name: "С webhook",
+        webhookUrl: "https://discord.com/api/webhooks/1/abc",
+        deliveryChannelId: "300000000000000001",
+        fields: [{ key: "text", label: "Текст", type: "short", required: true }],
+        createdByDiscordId: "300000000000000099",
+      },
+      context,
+    );
+    const submission = await submitDiscordForm(form.id, { text: "hello" }, "400000000000000001");
+    const jobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.payload).toEqual({ submissionId: submission.id });
+    expect(await prisma.auditLog.count({ where: { action: "form.created" } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { action: "form.submitted" } })).toBe(1);
   });
 
   it("enforces the form response limit under concurrent submissions", async () => {
@@ -227,4 +251,71 @@ describe("stage 4 modules", () => {
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
     expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(2);
   });
+
+  it("enqueues publish and archive jobs for role panels", async () => {
+    const spec = {
+      version: 1 as const,
+      embeds: [{ type: "embed" as const, title: "Панель ролей" }],
+      components: [
+        {
+          type: "action_row" as const,
+          components: [
+            {
+              type: "button" as const,
+              label: "Роль",
+              action: "role.toggle",
+              params: { roleDiscordId: "999999999999999999" },
+            },
+          ],
+        },
+      ],
+    };
+    const panel = await createRolePanel(
+      {
+        guildDiscordId: "100000000000000001",
+        channelDiscordId: "200000000000000001",
+        spec,
+        createdByDiscordId: "300000000000000001",
+      },
+      context,
+    );
+    expect(panel.status).toBe(RecordStatus.ACTIVE);
+    const publishJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.ROLE_PANEL_PUBLISH } });
+    expect(publishJobs).toHaveLength(1);
+    expect(publishJobs[0]?.payload).toEqual({ rolePanelId: panel.id });
+
+    await archiveRolePanel(panel.id, context);
+    const archiveJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.ROLE_PANEL_ARCHIVE } });
+    expect(archiveJobs).toHaveLength(1);
+    expect(archiveJobs[0]?.payload).toEqual({ rolePanelId: panel.id });
+  });
+
+  it("enqueues notification on feedback ticket creation, DM on admin reply, and DM on close", async () => {
+    const user = await createUser("500");
+    const ticket = await createFeedbackTicket(
+      { authorDiscordId: user.discordId, category: "вопрос", content: "Как получить роль?" },
+      context,
+    );
+
+    const notifyJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.FEEDBACK_TICKET_NOTIFY } });
+    expect(notifyJobs).toHaveLength(1);
+    expect(notifyJobs[0]?.payload).toEqual({ ticketId: ticket.id });
+
+    // User adds message -> no reply DM enqueued
+    await addFeedbackMessage(ticket.id, user.discordId, "Уточнение", context);
+    expect(await prisma.job.count({ where: { type: MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND } })).toBe(0);
+
+    // Admin replies -> reply DM enqueued
+    const adminMsg = await addFeedbackMessage(ticket.id, "admin-user", "Используйте панель ролей", context);
+    const replyJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND } });
+    expect(replyJobs).toHaveLength(1);
+    expect(replyJobs[0]?.payload).toEqual({ ticketId: ticket.id, messageId: adminMsg.id });
+
+    // Ticket closed -> closed DM enqueued
+    await closeFeedbackTicket(ticket.id, context);
+    const closeJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND } });
+    expect(closeJobs).toHaveLength(1);
+    expect(closeJobs[0]?.payload).toEqual({ ticketId: ticket.id });
+  });
 });
+

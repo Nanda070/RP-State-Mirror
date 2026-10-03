@@ -122,6 +122,13 @@ export default async function SettingsIndexPage() {
       description: "Регистрации персонажей и проверки на ЧП.",
       status: "soon",
     },
+    {
+      href: "/settings/stage4",
+      title: "Новые модули",
+      description: "Конфигурация переводов, IC-чёрного списка, форм, панелей ролей и обратной связи.",
+      status: "ready",
+      meta: "Этап 4",
+    },
   ];
 
   return (

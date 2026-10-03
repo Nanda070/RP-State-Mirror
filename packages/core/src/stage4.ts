@@ -14,7 +14,16 @@ import { auditedMutation, type AuditContext } from "./audit.js";
 import { toJsonValue, type Db } from "./db.js";
 import { enqueueJob } from "./jobs.js";
 import { createButtonAction } from "./message-designs.js";
-import { MODULE_JOB_TYPES } from "./module-jobs.js";
+import {
+  MODULE_JOB_TYPES,
+  enqueueFeedbackClosedSend,
+  enqueueFeedbackReplySend,
+  enqueueFeedbackTicketNotify,
+  enqueueFormSubmissionDeliver,
+  enqueueRolePanelArchive,
+  enqueueRolePanelPublish,
+} from "./module-jobs.js";
+import { embedSpecSchema } from "./embeds.js";
 import { getSetting } from "./settings.js";
 
 const snowflakeLike = z.string().min(1).max(32);
@@ -700,9 +709,38 @@ export async function createRolePanel(input: {
   spec: Record<string, unknown>;
   createdByDiscordId: string;
 }, context: AuditContext) {
+  const spec = embedSpecSchema.parse(input.spec);
   return auditedMutation(context, "role_panel.created", "role_panel", async (tx) => {
-    const panel = await tx.rolePanel.create({ data: { ...input, spec: toJsonValue(input.spec) } });
+    const panel = await tx.rolePanel.create({
+      data: {
+        guildDiscordId: input.guildDiscordId,
+        channelDiscordId: input.channelDiscordId,
+        spec: toJsonValue(spec),
+        createdByDiscordId: input.createdByDiscordId,
+      },
+    });
+    await enqueueRolePanelPublish(panel.id, tx);
     return { entityId: panel.id, after: panel, result: panel };
+  });
+}
+
+export async function listRolePanels() {
+  return prisma.rolePanel.findMany({
+    where: { status: RecordStatus.ACTIVE },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function archiveRolePanel(id: string, context: AuditContext) {
+  return auditedMutation(context, "role_panel.archived", "role_panel", async (tx) => {
+    const current = await tx.rolePanel.findUnique({ where: { id } });
+    if (!current || current.status !== RecordStatus.ACTIVE) throw new Error("Панель не найдена.");
+    const panel = await tx.rolePanel.update({
+      where: { id },
+      data: { status: RecordStatus.ARCHIVED },
+    });
+    await enqueueRolePanelArchive(id, tx);
+    return { entityId: id, before: current, after: panel, result: panel };
   });
 }
 
@@ -723,6 +761,7 @@ export async function createFeedbackTicket(input: {
       },
       include: { messages: true },
     });
+    await enqueueFeedbackTicketNotify(ticket.id, tx);
     return { entityId: ticket.id, after: ticket, result: ticket };
   });
 }
@@ -733,11 +772,40 @@ export async function addFeedbackMessage(
   content: string,
   context: AuditContext,
 ) {
+  const text = nonEmptyText(4000).parse(content);
   return auditedMutation(context, "feedback_message.created", "feedback_message", async (tx) => {
     const ticket = await tx.feedbackTicket.findUnique({ where: { id: ticketId } });
     if (!ticket || ticket.status === FeedbackTicketStatus.CLOSED) throw new Error("Тикет закрыт или не найден.");
-    const message = await tx.feedbackMessage.create({ data: { ticketId, authorDiscordId, content } });
+    const message = await tx.feedbackMessage.create({ data: { ticketId, authorDiscordId, content: text } });
+    if (authorDiscordId !== ticket.authorDiscordId) {
+      await enqueueFeedbackReplySend({ ticketId: ticket.id, messageId: message.id }, tx);
+    }
     return { entityId: message.id, after: message, result: message };
+  });
+}
+
+export async function listFeedbackTickets() {
+  return prisma.feedbackTicket.findMany({
+    include: { messages: { orderBy: { createdAt: "asc" } } },
+    orderBy: { updatedAt: "desc" },
+    take: 100,
+  });
+}
+
+export async function closeFeedbackTicket(id: string, context: AuditContext) {
+  return auditedMutation(context, "feedback_ticket.closed", "feedback_ticket", async (tx) => {
+    const current = await tx.feedbackTicket.findUnique({
+      where: { id },
+      include: { messages: true },
+    });
+    if (!current || current.status === FeedbackTicketStatus.CLOSED) throw new Error("Тикет уже закрыт или не найден.");
+    const ticket = await tx.feedbackTicket.update({
+      where: { id },
+      data: { status: FeedbackTicketStatus.CLOSED },
+      include: { messages: true },
+    });
+    await enqueueFeedbackClosedSend(ticket.id, tx);
+    return { entityId: id, before: current, after: ticket, result: ticket };
   });
 }
 
@@ -745,6 +813,52 @@ export async function getDiscordForm(formId: string) {
   return prisma.discordForm.findFirst({
     where: { id: formId, status: RecordStatus.ACTIVE },
     include: { fields: { orderBy: { position: "asc" } } },
+  });
+}
+
+const formFieldSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
+  label: z.string().trim().min(1).max(45),
+  type: z.enum(["short", "paragraph"]).default("short"),
+  required: z.boolean().default(false),
+});
+
+export const createDiscordFormSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(1000).nullable().optional(),
+  webhookUrl: z.string().url().nullable().optional(),
+  deliveryChannelId: snowflakeLike.nullable().optional(),
+  expiresAt: z.date().nullable().optional(),
+  responseLimit: z.number().int().positive().nullable().optional(),
+  /** Discord modals accept at most 5 fields per step; multi-step (>5) is Stage 5. */
+  fields: z.array(formFieldSchema).min(1).max(5),
+  createdByDiscordId: snowflakeLike,
+});
+export type CreateDiscordFormInput = z.infer<typeof createDiscordFormSchema>;
+
+export async function createDiscordForm(input: CreateDiscordFormInput, context: AuditContext) {
+  const data = createDiscordFormSchema.parse(input);
+  return auditedMutation(context, "form.created", "form", async (tx) => {
+    const form = await tx.discordForm.create({
+      data: {
+        name: data.name,
+        description: data.description ?? null,
+        webhookUrl: data.webhookUrl ?? null,
+        deliveryChannelId: data.deliveryChannelId ?? null,
+        expiresAt: data.expiresAt ?? null,
+        responseLimit: data.responseLimit ?? null,
+        createdByDiscordId: data.createdByDiscordId,
+        fields: {
+          create: data.fields.map((field, position) => ({
+            ...field,
+            position,
+            validation: {},
+          })),
+        },
+      },
+      include: { fields: { orderBy: { position: "asc" } } },
+    });
+    return { entityId: form.id, after: form, result: form };
   });
 }
 
@@ -759,15 +873,24 @@ export async function submitDiscordForm(
   for (const field of form.fields) {
     if (field.required && !values[field.key]?.trim()) throw new Error(`Заполните поле «${field.label}».`);
   }
-  return prisma.$transaction(async (tx) => {
+  const context: AuditContext = {
+    actorType: authorDiscordId ? AuditActorType.USER : AuditActorType.SYSTEM,
+    source: "discord.form",
+    metadata: { authorDiscordId: authorDiscordId ?? null, formId },
+  };
+  return auditedMutation(context, "form.submitted", "form_submission", async (tx) => {
     // Lock the form row so concurrent submissions cannot both pass the response-limit check.
     await tx.$queryRaw`SELECT id FROM forms WHERE id = ${formId} FOR UPDATE`;
     if (form.responseLimit !== null) {
       const count = await tx.formSubmission.count({ where: { formId } });
       if (count >= form.responseLimit) throw new Error("Лимит ответов формы исчерпан.");
     }
-    return tx.formSubmission.create({
+    const submission = await tx.formSubmission.create({
       data: { formId, values: toJsonValue(values), authorDiscordId, source: "discord" },
     });
-  }, { maxWait: 10_000, timeout: 15_000 });
+    if (form.webhookUrl || form.deliveryChannelId) {
+      await enqueueFormSubmissionDeliver(submission.id, tx);
+    }
+    return { entityId: submission.id, after: submission, result: submission };
+  });
 }
