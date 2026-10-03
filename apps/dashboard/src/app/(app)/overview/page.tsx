@@ -173,7 +173,7 @@ export default async function OverviewPage() {
         <div className="panel">
           <h2 className="panel-title">Модули</h2>
           <p className="muted" style={{ marginBottom: "0.85rem" }}>
-            Быстрый переход к реестрам и настройкам. Токены и регистрации — следующие модули.
+            Быстрый переход к реестрам и разделам администрирования.
           </p>
           <div className="module-chip-row">
             {(
@@ -183,7 +183,9 @@ export default async function OverviewPage() {
                 { label: "Штрафы", href: "/fines", ready: true },
                 { label: "Персонал", href: "/personnel", ready: true },
                 { label: "Эмбеды", href: "/settings/embeds", ready: true },
-                { label: "Токены", href: "/settings/tokens", ready: false },
+                { label: "IC ЧС", href: "/ic-blacklist", ready: true },
+                { label: "Обратная связь", href: "/feedback", ready: true },
+                { label: "Формы", href: "/settings/forms", ready: true },
               ] as const
             ).map((item) => (
               <Link key={item.href} href={item.href} className="module-chip">

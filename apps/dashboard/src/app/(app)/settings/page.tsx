@@ -99,35 +99,30 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/embeds",
       title: "Эмбеды",
-      description: "Конструктор Classic/V2, превью и отправка без кнопок.",
+      description: "Конструктор Classic/V2, превью и отправка.",
       status: "ready",
       meta: `Дизайнов: ${designCount}`,
     },
     {
-      href: "/settings/buttons",
-      title: "Кнопки",
-      description: "Панели role.toggle, form.open, feedback.open, token.receive.",
+      href: "/settings/forms",
+      title: "Discord-формы",
+      description: "Создание modal-форм и доставка ответов.",
       status: "ready",
-      meta: "Отдельный раздел отправки панелей",
+      meta: "Администрирование",
     },
     {
-      href: "/settings/tokens",
-      title: "Токены",
-      description: "Служебные токены и интеграции бота.",
-      status: "soon",
-    },
-    {
-      href: "/settings/registrations",
-      title: "Регистрации",
-      description: "Регистрации персонажей и проверки на ЧП.",
-      status: "soon",
+      href: "/settings/webhooks",
+      title: "Webhooks",
+      description: "Очередь запросов /создать-webhook.",
+      status: "ready",
+      meta: "Администрирование",
     },
     {
       href: "/settings/stage4",
-      title: "Новые модули",
-      description: "Конфигурация переводов, IC-чёрного списка, форм, панелей ролей и обратной связи.",
+      title: "Конфигурация модулей",
+      description: "Каналы и роли: регистрации, переводы, IC ЧС, токены, инвайты, уведомления.",
       status: "ready",
-      meta: "Этап 4",
+      meta: "Вкладки по модулям",
     },
   ];
 
@@ -173,6 +168,12 @@ export default async function SettingsIndexPage() {
           </Link>
           <Link href="/personnel" className="btn btn-secondary">
             Реестр персонала ({personnelCount})
+          </Link>
+          <Link href="/ic-blacklist" className="btn btn-secondary">
+            IC ЧС реестр
+          </Link>
+          <Link href="/feedback" className="btn btn-secondary">
+            Обратная связь
           </Link>
         </div>
         <div className="settings-hub-grid">

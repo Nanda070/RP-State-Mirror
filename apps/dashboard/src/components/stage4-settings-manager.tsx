@@ -1,439 +1,359 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useState } from "react";
+import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { GuildChipPicker, RoleChipPicker, type RoleChipOption } from "./role-chip-picker";
 
-type Stage4Data = {
-  settings: Record<string, unknown>;
-  panels: Array<{ id: string; guildDiscordId: string; channelDiscordId: string; messageDiscordId?: string | null; spec: unknown }>;
-  forms: Array<{
-    id: string;
-    name: string;
-    webhookUrl?: string | null;
-    deliveryChannelId?: string | null;
-    fields: Array<{ key: string; label: string }>;
-    _count: { submissions: number };
-  }>;
-  feedback: Array<{ id: string; category: string; status: string; authorDiscordId: string; messages: Array<{ authorDiscordId: string; content: string }> }>;
-  webhookRequests: Array<{
-    id: string;
-    requesterDiscordId: string;
-    guildDiscordId: string;
-    channelDiscordId: string;
-    description: string;
-    webhookUrl?: string | null;
-    status: string;
-    createdAt: string;
-  }>;
-  icBlacklist: Array<{
-    id: string;
-    number: string;
-    fullName: string;
-    staticId: string;
-    reason: string;
-    forumLink: string;
-    status: string;
-    createdByDiscordId: string;
-  }>;
+export type Stage4SettingsValues = {
+  "registrations.ttlDays": number;
+  "registrations.channelId": string | null;
+  "registrations.coordinatorRoleIds": string[];
+  "transfers.channelId": string | null;
+  "transfers.approvalDmText": string;
+  "webhooks.notifyChannelId": string | null;
+  "feedback.notifyChannelId": string | null;
+  "icBlacklist.enabled": boolean;
+  "icBlacklist.channelId": string | null;
+  "icBlacklist.managerRoleIds": string[];
+  "icBlacklist.searchRoleIds": string[];
+  "invites.guildIds": string[];
+  "invites.defaultMaxAgeSeconds": number;
+  "tokens.expandThresholdPercent": number;
+  "tokens.finderRoleIds": string[];
 };
 
-const settingFields = [
-  ["registrations.ttlDays", "TTL регистраций, дней"],
-  ["registrations.channelId", "Канал заявок"],
-  ["registrations.coordinatorRoleIds", "Роли координаторов (JSON-массив)"],
-  ["transfers.channelId", "Канал переводов"],
-  ["transfers.approvalDmText", "ЛС после одобрения"],
-  ["webhooks.notifyChannelId", "Канал уведомлений webhook"],
-  ["feedback.notifyChannelId", "Канал уведомлений обратной связи"],
-  ["icBlacklist.enabled", "IC ЧС включён (true/false)"],
-  ["icBlacklist.channelId", "Канал публикации IC ЧС"],
-  ["icBlacklist.managerRoleIds", "Роли управления ЧС (JSON-массив)"],
-  ["icBlacklist.searchRoleIds", "Роли поиска ЧС (JSON-массив)"],
-  ["invites.guildIds", "Серверы /инвайт-админ (JSON-массив)"],
-  ["invites.defaultMaxAgeSeconds", "Срок инвайта, сек"],
-  ["tokens.expandThresholdPercent", "Порог расширения нашивок, %"],
-  ["tokens.finderRoleIds", "Роли /token find (JSON-массив)"],
-] as const;
+type TabId =
+  | "registrations"
+  | "transfers"
+  | "icBlacklist"
+  | "tokens"
+  | "webhooks"
+  | "feedback"
+  | "invites";
 
-function parseSnowflakeList(raw: string): string[] {
-  return raw
-    .split(/[\s,]+/)
-    .map((item) => item.trim())
-    .filter((item) => /^\d{17,20}$/.test(item));
-}
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: "registrations", label: "Регистрации" },
+  { id: "transfers", label: "Переводы" },
+  { id: "icBlacklist", label: "IC ЧС" },
+  { id: "tokens", label: "Токены" },
+  { id: "webhooks", label: "Webhooks" },
+  { id: "feedback", label: "Обратная связь" },
+  { id: "invites", label: "Инвайты" },
+];
 
-export function Stage4SettingsManager() {
-  const [data, setData] = useState<Stage4Data | null>(null);
-  const [settings, setSettings] = useState<Record<string, string>>({});
-  const [formName, setFormName] = useState("");
-  const [formWebhookUrl, setFormWebhookUrl] = useState("");
-  const [formDeliveryChannelId, setFormDeliveryChannelId] = useState("");
-  const [formResponseLimit, setFormResponseLimit] = useState("");
-  const [formFields, setFormFields] = useState([{ key: "name", label: "Имя", type: "short", required: true }]);
-  const [panelGuildId, setPanelGuildId] = useState("");
-  const [panelChannelId, setPanelChannelId] = useState("");
-  const [panelTitle, setPanelTitle] = useState("");
-  const [panelDescription, setPanelDescription] = useState("");
-  const [panelRoleId, setPanelRoleId] = useState("");
-  const [panelButtonLabel, setPanelButtonLabel] = useState("");
-  const [panelAllowedRoles, setPanelAllowedRoles] = useState("");
-  const [panelExclusiveRoles, setPanelExclusiveRoles] = useState("");
-  const [reply, setReply] = useState<Record<string, string>>({});
+export function Stage4SettingsManager({
+  initial,
+  initialTab = "registrations",
+  channels,
+  incidentRoles,
+  mainRoles,
+  guilds,
+  incidentGuildId,
+  mainGuildId,
+}: {
+  initial: Stage4SettingsValues;
+  initialTab?: TabId;
+  channels: ChannelOption[];
+  incidentRoles: RoleChipOption[];
+  mainRoles: RoleChipOption[];
+  guilds: Array<{ discordId: string; name: string }>;
+  incidentGuildId: string | null;
+  mainGuildId: string | null;
+}) {
+  const [tab, setTab] = useState<TabId>(initialTab);
+  const [values, setValues] = useState(initial);
   const [message, setMessage] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  async function load() {
-    const response = await fetch("/api/settings/stage4");
-    const next = (await response.json()) as Stage4Data;
-    if (!response.ok) throw new Error((next as unknown as { error?: string }).error ?? "Не удалось загрузить настройки");
-    setData({
-      ...next,
-      webhookRequests: next.webhookRequests ?? [],
-      icBlacklist: next.icBlacklist ?? [],
-    });
-    setSettings(Object.fromEntries(Object.entries(next.settings).map(([key, value]) => [key, JSON.stringify(value)])));
+  function patch<K extends keyof Stage4SettingsValues>(key: K, value: Stage4SettingsValues[K]) {
+    setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  useEffect(() => {
-    void load().catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Ошибка загрузки"));
-  }, []);
-
-  async function saveSettings() {
-    const parsed: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(settings)) {
-      try {
-        const trimmed = value.trim();
-        if (key === "icBlacklist.enabled") {
-          parsed[key] = trimmed === "true" || trimmed === "1";
-          continue;
-        }
-        parsed[key] = trimmed.startsWith("[") ? JSON.parse(trimmed) : trimmed;
-        if (/Days|Percent|Seconds/.test(key)) parsed[key] = Number(parsed[key]);
-        if (key.endsWith("channelId") && (trimmed === "" || trimmed === "null")) parsed[key] = null;
-      } catch {
-        throw new Error(`Некорректное JSON-значение для ${key}`);
-      }
-    }
-    const response = await fetch("/api/settings/stage4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ settings: parsed }),
-    });
-    if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка сохранения");
-    setMessage("Настройки сохранены.");
-  }
-
-  async function createForm(markWebhookId?: string) {
-    const response = await fetch("/api/settings/stage4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        form: {
-          name: formName,
-          webhookUrl: formWebhookUrl.trim() || null,
-          deliveryChannelId: formDeliveryChannelId.trim() || null,
-          responseLimit: formResponseLimit.trim() ? Number(formResponseLimit) : null,
-          fields: formFields,
-        },
-      }),
-    });
-    if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка создания формы");
-    if (markWebhookId) {
-      await fetch("/api/settings/stage4", {
-        method: "PATCH",
+  async function save() {
+    setPending(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/stage4", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "webhook-status", id: markWebhookId, status: "FORM_BUILT" }),
+        body: JSON.stringify({
+          settings: {
+            ...values,
+            "registrations.channelId": values["registrations.channelId"] || null,
+            "transfers.channelId": values["transfers.channelId"] || null,
+            "webhooks.notifyChannelId": values["webhooks.notifyChannelId"] || null,
+            "feedback.notifyChannelId": values["feedback.notifyChannelId"] || null,
+            "icBlacklist.channelId": values["icBlacklist.channelId"] || null,
+          },
+        }),
       });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Ошибка сохранения");
+      setMessage("Настройки сохранены.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка сохранения");
+    } finally {
+      setPending(false);
     }
-    setFormName("");
-    setFormWebhookUrl("");
-    setFormDeliveryChannelId("");
-    setFormResponseLimit("");
-    setMessage("Форма создана.");
-    await load();
   }
 
-  async function webhookStatus(id: string, status: "FORM_BUILT" | "REJECTED" | "CLOSED") {
-    const response = await fetch("/api/settings/stage4", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "webhook-status", id, status }),
-    });
-    if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка статуса webhook");
-    setMessage(status === "FORM_BUILT" ? "Запрос отмечен: форма собрана." : status === "REJECTED" ? "Запрос отклонён." : "Запрос закрыт.");
-    await load();
-  }
+  const channelEmpty = incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП";
+  const incidentRolesEmpty = incidentGuildId
+    ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
+    : "Сначала задайте сервер ЧП";
+  const mainRolesEmpty = mainGuildId
+    ? "Нет ролей главного сервера в снимке. Дождитесь синхронизации бота."
+    : "Сначала задайте главный сервер";
 
-  function useWebhookUrl(url: string | null | undefined) {
-    if (!url) {
-      setMessage("У этого запроса нет сохранённого webhook URL.");
-      return;
-    }
-    setFormWebhookUrl(url);
-    setMessage("Webhook URL подставлен в форму ниже — создайте Discord-форму.");
-  }
-
-  async function createPanel() {
-    const allowedRoleIds = parseSnowflakeList(panelAllowedRoles);
-    const exclusiveRoleIds = parseSnowflakeList(panelExclusiveRoles);
-    const spec = {
-      version: 1,
-      embeds: [
-        {
-          type: "embed",
-          title: panelTitle.trim() || "Получение роли",
-          description: panelDescription.trim() || "Нажмите кнопку ниже, чтобы получить или снять роль.",
-          color: 0x5865f2,
-        },
-      ],
-      components: [
-        {
-          type: "action_row",
-          components: [
-            {
-              type: "button",
-              style: "primary",
-              label: panelButtonLabel.trim() || "Получить/снять роль",
-              action: "role.toggle",
-              params: {
-                roleDiscordId: panelRoleId.trim(),
-                ...(allowedRoleIds.length ? { allowedRoleIds } : {}),
-                ...(exclusiveRoleIds.length ? { exclusiveRoleIds } : {}),
-              },
-            },
-          ],
-        },
-      ],
-    };
-    const response = await fetch("/api/settings/stage4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rolePanel: {
-          guildDiscordId: panelGuildId.trim(),
-          channelDiscordId: panelChannelId.trim(),
-          spec,
-        },
-      }),
-    });
-    if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка создания панели");
-    setPanelTitle("");
-    setPanelRoleId("");
-    setPanelAllowedRoles("");
-    setPanelExclusiveRoles("");
-    setMessage("Панель создана и отправлена в очередь на публикацию.");
-    await load();
-  }
-
-  async function feedbackAction(action: "close-feedback" | "reply-feedback", id: string) {
-    const response = await fetch("/api/settings/stage4", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(action === "reply-feedback"
-        ? { action, id, content: reply[id] ?? "" }
-        : { action, id }),
-    });
-    if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка обработки");
-    setMessage(action === "reply-feedback" ? "Ответ отправлен в ЛС игроку." : "Тикет закрыт.");
-    await load();
-  }
-
-  if (!data) return <div className="panel muted">Загрузка настроек…</div>;
   return (
     <div className="stack">
-      <section className="panel stack">
-        <h2 className="panel-title">Конфигурация модулей</h2>
-        {settingFields.map(([key, label]) => (
-          <label className="field" key={key}>
-            <span>{label}</span>
-            <input value={settings[key] ?? ""} onChange={(event) => setSettings((prev) => ({ ...prev, [key]: event.target.value }))} />
-          </label>
-        ))}
-        <button className="btn btn-primary" type="button" onClick={() => void saveSettings().catch((error) => setMessage(error.message))}>Сохранить</button>
-      </section>
-      <section className="panel stack">
-        <h2 className="panel-title">Discord-формы</h2>
-        <p className="muted">До 5 полей на форму (лимит Discord modal). Доставка ответа — в канал и/или webhook.</p>
-        <input placeholder="Название формы" value={formName} onChange={(event) => setFormName(event.target.value)} />
-        <div className="row">
-          <input placeholder="Webhook URL (опционально)" value={formWebhookUrl} onChange={(event) => setFormWebhookUrl(event.target.value)} />
-          <input placeholder="ID канала доставки (опционально)" value={formDeliveryChannelId} onChange={(event) => setFormDeliveryChannelId(event.target.value)} />
-          <input placeholder="Лимит ответов" value={formResponseLimit} onChange={(event) => setFormResponseLimit(event.target.value)} />
-        </div>
-        {formFields.map((field, index) => (
-          <div className="row" key={`${field.key}-${index}`}>
-            <input aria-label="Ключ поля" value={field.key} onChange={(event) => setFormFields((prev) => prev.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} />
-            <input aria-label="Подпись поля" value={field.label} onChange={(event) => setFormFields((prev) => prev.map((item, i) => i === index ? { ...item, label: event.target.value } : item))} />
-            <select value={field.type} onChange={(event) => setFormFields((prev) => prev.map((item, i) => i === index ? { ...item, type: event.target.value } : item))}><option value="short">Короткий текст</option><option value="paragraph">Абзац</option></select>
-            <label><input type="checkbox" checked={field.required} onChange={(event) => setFormFields((prev) => prev.map((item, i) => i === index ? { ...item, required: event.target.checked } : item))} /> Обязательное</label>
-          </div>
-        ))}
-        <button className="btn btn-secondary" type="button" onClick={() => setFormFields((prev) => [...prev, { key: `field_${prev.length + 1}`, label: "Новое поле", type: "short", required: false }])} disabled={formFields.length >= 5}>Добавить поле</button>
-        <button className="btn btn-primary" type="button" disabled={!formName.trim()} onClick={() => void createForm().catch((error) => setMessage(error.message))}>Создать форму</button>
-        <ul>
-          {data.forms.map((form) => (
-            <li key={form.id}>
-              {form.name} · ответов: {form._count.submissions}
-              {form.deliveryChannelId ? ` · канал ${form.deliveryChannelId}` : ""}
-              {form.webhookUrl ? " · webhook" : ""}
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section className="panel stack">
-        <h2 className="panel-title">Панели ролей (Role Panels)</h2>
-        <div className="stack" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "1rem" }}>
-          <h3 style={{ margin: 0 }}>Создать новую панель ролей</h3>
-          <div className="row">
-            <input placeholder="ID сервера (Guild Discord ID)" value={panelGuildId} onChange={(e) => setPanelGuildId(e.target.value)} />
-            <input placeholder="ID канала (Channel Discord ID)" value={panelChannelId} onChange={(e) => setPanelChannelId(e.target.value)} />
-          </div>
-          <div className="row">
-            <input placeholder="Заголовок панели (напр. Выдача роли)" value={panelTitle} onChange={(e) => setPanelTitle(e.target.value)} />
-            <input placeholder="Описание панели" value={panelDescription} onChange={(e) => setPanelDescription(e.target.value)} />
-          </div>
-          <div className="row">
-            <input placeholder="ID роли для выдачи" value={panelRoleId} onChange={(e) => setPanelRoleId(e.target.value)} />
-            <input placeholder="Текст на кнопке (напр. Получить роль)" value={panelButtonLabel} onChange={(e) => setPanelButtonLabel(e.target.value)} />
-          </div>
-          <div className="row">
-            <input placeholder="Кто может нажимать (ID ролей через запятую)" value={panelAllowedRoles} onChange={(e) => setPanelAllowedRoles(e.target.value)} />
-            <input placeholder="Взаимоисключающие роли (ID через запятую)" value={panelExclusiveRoles} onChange={(e) => setPanelExclusiveRoles(e.target.value)} />
-          </div>
+      <div className="settings-tabs" role="tablist" aria-label="Разделы модулей">
+        {TABS.map((item) => (
           <button
-            className="btn btn-primary"
+            key={item.id}
             type="button"
-            disabled={!panelGuildId.trim() || !panelChannelId.trim() || !panelRoleId.trim()}
-            onClick={() => void createPanel().catch((err) => setMessage(err.message))}
+            role="tab"
+            className="settings-tab"
+            aria-selected={tab === item.id}
+            data-active={tab === item.id || undefined}
+            onClick={() => setTab(item.id)}
           >
-            Создать и опубликовать панель
+            {item.label}
           </button>
-        </div>
-        <p>Активных панелей: {data.panels.length}</p>
-        <ul>
-          {data.panels.map((panel) => (
-            <li key={panel.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+        ))}
+      </div>
+
+      <section className="panel stack">
+        {tab === "registrations" ? (
+          <>
+            <h2 className="panel-title">Регистрации ТС и униформы</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Срок действия заявок, канал на сервере ЧП и роли координаторов.
+            </p>
+            <label className="field">
+              <span>Срок действия, дней</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={values["registrations.ttlDays"]}
+                onChange={(e) => patch("registrations.ttlDays", Number(e.target.value))}
+              />
+            </label>
+            <label className="field">
+              <span>Канал заявок</span>
+              <ChannelSelect
+                id="registrations-channel"
+                value={values["registrations.channelId"] ?? ""}
+                onChange={(v) => patch("registrations.channelId", v || null)}
+                channels={channels}
+                guildDiscordId={incidentGuildId}
+                emptyLabel={channelEmpty}
+              />
+            </label>
+            <div className="field">
+              <span className="field-label">Роли координаторов</span>
+              <RoleChipPicker
+                roles={incidentRoles}
+                selected={values["registrations.coordinatorRoleIds"]}
+                onChange={(next) => patch("registrations.coordinatorRoleIds", next)}
+                emptyHint={incidentRolesEmpty}
+              />
+            </div>
+          </>
+        ) : null}
+
+        {tab === "transfers" ? (
+          <>
+            <h2 className="panel-title">Переводы</h2>
+            <label className="field">
+              <span>Канал переводов</span>
+              <ChannelSelect
+                id="transfers-channel"
+                value={values["transfers.channelId"] ?? ""}
+                onChange={(v) => patch("transfers.channelId", v || null)}
+                channels={channels}
+                guildDiscordId={incidentGuildId}
+                emptyLabel={channelEmpty}
+              />
+            </label>
+            <label className="field">
+              <span>Текст ЛС после одобрения</span>
+              <textarea
+                value={values["transfers.approvalDmText"]}
+                onChange={(e) => patch("transfers.approvalDmText", e.target.value)}
+                rows={4}
+              />
+            </label>
+          </>
+        ) : null}
+
+        {tab === "icBlacklist" ? (
+          <>
+            <h2 className="panel-title">IC чёрный список — настройки</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Реестр записей — в разделе{" "}
+              <Link href="/ic-blacklist" className="stub-link">
+                Информация → IC ЧС реестр
+              </Link>
+              .
+            </p>
+            <label className="field">
               <span>
-                <strong>{panel.guildDiscordId} / {panel.channelDiscordId}</strong> · {panel.messageDiscordId ? `Опубликовано (сообщение ${panel.messageDiscordId})` : "В очереди на публикацию"}
+                <input
+                  type="checkbox"
+                  checked={values["icBlacklist.enabled"]}
+                  onChange={(e) => patch("icBlacklist.enabled", e.target.checked)}
+                  style={{ marginRight: "0.5rem" }}
+                />
+                Модуль IC ЧС включён
               </span>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => void fetch("/api/settings/stage4", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "archive-panel", id: panel.id }) }).then(() => load())}
-              >
-                Архивировать
-              </button>
-            </li>
-          ))}
-        </ul>
+            </label>
+            <label className="field">
+              <span>Канал публикации</span>
+              <ChannelSelect
+                id="ic-blacklist-channel"
+                value={values["icBlacklist.channelId"] ?? ""}
+                onChange={(v) => patch("icBlacklist.channelId", v || null)}
+                channels={channels}
+                guildDiscordId={incidentGuildId}
+                emptyLabel={channelEmpty}
+              />
+            </label>
+            <div className="field">
+              <span className="field-label">Роли управления ЧС</span>
+              <RoleChipPicker
+                roles={incidentRoles}
+                selected={values["icBlacklist.managerRoleIds"]}
+                onChange={(next) => patch("icBlacklist.managerRoleIds", next)}
+                emptyHint={incidentRolesEmpty}
+              />
+            </div>
+            <div className="field">
+              <span className="field-label">Роли поиска ЧС</span>
+              <RoleChipPicker
+                roles={incidentRoles}
+                selected={values["icBlacklist.searchRoleIds"]}
+                onChange={(next) => patch("icBlacklist.searchRoleIds", next)}
+                emptyHint={incidentRolesEmpty}
+              />
+            </div>
+          </>
+        ) : null}
+
+        {tab === "tokens" ? (
+          <>
+            <h2 className="panel-title">Токены и нашивки</h2>
+            <label className="field">
+              <span>Порог расширения наших, %</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                value={values["tokens.expandThresholdPercent"]}
+                onChange={(e) => patch("tokens.expandThresholdPercent", Number(e.target.value))}
+              />
+            </label>
+            <div className="field">
+              <span className="field-label">Роли /token find</span>
+              <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+                Роли главного сервера, которым разрешён поиск нашивок.
+              </p>
+              <RoleChipPicker
+                roles={mainRoles}
+                selected={values["tokens.finderRoleIds"]}
+                onChange={(next) => patch("tokens.finderRoleIds", next)}
+                emptyHint={mainRolesEmpty}
+              />
+            </div>
+          </>
+        ) : null}
+
+        {tab === "webhooks" ? (
+          <>
+            <h2 className="panel-title">Webhooks — уведомления</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Очередь запросов и создание форм — в{" "}
+              <Link href="/settings/webhooks" className="stub-link">
+                Администрирование → Webhooks
+              </Link>
+              .
+            </p>
+            <label className="field">
+              <span>Канал уведомлений о запросах</span>
+              <ChannelSelect
+                id="webhooks-notify"
+                value={values["webhooks.notifyChannelId"] ?? ""}
+                onChange={(v) => patch("webhooks.notifyChannelId", v || null)}
+                channels={channels}
+                guildDiscordId={incidentGuildId}
+                emptyLabel={channelEmpty}
+              />
+            </label>
+          </>
+        ) : null}
+
+        {tab === "feedback" ? (
+          <>
+            <h2 className="panel-title">Обратная связь — уведомления</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Тикеты игроков — в{" "}
+              <Link href="/feedback" className="stub-link">
+                Информация → Обратная связь
+              </Link>
+              .
+            </p>
+            <label className="field">
+              <span>Канал уведомлений</span>
+              <ChannelSelect
+                id="feedback-notify"
+                value={values["feedback.notifyChannelId"] ?? ""}
+                onChange={(v) => patch("feedback.notifyChannelId", v || null)}
+                channels={channels}
+                guildDiscordId={incidentGuildId}
+                emptyLabel={channelEmpty}
+              />
+            </label>
+          </>
+        ) : null}
+
+        {tab === "invites" ? (
+          <>
+            <h2 className="panel-title">Инвайты</h2>
+            <label className="field">
+              <span>Срок инвайта по умолчанию, сек</span>
+              <input
+                type="number"
+                min={60}
+                max={604800}
+                step={1}
+                value={values["invites.defaultMaxAgeSeconds"]}
+                onChange={(e) => patch("invites.defaultMaxAgeSeconds", Number(e.target.value))}
+              />
+            </label>
+            <div className="field">
+              <span className="field-label">Серверы команды /инвайт-админ</span>
+              <GuildChipPicker
+                guilds={guilds}
+                selected={values["invites.guildIds"]}
+                onChange={(next) => patch("invites.guildIds", next)}
+                emptyHint="Нет синхронизированных серверов."
+              />
+            </div>
+          </>
+        ) : null}
+
+        <button className="btn btn-primary" type="button" disabled={pending} onClick={() => void save()}>
+          {pending ? "Сохранение…" : "Сохранить"}
+        </button>
+        {message ? (
+          <p className="muted" role="status">
+            {message}
+          </p>
+        ) : null}
       </section>
-      <section className="panel stack">
-        <h2 className="panel-title">Очередь запросов webhook</h2>
-        <p className="muted">
-          Запросы из <code>/создать-webhook</code>. URL уже создан ботом — подставьте в форму и отметьте «форма собрана».
-        </p>
-        {data.webhookRequests.length === 0 ? (
-          <p className="muted">Запросов пока нет.</p>
-        ) : (
-          <ul>
-            {data.webhookRequests.map((req) => (
-              <li
-                key={req.id}
-                className="stack"
-                style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "0.75rem", marginBottom: "0.75rem" }}
-              >
-                <div>
-                  <strong>{req.status}</strong> · <code>{req.id}</code> · канал <code>{req.channelDiscordId}</code> · заявитель{" "}
-                  <code>{req.requesterDiscordId}</code>
-                </div>
-                <div>{req.description}</div>
-                {req.webhookUrl ? (
-                  <code style={{ wordBreak: "break-all", fontSize: "0.85rem" }}>{req.webhookUrl}</code>
-                ) : (
-                  <span className="muted">URL ещё не сохранён</span>
-                )}
-                <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-                  <button className="btn btn-secondary" type="button" onClick={() => useWebhookUrl(req.webhookUrl)}>
-                    Подставить URL в форму
-                  </button>
-                  {req.status === "PENDING" ? (
-                    <>
-                      <button
-                        className="btn btn-primary"
-                        type="button"
-                        onClick={() => void webhookStatus(req.id, "FORM_BUILT").catch((error) => setMessage(error.message))}
-                      >
-                        Форма собрана
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        type="button"
-                        onClick={() => void webhookStatus(req.id, "REJECTED").catch((error) => setMessage(error.message))}
-                      >
-                        Отклонить
-                      </button>
-                    </>
-                  ) : null}
-                  {req.status === "FORM_BUILT" ? (
-                    <button
-                      className="btn btn-secondary"
-                      type="button"
-                      onClick={() => void webhookStatus(req.id, "CLOSED").catch((error) => setMessage(error.message))}
-                    >
-                      Закрыть
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="panel stack">
-        <h2 className="panel-title">IC чёрный список (реестр)</h2>
-        <p className="muted">
-          Публикация из Discord: <code>/чс-гос</code> и <code>/снятие-чс-гос</code>. Ниже — последние записи.
-        </p>
-        {data.icBlacklist.length === 0 ? (
-          <p className="muted">Записей пока нет.</p>
-        ) : (
-          <ul>
-            {data.icBlacklist.map((entry) => (
-              <li key={entry.id}>
-                <strong>{entry.number}</strong> · {entry.status} · {entry.fullName} · паспорт <code>{entry.staticId}</code> —{" "}
-                {entry.reason}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="panel stack">
-        <h2 className="panel-title">Обратная связь (Feedback)</h2>
-        <ul>
-          {data.feedback.map((ticket) => (
-            <li key={ticket.id} className="stack" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "0.75rem", marginBottom: "0.75rem" }}>
-              <div>
-                <strong>{ticket.category}</strong> · Статус: <code>{ticket.status}</code> · Автор: <code>{ticket.authorDiscordId}</code>
-              </div>
-              <ul style={{ margin: "0.5rem 0", paddingLeft: "1.2rem" }}>
-                {ticket.messages.map((item, idx) => (
-                  <li key={idx}><strong>{item.authorDiscordId}:</strong> {item.content}</li>
-                ))}
-              </ul>
-              {ticket.status !== "CLOSED" ? (
-                <div className="row">
-                  <input
-                    value={reply[ticket.id] ?? ""}
-                    onChange={(event) => setReply((prev) => ({ ...prev, [ticket.id]: event.target.value }))}
-                    placeholder="Ответ администратора (будет отправлен игроку в ЛС Discord)..."
-                  />
-                  <button className="btn btn-primary" type="button" onClick={() => void feedbackAction("reply-feedback", ticket.id)}>Ответить в ЛС</button>
-                  <button className="btn btn-secondary" type="button" onClick={() => void feedbackAction("close-feedback", ticket.id)}>Закрыть тикет</button>
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </section>
-      {message ? <p className="muted" role="status">{message}</p> : null}
     </div>
   );
 }

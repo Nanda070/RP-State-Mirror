@@ -1,12 +1,9 @@
 import {
   createDiscordForm,
-  createRolePanel,
-  archiveRolePanel,
   closeFeedbackTicket,
   addFeedbackMessage,
   listFeedbackTickets,
   listIcBlacklistEntries,
-  listRolePanels,
   listWebhookRequests,
   getSetting,
   isSettingKey,
@@ -42,13 +39,6 @@ const snowflake = z.string().regex(/^\d{17,20}$/);
 
 const bodySchema = z.object({
   settings: z.record(z.unknown()).optional(),
-  rolePanel: z
-    .object({
-      guildDiscordId: z.string().min(1),
-      channelDiscordId: z.string().min(1),
-      spec: z.record(z.unknown()),
-    })
-    .optional(),
   form: z
     .object({
       name: z.string().trim().min(1).max(120),
@@ -86,7 +76,6 @@ export async function GET() {
     ]);
     return Response.json({
       settings: Object.fromEntries(settings),
-      panels: await listRolePanels(),
       forms,
       feedback: await listFeedbackTickets(),
       webhookRequests: await listWebhookRequests({ limit: 40 }),
@@ -98,7 +87,6 @@ export async function GET() {
 }
 
 const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("archive-panel"), id: z.string().min(1) }),
   z.object({ action: z.literal("close-feedback"), id: z.string().min(1) }),
   z.object({ action: z.literal("reply-feedback"), id: z.string().min(1), content: z.string().trim().min(1).max(4000) }),
   z.object({
@@ -113,9 +101,6 @@ export async function PATCH(request: Request) {
     const { session } = await requireSystemSettings();
     const action = actionSchema.parse(await request.json());
     const context = await dashboardAuditContext(session.user.id);
-    if (action.action === "archive-panel") {
-      return Response.json(await archiveRolePanel(action.id, context));
-    }
     if (action.action === "close-feedback") {
       return Response.json(await closeFeedbackTicket(action.id, context));
     }
@@ -141,14 +126,6 @@ export async function POST(request: Request) {
       updated[key] = await setSetting(key as SettingKey, value as never, context);
     }
 
-    let panel = null;
-    if (body.rolePanel) {
-      panel = await createRolePanel(
-        { ...body.rolePanel, createdByDiscordId: session.user.id },
-        context,
-      );
-    }
-
     let form = null;
     if (body.form) {
       form = await createDiscordForm(
@@ -165,7 +142,7 @@ export async function POST(request: Request) {
         context,
       );
     }
-    return Response.json({ settings: updated, panel, form });
+    return Response.json({ settings: updated, form });
   } catch (error) {
     return jsonError(error);
   }

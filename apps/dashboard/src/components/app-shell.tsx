@@ -17,7 +17,23 @@ type NavItem = {
   match?: "exact" | "prefix";
   /** Hide unless SUPER_ADMIN / ГА (`canManageSystemSettings`). */
   requiresSystemSettings?: boolean;
-  icon: "home" | "user" | "docs" | "wanted" | "fines" | "people" | "settings" | "system" | "roles" | "factions" | "embeds" | "buttons";
+  icon:
+    | "home"
+    | "user"
+    | "docs"
+    | "wanted"
+    | "fines"
+    | "people"
+    | "blacklist"
+    | "feedback"
+    | "settings"
+    | "system"
+    | "roles"
+    | "factions"
+    | "embeds"
+    | "forms"
+    | "webhooks"
+    | "modules";
 };
 
 const NAV: NavItem[] = [
@@ -27,8 +43,11 @@ const NAV: NavItem[] = [
   { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted" },
   { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines" },
   { href: "/personnel", label: "Персонал", group: "Информация", match: "prefix", icon: "people" },
+  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist" },
+  { href: "/feedback", label: "Обратная связь", group: "Информация", match: "prefix", icon: "feedback" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", match: "prefix", icon: "embeds" },
-  { href: "/settings/buttons", label: "Кнопки", group: "Администрирование", match: "prefix", icon: "buttons" },
+  { href: "/settings/forms", label: "Discord-формы", group: "Администрирование", match: "prefix", icon: "forms" },
+  { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование", match: "prefix", icon: "webhooks" },
   {
     href: "/settings",
     label: "Настройки",
@@ -61,12 +80,27 @@ const NAV: NavItem[] = [
     icon: "factions",
     requiresSystemSettings: true,
   },
+  {
+    href: "/settings/stage4",
+    label: "Модули",
+    group: "Настройка Фракций",
+    match: "prefix",
+    icon: "modules",
+    requiresSystemSettings: true,
+  },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {
   if (item.match === "exact") return pathname === item.href;
   if (item.href === "/settings/system") {
     return pathname.startsWith("/settings/system") || pathname.startsWith("/settings/guilds");
+  }
+  if (item.href === "/settings/stage4") {
+    return (
+      pathname.startsWith("/settings/stage4") ||
+      pathname.startsWith("/settings/tokens") ||
+      pathname.startsWith("/settings/registrations")
+    );
   }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
@@ -197,11 +231,49 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
           <path d="M8 9.5h5M8 13h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       );
-    case "buttons":
+    case "forms":
       return (
         <svg {...common}>
-          <rect x="5" y="8" width="14" height="8" rx="3" stroke="currentColor" strokeWidth="1.6" />
-          <circle cx="9" cy="12" r="1.2" fill="currentColor" />
+          <rect x="5" y="4.5" width="14" height="15" rx="2" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8 9h8M8 12.5h8M8 16h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "webhooks":
+      return (
+        <svg {...common}>
+          <path
+            d="M8 8a4 4 0 1 1 4 4H7.5M16 16a4 4 0 1 1-4-4h4.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+    case "blacklist":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M7.5 7.5 16.5 16.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "feedback":
+      return (
+        <svg {...common}>
+          <path
+            d="M5 7.5h14v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 3v-3A1.5 1.5 0 0 1 5 16.5v-9Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "modules":
+      return (
+        <svg {...common}>
+          <rect x="4.5" y="4.5" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+          <rect x="13" y="4.5" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+          <rect x="4.5" y="13" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+          <rect x="13" y="13" width="6.5" height="6.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
         </svg>
       );
     default:

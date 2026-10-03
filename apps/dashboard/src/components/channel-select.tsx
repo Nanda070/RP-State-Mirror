@@ -4,6 +4,7 @@ export type ChannelOption = {
   discordId: string;
   name: string;
   guildDiscordId: string;
+  guildName?: string;
 };
 
 export function ChannelSelect({
@@ -32,7 +33,7 @@ export function ChannelSelect({
       {allowEmpty ? <option value="">{emptyLabel}</option> : null}
       {options.map((c) => (
         <option key={c.discordId} value={c.discordId}>
-          #{c.name}
+          {guildDiscordId || !c.guildName ? `#${c.name}` : `#${c.name} · ${c.guildName}`}
         </option>
       ))}
     </select>

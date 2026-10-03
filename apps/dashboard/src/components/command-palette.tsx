@@ -24,8 +24,11 @@ const ITEMS: PaletteItem[] = [
   { href: "/wanted", label: "Розыск", group: "Информация" },
   { href: "/fines", label: "Штрафы", group: "Информация" },
   { href: "/personnel", label: "Персонал", group: "Информация" },
+  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация" },
+  { href: "/feedback", label: "Обратная связь", group: "Информация" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование" },
-  { href: "/settings/buttons", label: "Кнопки", group: "Администрирование" },
+  { href: "/settings/forms", label: "Discord-формы", group: "Администрирование" },
+  { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование" },
   {
     href: "/settings",
     label: "Настройки — каталог модулей",
@@ -51,6 +54,12 @@ const ITEMS: PaletteItem[] = [
     requiresSystemSettings: true,
   },
   {
+    href: "/settings/stage4",
+    label: "Конфигурация модулей",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
     href: "/settings/documents",
     label: "Настройки документов",
     group: "Настройка Фракций",
@@ -65,18 +74,6 @@ const ITEMS: PaletteItem[] = [
   {
     href: "/settings/fines",
     label: "Настройки штрафов",
-    group: "Настройка Фракций",
-    requiresSystemSettings: true,
-  },
-  {
-    href: "/settings/tokens",
-    label: "Токены (скоро)",
-    group: "Настройка Фракций",
-    requiresSystemSettings: true,
-  },
-  {
-    href: "/settings/registrations",
-    label: "Регистрации (скоро)",
     group: "Настройка Фракций",
     requiresSystemSettings: true,
   },

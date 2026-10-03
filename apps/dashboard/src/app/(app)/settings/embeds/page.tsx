@@ -38,14 +38,14 @@ export default async function SettingsEmbedsPage() {
         <h1>Эмбеды</h1>
         <p className="muted">
           Конструктор Classic / Components V2: превью, сохранение, архив и отправка ботом в канал
-          выбранного сервера. Панели кнопок — отдельно в разделе «Кнопки».
+          выбранного сервера.
         </p>
         <div className="status-link-row">
           <span className="stub-badge" data-ready>
             Готово
           </span>
-          <Link href="/settings/buttons" className="stub-link">
-            К кнопкам
+          <Link href="/settings/forms" className="stub-link">
+            К формам
           </Link>
         </div>
       </div>
