@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 
 type FormField = {
+  /** Stable React list identity — never used as Discord field key / API payload. */
+  clientId: string;
   key: string;
   label: string;
   type: string;
@@ -19,12 +21,16 @@ type FormRow = {
   _count: { submissions: number };
 };
 
-const EMPTY_FIELD: FormField = {
-  key: "name",
-  label: "Имя",
-  type: "short",
-  required: true,
-};
+function createEmptyField(overrides?: Partial<Omit<FormField, "clientId">>): FormField {
+  return {
+    clientId: crypto.randomUUID(),
+    key: "name",
+    label: "Имя",
+    type: "short",
+    required: true,
+    ...overrides,
+  };
+}
 
 export function DiscordFormsManager({
   initialForms,
@@ -40,7 +46,7 @@ export function DiscordFormsManager({
   const [formWebhookUrl, setFormWebhookUrl] = useState(initialWebhookUrl);
   const [formDeliveryChannelId, setFormDeliveryChannelId] = useState("");
   const [formResponseLimit, setFormResponseLimit] = useState("");
-  const [formFields, setFormFields] = useState<FormField[]>([{ ...EMPTY_FIELD }]);
+  const [formFields, setFormFields] = useState<FormField[]>(() => [createEmptyField()]);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -48,6 +54,12 @@ export function DiscordFormsManager({
     setPending(true);
     setMessage(null);
     try {
+      const fieldsPayload = formFields.map(({ key, label, type, required }) => ({
+        key,
+        label,
+        type,
+        required,
+      }));
       const response = await fetch("/api/settings/stage4", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,7 +69,7 @@ export function DiscordFormsManager({
             webhookUrl: formWebhookUrl.trim() || null,
             deliveryChannelId: formDeliveryChannelId.trim() || null,
             responseLimit: formResponseLimit.trim() ? Number(formResponseLimit) : null,
-            fields: formFields,
+            fields: fieldsPayload,
           },
         }),
       });
@@ -67,7 +79,7 @@ export function DiscordFormsManager({
         setForms((prev) => [
           {
             ...body.form!,
-            fields: formFields.map((f) => ({ key: f.key, label: f.label })),
+            fields: fieldsPayload.map((f) => ({ key: f.key, label: f.label })),
             _count: body.form!._count ?? { submissions: 0 },
           },
           ...prev,
@@ -77,7 +89,7 @@ export function DiscordFormsManager({
       setFormWebhookUrl("");
       setFormDeliveryChannelId("");
       setFormResponseLimit("");
-      setFormFields([{ ...EMPTY_FIELD }]);
+      setFormFields([createEmptyField()]);
       setMessage("Форма создана.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка создания формы");
@@ -86,7 +98,7 @@ export function DiscordFormsManager({
     }
   }
 
-  function updateField(index: number, patch: Partial<FormField>) {
+  function updateField(index: number, patch: Partial<Omit<FormField, "clientId">>) {
     setFormFields((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
@@ -142,7 +154,7 @@ export function DiscordFormsManager({
         <div className="stack" style={{ gap: "0.65rem" }}>
           <span className="field-label">Поля формы</span>
           {formFields.map((field, index) => (
-            <div className="form-field-row" key={`${field.key}-${index}`}>
+            <div className="form-field-row" key={field.clientId}>
               <label className="field" style={{ marginBottom: 0 }}>
                 <span>Ключ</span>
                 <input
@@ -189,7 +201,12 @@ export function DiscordFormsManager({
             onClick={() =>
               setFormFields((prev) => [
                 ...prev,
-                { key: `field_${prev.length + 1}`, label: "Новое поле", type: "short", required: false },
+                createEmptyField({
+                  key: `field_${prev.length + 1}`,
+                  label: "Новое поле",
+                  type: "short",
+                  required: false,
+                }),
               ])
             }
           >
