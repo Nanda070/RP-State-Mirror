@@ -17,6 +17,7 @@ import {
 } from "./embeds.js";
 import { enqueueJob } from "./jobs.js";
 import { MODULE_JOB_TYPES } from "./module-jobs.js";
+import { UserError } from "./errors.js";
 
 // ──────────────────────────────────────────────────────────────
 // Design CRUD
@@ -52,7 +53,7 @@ export async function updateMessageDesign(
 ) {
   return auditedMutation(context, "message_design.updated", "message_design", async (tx) => {
     const existing = await tx.messageDesign.findUnique({ where: { id } });
-    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new Error("Шаблон не найден");
+    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new UserError("Шаблон не найден");
     const updated = await tx.messageDesign.update({
       where: { id },
       data: {
@@ -68,7 +69,7 @@ export async function updateMessageDesign(
 export async function archiveMessageDesign(id: string, context: AuditContext) {
   return auditedMutation(context, "message_design.archived", "message_design", async (tx) => {
     const existing = await tx.messageDesign.findUnique({ where: { id } });
-    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new Error("Шаблон не найден");
+    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new UserError("Шаблон не найден");
     const updated = await tx.messageDesign.update({
       where: { id },
       data: { status: RecordStatus.ARCHIVED },
@@ -142,7 +143,7 @@ export async function listSentMessages(limit = 50) {
 export async function archiveSentMessage(id: string, context: AuditContext) {
   return auditedMutation(context, "sent_message.archived", "sent_message", async (tx) => {
     const existing = await tx.sentMessage.findUnique({ where: { id } });
-    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new Error("Сообщение не найдено");
+    if (!existing || existing.status !== RecordStatus.ACTIVE) throw new UserError("Сообщение не найдено");
     const updated = await tx.sentMessage.update({
       where: { id },
       data: { status: RecordStatus.ARCHIVED },
@@ -249,7 +250,7 @@ export type SendMessageDesignInput = z.infer<typeof sendMessageDesignSchema>;
 export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db?: Db) {
   const data = sendMessageDesignSchema.parse(input);
   const design = await prisma.messageDesign.findUnique({ where: { id: data.designId } });
-  if (!design || design.status !== RecordStatus.ACTIVE) throw new Error("Шаблон не найден");
+  if (!design || design.status !== RecordStatus.ACTIVE) throw new UserError("Шаблон не найден");
   return enqueueJob(
     {
       type: MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND,
@@ -265,7 +266,7 @@ export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db
 
 export async function enqueueMessageDesignResend(sentMessageId: string, db?: Db) {
   const sent = await prisma.sentMessage.findUnique({ where: { id: sentMessageId } });
-  if (!sent || sent.status !== RecordStatus.ACTIVE) throw new Error("Отправленное сообщение не найдено");
+  if (!sent || sent.status !== RecordStatus.ACTIVE) throw new UserError("Отправленное сообщение не найдено");
   return enqueueJob(
     {
       type: MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND,

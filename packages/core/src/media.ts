@@ -61,7 +61,7 @@ function storageClient() {
   const region = process.env.S3_REGION ?? "us-east-1";
   const accessKeyId = process.env.S3_ACCESS_KEY;
   const secretAccessKey = process.env.S3_SECRET_KEY;
-  if (!endpoint || !accessKeyId || !secretAccessKey) throw new Error("Хранилище файлов (S3) не настроено.");
+  if (!endpoint || !accessKeyId || !secretAccessKey) throw new UserError("Хранилище файлов (S3) не настроено.");
   return new S3Client({
     endpoint,
     region,
@@ -72,7 +72,7 @@ function storageClient() {
 
 function storageBucket(): string {
   const bucket = process.env.S3_BUCKET;
-  if (!bucket) throw new Error("Хранилище файлов (S3_BUCKET) не настроено.");
+  if (!bucket) throw new UserError("Хранилище файлов (S3_BUCKET) не настроено.");
   return bucket;
 }
 
@@ -99,7 +99,7 @@ export async function storeMediaFromUrl(
   const safeUrl = assertDiscordMediaUrl(url);
   const bucket = storageBucket();
   const response = await fetch(safeUrl, { redirect: "error", signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
-  if (!response.ok) throw new Error(`Не удалось скачать вложение: HTTP ${response.status}`);
+  if (!response.ok) throw new UserError(`Не удалось скачать вложение: HTTP ${response.status}`);
   const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ?? "application/octet-stream";
   if (metadata.allowedContentTypes && !metadata.allowedContentTypes.has(contentType)) {
     await response.body?.cancel();
@@ -165,7 +165,7 @@ export async function readMediaFile(id: string) {
   const file = await prisma.mediaFile.findFirst({ where: { id, status: RecordStatus.ACTIVE } });
   if (!file) return null;
   const object = await storageClient().send(new GetObjectCommand({ Bucket: storageBucket(), Key: file.objectKey }));
-  if (!object.Body) throw new Error(`Пустой объект хранилища для ${id}`);
+  if (!object.Body) throw new UserError(`Пустой объект хранилища для ${id}`);
   const body = Buffer.from(await object.Body.transformToByteArray());
   return { file, body, attachmentName: `${file.id}.${mediaExtension(file.contentType)}` };
 }
@@ -173,7 +173,7 @@ export async function readMediaFile(id: string) {
 export async function archiveMediaFile(id: string, context: AuditContext) {
   return auditedMutation(context, "media_file.archived", "media_file", async (tx) => {
     const current = await tx.mediaFile.findUnique({ where: { id } });
-    if (!current || current.status !== "ACTIVE") throw new Error("Медиафайл не найден или уже архивирован.");
+    if (!current || current.status !== "ACTIVE") throw new UserError("Медиафайл не найден или уже архивирован.");
     const updated = await tx.mediaFile.update({ where: { id }, data: { status: "ARCHIVED" } });
     return { entityId: id, before: current, after: updated, result: updated };
   });

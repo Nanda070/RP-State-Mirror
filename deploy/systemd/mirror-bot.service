@@ -1,0 +1,25 @@
+[Unit]
+Description=Mirror Discord bot
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=mirror
+Group=mirror
+WorkingDirectory=/opt/mirror/apps/bot
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --env-file=/opt/mirror/.env dist/index.js
+# The bot exits with an error code on an unexpected failure and is started again here.
+Restart=on-failure
+RestartSec=5
+# Finish the job in hand before stopping.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

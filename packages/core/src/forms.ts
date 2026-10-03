@@ -15,6 +15,7 @@ import { SNOWFLAKE_RE } from "./env.js";
 import { UserError } from "./errors.js";
 import { toCsv } from "./exports.js";
 import { enqueueFormSubmissionDeliver } from "./module-jobs.js";
+import { discordWebhookUrlSchema } from "./text.js";
 
 export const FORM_FIELD_TYPES = ["short", "paragraph", "number", "select", "multiselect", "checkbox", "date"] as const;
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
@@ -45,13 +46,7 @@ export class FormError extends UserError {
 // Schemas
 // ──────────────────────────────────────────────────────────────
 
-const DISCORD_WEBHOOK_RE = /^https:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d{1,20}\/[\w-]+$/;
-
-/** Only real Discord webhook URLs: the bot posts to this address, so an arbitrary host would be SSRF. */
-export const discordWebhookUrlSchema = z
-  .string()
-  .trim()
-  .regex(DISCORD_WEBHOOK_RE, "Нужна ссылка вебхука Discord вида https://discord.com/api/webhooks/…");
+export { discordWebhookUrlSchema };
 
 const validationSchema = z
   .object({

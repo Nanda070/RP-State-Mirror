@@ -12,7 +12,6 @@ export default async function SettingsWantedPage() {
     getSettings([
       "wanted.enabled",
       "wanted.channelId",
-      "wanted.pingRoleIds",
       "wanted.coordinatorRoleIds",
       "core.incidentGuildId",
     ] as const),
@@ -77,7 +76,6 @@ export default async function SettingsWantedPage() {
       <SettingsWantedForm
         initialEnabled={settings["wanted.enabled"]}
         initialChannelId={settings["wanted.channelId"]}
-        initialPingRoleIds={settings["wanted.pingRoleIds"]}
         initialCoordinatorRoleIds={settings["wanted.coordinatorRoleIds"]}
         incidentGuildId={incidentGuildId}
         channels={channels.map((c) => ({

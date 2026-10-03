@@ -46,7 +46,8 @@ type NavItem = {
     | "stats"
     | "status"
     | "sessions"
-    | "audit";
+    | "audit"
+    | "transfer";
 };
 
 const NAV: NavItem[] = [
@@ -76,6 +77,8 @@ const NAV: NavItem[] = [
     icon: "uniform",
     requiresStaff: true,
   },
+  { href: "/transfers", label: "Переводы", group: "Информация", match: "prefix", icon: "transfer", requiresStaff: true },
+  { href: "/tokens", label: "Нашивки", group: "Информация", match: "prefix", icon: "user", requiresStaff: true },
   {
     href: "/feedback",
     label: "Обратная связь",
@@ -87,6 +90,22 @@ const NAV: NavItem[] = [
   { href: "/bans", label: "Тех. баны", group: "Администрирование", match: "prefix", icon: "ban", requiresAdmin: true },
   { href: "/stats", label: "Статистика", group: "Администрирование", match: "prefix", icon: "stats", requiresAdmin: true },
   { href: "/status", label: "Статус", group: "Администрирование", match: "prefix", icon: "status", requiresStaff: true },
+  {
+    href: "/audit",
+    label: "Журнал аудита",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "audit",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/jobs",
+    label: "Очередь задач",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "modules",
+    requiresSystemSettings: true,
+  },
   {
     href: "/settings/embeds",
     label: "Эмбеды",
@@ -122,7 +141,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings",
     label: "Настройки",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "exact",
     icon: "settings",
     requiresSystemSettings: true,
@@ -130,7 +149,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/system",
     label: "Система",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "prefix",
     icon: "system",
     requiresSystemSettings: true,
@@ -138,7 +157,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/roles",
     label: "Роли",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "prefix",
     icon: "roles",
     requiresSystemSettings: true,
@@ -146,7 +165,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/factions",
     label: "Фракции",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "prefix",
     icon: "factions",
     requiresSystemSettings: true,
@@ -154,7 +173,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/admin-roles",
     label: "Admin-роли",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "prefix",
     icon: "roles",
     requiresSystemSettings: true,
@@ -162,7 +181,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/sessions",
     label: "Сессии",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "prefix",
     icon: "sessions",
     requiresSystemSettings: true,
@@ -170,7 +189,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/stage4",
     label: "Модули",
-    group: "Настройка Фракций",
+    group: "Настройка фракций",
     match: "prefix",
     icon: "modules",
     requiresSystemSettings: true,
@@ -441,6 +460,25 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
         <svg {...common}>
           <rect x="3.5" y="5" width="17" height="11" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
           <path d="M8.5 19.5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "audit":
+      return (
+        <svg {...common}>
+          <path d="M7 4.5h10a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M9 9h6M9 12.5h6M9 16h3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "transfer":
+      return (
+        <svg {...common}>
+          <path
+            d="M4.5 8.5h13m0 0-3-3m3 3-3 3M19.5 15.5h-13m0 0 3-3m-3 3 3 3"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       );
     case "modules":

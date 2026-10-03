@@ -1,5 +1,6 @@
-import { listActiveRoleMappings } from "@mirror/core";
+import { getSettings, listActiveRoleMappings } from "@mirror/core";
 import Link from "next/link";
+import { CommandRolesForm } from "@/components/command-roles-form";
 import { SettingsRolesForm } from "@/components/settings-roles-form";
 import {
   getActiveFactionOptions,
@@ -11,11 +12,17 @@ import { requireSystemSettingsPage } from "@/lib/session";
 export default async function SettingsRolesPage() {
   await requireSystemSettingsPage();
 
-  const [mappings, guilds, factions, roles] = await Promise.all([
+  const [mappings, guilds, factions, roles, commandRoles] = await Promise.all([
     listActiveRoleMappings(),
     getActiveGuildOptions(),
     getActiveFactionOptions(),
     getActiveRoleOptions(),
+    getSettings([
+      "documents.posterRoleIds",
+      "documents.responderRoleIds",
+      "fines.managerRoleIds",
+      "personnel.managerRoleIds",
+    ] as const),
   ]);
 
   return (
@@ -27,7 +34,9 @@ export default async function SettingsRolesPage() {
           <span>Роли</span>
         </p>
         <h1>Роли</h1>
-        <p className="muted">Привязка Discord-ролей к уровням доступа и фракциям.</p>
+        <p className="muted">
+          Привязка Discord-ролей к уровням доступа и фракциям, права на команды бота.
+        </p>
       </div>
       <SettingsRolesForm
         initialMappings={mappings.map((m) => ({
@@ -41,6 +50,16 @@ export default async function SettingsRolesPage() {
         guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         factions={factions}
         roles={roles}
+      />
+      <CommandRolesForm
+        guilds={guilds.map((guild) => ({
+          discordId: guild.discordId,
+          name: guild.name,
+          roles: roles
+            .filter((role) => role.guild.discordId === guild.discordId && role.name !== "@everyone")
+            .map((role) => ({ discordId: role.discordId, name: role.name })),
+        }))}
+        initial={commandRoles}
       />
     </div>
   );

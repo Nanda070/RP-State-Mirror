@@ -5,6 +5,7 @@ import {
   BOT_SERVICE,
   HEARTBEAT_INTERVAL_MS,
   archiveOldAuditLog,
+  claimOverdueFines,
   botEnvSchema,
   createLogger,
   expireDocuments,
@@ -58,6 +59,8 @@ async function runMaintenance() {
     expirePendingRegistrations(),
     expirePendingTransfers(),
   ]);
+  const overdueFines = await claimOverdueFines();
+  if (overdueFines > 0) log.info({ overdueFines }, "maintenance: overdue fine notices queued");
   // Old audit rows move to the archive table a batch at a time; a backlog drains over several runs.
   const archived = await archiveOldAuditLog();
   if (archived > 0) log.info({ archived }, "maintenance: audit rows archived");

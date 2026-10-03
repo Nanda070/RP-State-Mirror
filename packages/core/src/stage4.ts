@@ -31,6 +31,7 @@ import {
 import { embedSpecSchema } from "./embeds.js";
 import { getSetting } from "./settings.js";
 import { assertNotTechBanned } from "./tech-bans.js";
+import { UserError } from "./errors.js";
 
 const snowflakeLike = z.string().min(1).max(32);
 const snowflakeStrict = z.string().regex(/^\d{17,20}$/);
@@ -61,13 +62,13 @@ export async function createCharacter(input: CreateCharacterInput, context: Audi
       where: { userId: data.userId, status: RecordStatus.ACTIVE },
       select: { slot: true },
     });
-    if (active.length >= 3) throw new Error("У Discord-аккаунта уже три активных персонажа.");
-    if (active.some((item) => item.slot === data.slot)) throw new Error(`Слот ${data.slot} уже занят.`);
+    if (active.length >= 3) throw new UserError("У Discord-аккаунта уже три активных персонажа.");
+    if (active.some((item) => item.slot === data.slot)) throw new UserError(`Слот ${data.slot} уже занят.`);
     const staticTaken = await tx.character.findFirst({
       where: { staticId: data.staticId, status: RecordStatus.ACTIVE },
       select: { id: true },
     });
-    if (staticTaken) throw new Error("Этот статик уже привязан к другому персонажу.");
+    if (staticTaken) throw new UserError("Этот статик уже привязан к другому персонажу.");
     const character = await tx.character.create({
       data: {
         userId: data.userId,
@@ -156,17 +157,17 @@ export async function updateCharacterStaticId(
   context: AuditContext,
 ) {
   const data = updateCharacterStaticSchema.parse(input);
-  if (data.currentStaticId === data.newStaticId) throw new Error("Новый статик совпадает с текущим.");
+  if (data.currentStaticId === data.newStaticId) throw new UserError("Новый статик совпадает с текущим.");
   return auditedMutation(context, "character.static_updated", "character", async (tx) => {
     const current = await tx.character.findFirst({
       where: { staticId: data.currentStaticId, status: RecordStatus.ACTIVE },
     });
-    if (!current) throw new Error("Активный персонаж с таким статиком не найден.");
+    if (!current) throw new UserError("Активный персонаж с таким статиком не найден.");
     const taken = await tx.character.findFirst({
       where: { staticId: data.newStaticId, status: RecordStatus.ACTIVE },
       select: { id: true },
     });
-    if (taken) throw new Error("Новый статик уже занят другим активным персонажем.");
+    if (taken) throw new UserError("Новый статик уже занят другим активным персонажем.");
     const updated = await tx.character.update({
       where: { id: current.id },
       data: { staticId: data.newStaticId },
@@ -271,15 +272,15 @@ export async function allocateTokenNumber(db: Db): Promise<string> {
       if (!existing) return number;
     }
   }
-  throw new Error("Не удалось подобрать свободный номер нашивки.");
+  throw new UserError("Не удалось подобрать свободный номер нашивки.");
 }
 
 export async function issueToken(characterId: string, context: AuditContext) {
   return auditedMutation(context, "token.issued", "token", async (tx) => {
     const character = await tx.character.findFirst({ where: { id: characterId, status: RecordStatus.ACTIVE } });
-    if (!character) throw new Error("Персонаж не найден или неактивен.");
+    if (!character) throw new UserError("Персонаж не найден или неактивен.");
     const existing = await tx.token.findFirst({ where: { characterId, status: RecordStatus.ACTIVE } });
-    if (existing) throw new Error("У персонажа уже есть активная нашивка.");
+    if (existing) throw new UserError("У персонажа уже есть активная нашивка.");
     const number = await allocateTokenNumber(tx);
     const token = await tx.token.create({ data: { number, characterId } });
     return { entityId: token.id, after: token, result: token };
@@ -310,15 +311,15 @@ export async function receiveTokenForStatic(input: ReceiveTokenForStaticInput, c
       where: { staticId: data.staticId, status: RecordStatus.ACTIVE },
       select: { id: true, userId: true },
     });
-    if (taken) throw new Error("Этот статик уже привязан к другому персонажу.");
+    if (taken) throw new UserError("Этот статик уже привязан к другому персонажу.");
     const active = await prisma.character.findMany({
       where: { userId: data.userId, status: RecordStatus.ACTIVE },
       select: { slot: true },
     });
-    if (active.length >= 3) throw new Error("У Discord-аккаунта уже три активных персонажа.");
+    if (active.length >= 3) throw new UserError("У Discord-аккаунта уже три активных персонажа.");
     const used = new Set(active.map((row) => row.slot));
     const slot = ([1, 2, 3] as const).find((value) => !used.has(value));
-    if (slot == null) throw new Error("У Discord-аккаунта уже три активных персонажа.");
+    if (slot == null) throw new UserError("У Discord-аккаунта уже три активных персонажа.");
     character = {
       ...(await createCharacter(
         {
@@ -342,12 +343,12 @@ export async function receiveTokenForStatic(input: ReceiveTokenForStaticInput, c
 export async function revokeToken(tokenNumber: string, context: AuditContext) {
   return auditedMutation(context, "token.revoked", "token", async (tx) => {
     const token = await tx.token.findUnique({ where: { number: tokenNumber } });
-    if (!token || token.status !== RecordStatus.ACTIVE) throw new Error("Активная нашивка не найдена.");
+    if (!token || token.status !== RecordStatus.ACTIVE) throw new UserError("Активная нашивка не найдена.");
     const { count } = await tx.token.updateMany({
       where: { id: token.id, status: RecordStatus.ACTIVE },
       data: { status: RecordStatus.REVOKED, revokedAt: new Date(), revokedById: context.actorUserId ?? null },
     });
-    if (count !== 1) throw new Error("Активная нашивка не найдена.");
+    if (count !== 1) throw new UserError("Активная нашивка не найдена.");
     const updated = await tx.token.findUniqueOrThrow({ where: { id: token.id } });
     return { entityId: token.id, before: token, after: updated, result: updated };
   });
@@ -389,7 +390,7 @@ const PLATE_RE = /^[0-9A-ZА-ЯЁ-]{2,12}$/;
 
 export function normalizePlate(raw: string): string {
   const plate = raw.trim().toUpperCase().replace(/\s+/g, "");
-  if (!PLATE_RE.test(plate)) throw new Error("Госномер: 2–12 символов (буквы, цифры, дефис).");
+  if (!PLATE_RE.test(plate)) throw new UserError("Госномер: 2–12 символов (буквы, цифры, дефис).");
   return plate;
 }
 
@@ -429,13 +430,13 @@ export async function createRegistration(
     const active = await tx.registration.findFirst({
       where: { staticId: data.staticId, kind: data.kind, status: RecordStatus.ACTIVE },
     });
-    if (active) throw new Error("По этому статику уже есть активная регистрация этого типа.");
+    if (active) throw new UserError("По этому статику уже есть активная регистрация этого типа.");
     if (plate) {
       const plateTaken = await tx.registration.findFirst({
         where: { kind: RegistrationKind.VEHICLE, status: RecordStatus.ACTIVE, plate },
         select: { id: true },
       });
-      if (plateTaken) throw new Error(`Госномер ${plate} уже занят другой активной регистрацией.`);
+      if (plateTaken) throw new UserError(`Госномер ${plate} уже занят другой активной регистрацией.`);
     }
     const created = await tx.registration.create({
       data: {
@@ -460,10 +461,13 @@ export async function decideRegistration(
   context: AuditContext,
 ) {
   const rejectionReason = reason?.trim() ?? "";
-  if (decision === DecisionStatus.REJECTED && !rejectionReason) throw new Error("Укажите причину отказа.");
+  if (decision === DecisionStatus.REJECTED && !rejectionReason) throw new UserError("Укажите причину отказа.");
   return auditedMutation(context, `registration.${decision.toLowerCase()}`, "registration", async (tx) => {
     const current = await tx.registration.findUnique({ where: { id } });
-    if (!current) throw new Error("Заявка не найдена.");
+    if (!current) throw new UserError("Заявка не найдена.");
+    if (current.applicantDiscordId === actorDiscordId) {
+      throw new UserError("Решение по своей заявке принимает другой администратор.");
+    }
     const now = new Date();
     const ttlDays = await getSetting("registrations.ttlDays", tx);
     const { count } = await tx.registration.updateMany({
@@ -484,7 +488,7 @@ export async function decideRegistration(
               status: RecordStatus.CLOSED,
             },
     });
-    if (count !== 1) throw new Error("Заявка уже обработана.");
+    if (count !== 1) throw new UserError("Заявка уже обработана.");
     const updated = await tx.registration.findUniqueOrThrow({ where: { id } });
     await enqueueJob({ type: MODULE_JOB_TYPES.REGISTRATION_DECIDED, payload: { registrationId: id } }, tx);
     return { entityId: id, before: current, after: updated, result: updated };
@@ -552,10 +556,10 @@ export async function assertTransferRanksAllowed(
     where: { fromFactionCode: from, toFactionCode: to, fromRank, status: RecordStatus.ACTIVE },
   });
   if (!match) {
-    throw new Error(`Для перевода ${from} → ${to} ранг ${fromRank} не описан в таблице переводов.`);
+    throw new UserError(`Для перевода ${from} → ${to} ранг ${fromRank} не описан в таблице переводов.`);
   }
   if (match.toRank !== toRank) {
-    throw new Error(`По таблице переводов ранг ${fromRank} (${from}) соответствует рангу ${match.toRank} (${to}), а не ${toRank}.`);
+    throw new UserError(`По таблице переводов ранг ${fromRank} (${from}) соответствует рангу ${match.toRank} (${to}), а не ${toRank}.`);
   }
 }
 
@@ -564,7 +568,7 @@ export async function createTransfer(input: z.input<typeof createTransferSchema>
   const fromFactionCode = data.fromFactionCode.toUpperCase();
   const toFactionCode = data.toFactionCode.toUpperCase();
   if (fromFactionCode === toFactionCode) {
-    throw new Error("Фракции отправителя и получателя должны различаться.");
+    throw new UserError("Фракции отправителя и получателя должны различаться.");
   }
   await assertTransferRanksAllowed(fromFactionCode, toFactionCode, data.fromRank, data.toRank);
   const transferCharacter = await prisma.character.findUnique({ where: { id: data.characterId }, select: { staticId: true } });
@@ -574,7 +578,7 @@ export async function createTransfer(input: z.input<typeof createTransferSchema>
       where: { characterId: data.characterId, status: TransferStatus.PENDING },
       select: { id: true },
     });
-    if (pending) throw new Error("У персонажа уже есть заявка на перевод на рассмотрении.");
+    if (pending) throw new UserError("У персонажа уже есть заявка на перевод на рассмотрении.");
     const created = await tx.transfer.create({
       data: {
         ...data,
@@ -597,14 +601,17 @@ export async function decideTransfer(
   context: AuditContext,
 ) {
   const rejectionReason = reason?.trim() ?? "";
-  if (decision === DecisionStatus.REJECTED && !rejectionReason) throw new Error("Укажите причину отказа.");
+  if (decision === DecisionStatus.REJECTED && !rejectionReason) throw new UserError("Укажите причину отказа.");
   return auditedMutation(context, `transfer.${side}.${decision.toLowerCase()}`, "transfer", async (tx) => {
     // Row lock serializes concurrent decisions of both sides: neither is lost and the final status is computed once.
     await tx.$queryRaw`SELECT id FROM transfers WHERE id = ${id} FOR UPDATE`;
     const current = await tx.transfer.findUnique({ where: { id } });
-    if (!current || current.status !== TransferStatus.PENDING) throw new Error("Перевод уже закрыт или не найден.");
+    if (!current || current.status !== TransferStatus.PENDING) throw new UserError("Перевод уже закрыт или не найден.");
+    if (current.createdByDiscordId === actorDiscordId) {
+      throw new UserError("Решение по своей заявке принимает другой сотрудник.");
+    }
     const currentSide = side === "source" ? current.sourceDecision : current.targetDecision;
-    if (currentSide !== DecisionStatus.PENDING) throw new Error("Решение этой стороны уже принято.");
+    if (currentSide !== DecisionStatus.PENDING) throw new UserError("Решение этой стороны уже принято.");
     const nextSource = side === "source" ? decision : current.sourceDecision;
     const nextTarget = side === "target" ? decision : current.targetDecision;
     const status =
@@ -687,7 +694,7 @@ export async function setWebhookRequestStatus(
 ) {
   return auditedMutation(context, "webhook_request.updated", "webhook_request", async (tx) => {
     const current = await tx.webhookRequest.findUnique({ where: { id } });
-    if (!current) throw new Error("Запрос webhook не найден.");
+    if (!current) throw new UserError("Запрос webhook не найден.");
     const updated = await tx.webhookRequest.update({
       where: { id },
       data: {
@@ -755,7 +762,7 @@ export async function nextIcBlacklistNumber(db: Db = prisma): Promise<string> {
 export async function createIcBlacklistEntry(input: z.input<typeof createBlacklistSchema>, context: AuditContext) {
   const data = createBlacklistSchema.parse(input);
   if (data.expiresAt && data.expiresAt.getTime() <= Date.now()) {
-    throw new Error("Срок окончания должен быть в будущем (или оставьте пустым для бессрочной записи).");
+    throw new UserError("Срок окончания должен быть в будущем (или оставьте пустым для бессрочной записи).");
   }
   return auditedMutation(context, "ic_blacklist.created", "ic_blacklist", async (tx) => {
     const existing = await tx.icBlacklistEntry.findFirst({
@@ -763,7 +770,7 @@ export async function createIcBlacklistEntry(input: z.input<typeof createBlackli
       orderBy: { createdAt: "desc" },
     });
     if (existing && isActiveBlacklistEntry(existing)) {
-      throw new Error("У этого гражданина уже есть активная запись IC чёрного списка.");
+      throw new UserError("У этого гражданина уже есть активная запись IC чёрного списка.");
     }
     const number = await nextIcBlacklistNumber(tx);
     const entry = await tx.icBlacklistEntry.create({
@@ -789,7 +796,7 @@ export async function closeIcBlacklistEntry(input: z.input<typeof closeBlacklist
   return auditedMutation(context, "ic_blacklist.closed", "ic_blacklist", async (tx) => {
     const current = await tx.icBlacklistEntry.findUnique({ where: { number } });
     if (!current || current.status !== RecordStatus.ACTIVE) {
-      throw new Error(`Запись ЧС ${number} не найдена или уже снята.`);
+      throw new UserError(`Запись ЧС ${number} не найдена или уже снята.`);
     }
     const updated = await tx.icBlacklistEntry.update({
       where: { id: current.id },
@@ -813,7 +820,7 @@ export async function revokeIcBlacklistEntry(
 ) {
   return auditedMutation(context, "ic_blacklist.revoked", "ic_blacklist", async (tx) => {
     const current = await tx.icBlacklistEntry.findUnique({ where: { id } });
-    if (!current || current.status !== RecordStatus.ACTIVE) throw new Error("Запись чёрного списка не найдена.");
+    if (!current || current.status !== RecordStatus.ACTIVE) throw new UserError("Запись чёрного списка не найдена.");
     const updated = await tx.icBlacklistEntry.update({
       where: { id },
       data: {
@@ -920,7 +927,7 @@ export async function listRolePanels() {
 export async function archiveRolePanel(id: string, context: AuditContext) {
   return auditedMutation(context, "role_panel.archived", "role_panel", async (tx) => {
     const current = await tx.rolePanel.findUnique({ where: { id } });
-    if (!current || current.status !== RecordStatus.ACTIVE) throw new Error("Панель не найдена.");
+    if (!current || current.status !== RecordStatus.ACTIVE) throw new UserError("Панель не найдена.");
     const panel = await tx.rolePanel.update({
       where: { id },
       data: { status: RecordStatus.ARCHIVED },
@@ -961,7 +968,7 @@ export async function addFeedbackMessage(
   const text = nonEmptyText(4000).parse(content);
   return auditedMutation(context, "feedback_message.created", "feedback_message", async (tx) => {
     const ticket = await tx.feedbackTicket.findUnique({ where: { id: ticketId } });
-    if (!ticket || ticket.status === FeedbackTicketStatus.CLOSED) throw new Error("Тикет закрыт или не найден.");
+    if (!ticket || ticket.status === FeedbackTicketStatus.CLOSED) throw new UserError("Тикет закрыт или не найден.");
     const message = await tx.feedbackMessage.create({ data: { ticketId, authorDiscordId, content: text } });
     if (authorDiscordId !== ticket.authorDiscordId) {
       await enqueueFeedbackReplySend({ ticketId: ticket.id, messageId: message.id }, tx);
@@ -984,7 +991,7 @@ export async function closeFeedbackTicket(id: string, context: AuditContext) {
       where: { id },
       include: { messages: true },
     });
-    if (!current || current.status === FeedbackTicketStatus.CLOSED) throw new Error("Тикет уже закрыт или не найден.");
+    if (!current || current.status === FeedbackTicketStatus.CLOSED) throw new UserError("Тикет уже закрыт или не найден.");
     const ticket = await tx.feedbackTicket.update({
       where: { id },
       data: { status: FeedbackTicketStatus.CLOSED },
@@ -1101,7 +1108,7 @@ export async function disableDiscordForm(id: string, context: AuditContext) {
     const current = await tx.discordForm.findFirst({
       where: { id, status: RecordStatus.ACTIVE },
     });
-    if (!current) throw new Error("Форма не найдена или уже отключена.");
+    if (!current) throw new UserError("Форма не найдена или уже отключена.");
     const form = await tx.discordForm.update({
       where: { id },
       data: { status: RecordStatus.CLOSED },
@@ -1116,7 +1123,7 @@ export async function enableDiscordForm(id: string, context: AuditContext) {
     const current = await tx.discordForm.findFirst({
       where: { id, status: RecordStatus.CLOSED },
     });
-    if (!current) throw new Error("Форма не найдена или не отключена.");
+    if (!current) throw new UserError("Форма не найдена или не отключена.");
     const form = await tx.discordForm.update({
       where: { id },
       data: { status: RecordStatus.ACTIVE },
@@ -1131,7 +1138,7 @@ export async function archiveDiscordForm(id: string, context: AuditContext) {
     const current = await tx.discordForm.findFirst({
       where: { id, status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } },
     });
-    if (!current) throw new Error("Форма не найдена.");
+    if (!current) throw new UserError("Форма не найдена.");
     const form = await tx.discordForm.update({
       where: { id },
       data: { status: RecordStatus.ARCHIVED },
@@ -1157,7 +1164,7 @@ export async function publishDiscordFormOpen(
     const form = await tx.discordForm.findFirst({
       where: { id: data.formId, status: RecordStatus.ACTIVE },
     });
-    if (!form) throw new Error("Форма не найдена.");
+    if (!form) throw new UserError("Форма не найдена.");
     await enqueueFormOpenPublish(
       {
         formId: form.id,

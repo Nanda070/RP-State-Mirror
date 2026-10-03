@@ -3,33 +3,42 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { LEGAL_VERSION } from "@/lib/legal";
 
 const KEY = "mirror.cookieConsent";
 
-type Consent = "all" | "necessary" | null;
-
+/**
+ * Cookie notice. The site sets only the cookies sign-in needs, so there is nothing to opt into:
+ * the notice says so and is dismissed once. It comes back when the legal texts change.
+ */
 export function CookieBanner() {
-  const [consent, setConsent] = useState<Consent>("necessary");
-  const [ready, setReady] = useState(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(KEY) as Consent | null;
-    setConsent(saved);
-    setReady(true);
+    try {
+      setVisible(window.localStorage.getItem(KEY) !== LEGAL_VERSION);
+    } catch {
+      // Storage is blocked (private mode): show the notice, it simply will not be remembered.
+      setVisible(true);
+    }
   }, []);
 
-  if (!ready || consent) return null;
+  if (!visible) return null;
 
-  const save = (value: Exclude<Consent, null>) => {
-    window.localStorage.setItem(KEY, value);
-    setConsent(value);
+  const dismiss = () => {
+    try {
+      window.localStorage.setItem(KEY, LEGAL_VERSION);
+    } catch {
+      // Nothing to do: the notice closes for this page view.
+    }
+    setVisible(false);
   };
 
   return (
     <motion.div
       className="cookie-banner"
-      role="dialog"
-      aria-label="Согласие на cookie"
+      role="region"
+      aria-label="Уведомление о cookie"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut", delay: 0.2 }}
@@ -44,21 +53,20 @@ export function CookieBanner() {
           </svg>
         </div>
         <div>
-          <h2>Мы используем cookie-файлы</h2>
+          <h2>Только необходимые cookie</h2>
           <p>
-            Обязательные cookie нужны для входа и безопасности. Дополнительные — только после
-            согласия.{" "}
-            <Link href="/cookies">Подробнее</Link>
+            Сайт использует cookie лишь для входа и защиты сессии. Рекламы и аналитики нет.{" "}
+            <Link href="/cookies">Что именно сохраняется</Link>
           </p>
         </div>
       </div>
       <div className="cookie-actions">
-        <button type="button" className="btn btn-primary" onClick={() => save("all")}>
-          Принять все
+        <button type="button" className="btn btn-primary" onClick={dismiss}>
+          Понятно
         </button>
-        <button type="button" className="btn btn-secondary" onClick={() => save("necessary")}>
-          Отклонить
-        </button>
+        <Link href="/privacy" className="btn btn-secondary">
+          Конфиденциальность
+        </Link>
       </div>
     </motion.div>
   );

@@ -283,9 +283,21 @@ async function fetchGuildMembersWithRetry(guild: Guild, log: Logger) {
  * Reconciles every member of the incident guild (at startup and hourly).
  * All plans are computed first, so the pass can refuse to kick when the number looks wrong.
  */
-export async function reconcileCpAccess(client: Client, log: Logger) {
+export interface CpReconcileSummary {
+  processed: number;
+  kicks: number;
+  /** Kicks the limit held back; nobody was removed when this is above zero. */
+  kicksHeld: number;
+  updates: number;
+  /** Members skipped because a faction guild could not be read. */
+  unknown: number;
+  dryRun: boolean;
+}
+
+/** Full reconcile. Returns what was done, or null when the sync is off or not configured. */
+export async function reconcileCpAccess(client: Client, log: Logger): Promise<CpReconcileSummary | null> {
   const ctx = await loadContext(client, log);
-  if (!ctx) return;
+  if (!ctx) return null;
   const guild = ctx.incidentGuild;
 
   // After startup sync the cache is usually warm — avoid a second opcode-8 fetch that rate-limits.
@@ -331,18 +343,16 @@ export async function reconcileCpAccess(client: Client, log: Logger) {
   if (unknown > 0) {
     log.warn({ unknown }, "cp sync: members skipped because a faction guild could not be read");
   }
-  log.info(
-    {
-      processed: humans.length,
-      kicks: held ? 0 : kicks.length,
-      kicksHeld: held ? kicks.length : 0,
-      updates: updates.length,
-      unknown,
-      dryRun: ctx.dryRun,
-      guildId: guild.id,
-    },
-    "cp sync reconcile done",
-  );
+  const summary: CpReconcileSummary = {
+    processed: humans.length,
+    kicks: held ? 0 : kicks.length,
+    kicksHeld: held ? kicks.length : 0,
+    updates: updates.length,
+    unknown,
+    dryRun: ctx.dryRun,
+  };
+  log.info({ ...summary, guildId: guild.id }, "cp sync reconcile done");
+  return summary;
 }
 
 /** Whether a guild discord id is a faction server or the incident guild (for event triggers). */

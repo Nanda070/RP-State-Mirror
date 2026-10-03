@@ -14,6 +14,7 @@ import { auditedMutation, type AuditContext } from "./audit.js";
 import { type Db } from "./db.js";
 import { getSetting } from "./settings.js";
 import { recordNumberSchema } from "./text.js";
+import { UserError } from "./errors.js";
 
 // ──────────────────────────────────────────────────────────────
 // Input schemas
@@ -74,7 +75,7 @@ export async function createDocument(input: CreateDocumentInput, context: AuditC
   return auditedMutation(context, "document.created", "document", async (tx) => {
     const existing = await tx.document.findUnique({ where: { number: data.number } });
     if (existing) {
-      throw new Error("Документ уже существует.");
+      throw new UserError("Документ уже существует.");
     }
 
     const doc = await tx.document.create({
@@ -102,7 +103,7 @@ export async function createDocumentResponse(input: CreateDocumentResponseInput,
   return auditedMutation(context, "document_response.created", "document_response", async (tx) => {
     const doc = await tx.document.findUnique({ where: { number: data.documentNumber } });
     if (!doc || doc.status !== RecordStatus.ACTIVE) {
-      throw new Error(`Документ ${data.documentNumber} не найден или не активен`);
+      throw new UserError(`Документ ${data.documentNumber} не найден или не активен`);
     }
 
     const response = await tx.documentResponse.create({

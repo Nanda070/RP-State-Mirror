@@ -1,0 +1,23 @@
+[Unit]
+Description=Mirror dashboard (Next.js, 127.0.0.1:3000)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=mirror
+Group=mirror
+WorkingDirectory=/opt/mirror/apps/dashboard
+Environment=NODE_ENV=production
+# Listens on the loopback interface only: the outside world reaches it through Caddy.
+ExecStart=/usr/bin/node --env-file=/opt/mirror/.env node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

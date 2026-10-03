@@ -44,3 +44,4 @@ export * from "./users.js";
 export * from "./utilities.js";
 export * from "./vehicles.js";
 export * from "./wanted.js";
+export * from "./registry-actions.js";

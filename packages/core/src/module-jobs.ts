@@ -11,6 +11,8 @@ export const MODULE_JOB_TYPES = {
   WANTED_EDIT_CLOSED: "wanted.edit_closed",
   FINE_PUBLISH: "fine.publish",
   FINE_EDIT_PAID: "fine.edit_paid",
+  FINE_OVERDUE: "fine.overdue",
+  CP_RECONCILE: "cp.reconcile",
   PERSONNEL_PUBLISH: "personnel.publish",
   MESSAGE_DESIGN_SEND: "message_design.send",
   MESSAGE_DESIGN_RESEND: "message_design.resend",
@@ -70,6 +72,18 @@ export function enqueueWantedEditClosed(wantedId: string, db?: Db) {
 
 export function enqueueFinePublish(fineId: string, db?: Db) {
   return enqueueJob({ type: MODULE_JOB_TYPES.FINE_PUBLISH, payload: { fineId } }, db);
+}
+
+export function enqueueFineOverdue(fineId: string, db?: Db) {
+  return enqueueJob({ type: MODULE_JOB_TYPES.FINE_OVERDUE, payload: { fineId } }, db);
+}
+
+/** Full ЧП reconcile on demand (the dashboard button). One attempt: a retry is a new click. */
+export function enqueueCpReconcile(requestedByDiscordId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.CP_RECONCILE, payload: { requestedByDiscordId }, maxAttempts: 1 },
+    db,
+  );
 }
 
 export function enqueueFineEditPaid(fineId: string, db?: Db) {

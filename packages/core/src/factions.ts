@@ -10,6 +10,8 @@ import {
   factionDeliverySettingsSchema,
   type FactionDeliverySettings,
 } from "./delivery.js";
+import { UserError } from "./errors.js";
+import { discordWebhookUrlSchema } from "./text.js";
 
 export interface FactionChoice {
   /** Discord choice label (shown to the user). */
@@ -61,8 +63,8 @@ export const updateFactionDeliverySchema = z.object({
   factionCode: z.string().min(1).max(32),
   documentsChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
   personnelChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
-  documentsWebhookUrl: z.string().url().nullable().optional(),
-  personnelWebhookUrl: z.string().url().nullable().optional(),
+  documentsWebhookUrl: discordWebhookUrlSchema.nullable().optional(),
+  personnelWebhookUrl: discordWebhookUrlSchema.nullable().optional(),
   seniorRoleId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
   guildDiscordId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
 });
@@ -99,7 +101,7 @@ export async function updateFactionDeliverySettings(
     const faction = await tx.faction.findFirst({
       where: { code: data.factionCode.toUpperCase(), status: RecordStatus.ACTIVE },
     });
-    if (!faction) throw new Error("Фракция не найдена");
+    if (!faction) throw new UserError("Фракция не найдена");
 
     let guildId = faction.guildId;
     if (data.guildDiscordId !== undefined) {
@@ -109,7 +111,7 @@ export async function updateFactionDeliverySettings(
         const guild = await tx.guild.findFirst({
           where: { discordId: data.guildDiscordId, status: RecordStatus.ACTIVE },
         });
-        if (!guild) throw new Error("Сервер фракции не найден");
+        if (!guild) throw new UserError("Сервер фракции не найден");
         guildId = guild.id;
       }
     }

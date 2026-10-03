@@ -5,6 +5,9 @@
  * and tried again every few minutes — see `deferJob`.
  */
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   MessageFlags,
   ThreadAutoArchiveDuration,
   type Client,
@@ -20,6 +23,9 @@ import {
   formatFormValue,
   formatPersonnelDetailsText,
   formatRoleMentions,
+  makeFineOverdueEmbed,
+  parseCustomId,
+  createButtonAction,
   getSetting,
   makeCompactAuditEmbed,
   makeDocumentEmbed,
@@ -73,6 +79,7 @@ import {
   renderTransferReview,
 } from "./stage4-review.js";
 import { adminRolesApply } from "./admin-roles.js";
+import { reconcileCpAccess } from "./cp-sync.js";
 import type { JobHandler } from "./worker.js";
 
 type EmbedSendResult =
@@ -119,6 +126,8 @@ async function runOnce<T extends StepResult>(job: Job, key: string, log: Logger,
 type SendEmbedOptions = {
   /** Makes the post happen once per job: `key` names the step inside the job. */
   once?: { job: Job; key: string };
+  /** Buttons under the embed. Only a bot message can carry them: ignored for webhook delivery. */
+  components?: ActionRowBuilder<ButtonBuilder>[];
   content?: string | null;
   /** Role snowflakes allowed to ping (parsed from content mentions). */
   mentionRoleIds?: readonly string[];
@@ -180,6 +189,7 @@ async function postEmbed(
     const message = await channel.send({
       ...(content ? { content } : {}),
       embeds: [embed],
+      ...(options.components?.length ? { components: options.components } : {}),
       allowedMentions: { parse: [], roles: mentionRoleIds, users: mentionUserIds },
     });
     return {
@@ -626,6 +636,50 @@ const finePublish: JobHandler = async (payload, { client, log, job }) => {
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
 };
 
+/** The payment deadline passed: the faction that must collect the fine is told once. */
+const fineOverdue: JobHandler = async (payload, { client, log, job }) => {
+  const fineId = String(payload.fineId ?? "");
+  const fine = await prisma.fine.findUnique({ where: { id: fineId } });
+  if (!fine) throw new Error(`Fine ${fineId} not found`);
+  // Paid or cancelled between the deadline and this job: nothing to announce.
+  if (fine.status !== RecordStatus.ACTIVE) return { status: "skipped", reason: "fine is no longer active" };
+
+  const target = await resolveFineDelivery(fine.factionCode);
+  const actor = await resolveAuthor(client, fine.issuedByDiscordId);
+  const classic = makeFineOverdueEmbed({
+    fine: {
+      fineNumber: fine.number,
+      faction: fine.factionCode,
+      fio: fine.characterName,
+      passport: fine.staticId,
+      article: fine.reason,
+      amount: fine.amount,
+      paymentDeadlineText: fine.paymentDeadlineText,
+      createdByDisplayName: actor.displayName,
+      createdByUsername: actor.username,
+    },
+  });
+  const pingRoleId = await resolveFactionPingRoleId(fine.factionCode);
+  const result = await sendEmbed(client, target, classic, log, {
+    once: { job, key: "post" },
+    content: pingRoleId
+      ? `Срок оплаты штрафа истёк. ${formatRoleMentions([pingRoleId])} требуется взыскание.`
+      : "Срок оплаты штрафа истёк.",
+    mentionRoleIds: pingRoleId ? [pingRoleId] : [],
+  });
+  if (result.status === "deferred") return result;
+  return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
+};
+
+/** Full ЧП reconcile requested from the dashboard; the summary is the job result the page shows. */
+const cpReconcile: JobHandler = async (_payload, { client, log }) => {
+  const summary = await reconcileCpAccess(client, log.child({ component: "cp-sync" }));
+  if (!summary) {
+    return { status: "skipped", reason: "Синхронизация выключена, сервер ЧП не задан или нет привязок ролей." };
+  }
+  return { status: "done", ...summary };
+};
+
 const fineEditPaid: JobHandler = async (payload, { client, log, job }) => {
   const fineId = String(payload.fineId ?? "");
   const fine = await prisma.fine.findUnique({ where: { id: fineId } });
@@ -698,7 +752,26 @@ const personnelPublish: JobHandler = async (payload, { client, log, job }) => {
   });
 
   const target = await resolveFactionPersonnelDelivery(event.factionCode);
-  const result = await sendEmbed(client, target, classic, log, { once: { job, key: "post" } });
+  // After a dismissal the person usually has to leave the faction server: one button does it.
+  const components =
+    type === "dismissal" && target.kind === "channel"
+      ? await runOnce(job, "kick-button", log, async () => {
+          const action = await createButtonAction("personnel.kick", {
+            personnelEventId: event.id,
+            factionCode: event.factionCode,
+            subjectDiscordId: event.subjectDiscordId,
+          });
+          return { customId: action.customId };
+        }).then((step) => [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(String(step.customId)).setLabel("Кикнуть с сервера").setStyle(ButtonStyle.Danger),
+          ),
+        ])
+      : undefined;
+  const result = await sendEmbed(client, target, classic, log, {
+    once: { job, key: "post" },
+    ...(components ? { components } : {}),
+  });
   if (result.status === "deferred") return result;
   await persistSend(result, { personnelId: event.id });
   return { status: "sent", personnelEventId: event.id, messageId: result.messageId };
@@ -1063,6 +1136,16 @@ const rolePanelArchive: JobHandler = async (payload, { client, log }) => {
     if (channel && channel.isTextBased() && "messages" in channel) {
       const message = await channel.messages.fetch(panel.messageDiscordId).catch(() => null);
       if (message) {
+        // Custom ids of every button and list on the message, whatever the layout version.
+        const actionIds = [...JSON.stringify(message.components).matchAll(/"custom_?id":"([^"]+)"/gi)]
+          .map((match) => parseCustomId(match[1] ?? "")?.id)
+          .filter((id): id is string => Boolean(id));
+        if (actionIds.length > 0) {
+          await prisma.buttonAction.updateMany({
+            where: { id: { in: actionIds }, status: RecordStatus.ACTIVE },
+            data: { status: RecordStatus.ARCHIVED },
+          });
+        }
         await message.edit({ components: [] });
       }
     }
@@ -1492,6 +1575,8 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.WANTED_EDIT_CLOSED, wantedEditClosed],
   [MODULE_JOB_TYPES.FINE_PUBLISH, finePublish],
   [MODULE_JOB_TYPES.FINE_EDIT_PAID, fineEditPaid],
+  [MODULE_JOB_TYPES.FINE_OVERDUE, fineOverdue],
+  [MODULE_JOB_TYPES.CP_RECONCILE, cpReconcile],
   [MODULE_JOB_TYPES.PERSONNEL_PUBLISH, personnelPublish],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, messageDesignSend],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND, messageDesignResend],

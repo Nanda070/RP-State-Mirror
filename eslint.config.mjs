@@ -8,6 +8,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "**/.next/**",
+      "**/.next-check/**",
       "**/coverage/**",
       "**/prisma/migrations/**",
       "apps/dashboard/next-env.d.ts",

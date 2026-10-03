@@ -2,6 +2,7 @@
  * Shared text helpers ported from the legacy Python bot (utils.py).
  */
 import { z } from "zod";
+import { UserError } from "./errors.js";
 
 const LINK_RE = /^https?:\/\//i;
 const DURATION_RE = /^(\d+)([mhd])$/i;
@@ -34,7 +35,7 @@ export function parseDuration(value: string): { ms: number; text: string } {
   const trimmed = value.trim();
   const match = DURATION_RE.exec(trimmed.toLowerCase());
   if (!match) {
-    throw new Error("Формат срока оплаты: 30m, 24h или 14d");
+    throw new UserError("Формат срока оплаты: 30m, 24h или 14d");
   }
   const amount = Number.parseInt(match[1]!, 10);
   const unit = match[2]!.toLowerCase();
@@ -59,3 +60,11 @@ export function formatMoney(amount: string | number): string {
   if (!Number.isFinite(n)) return String(amount);
   return `$${Math.trunc(n).toLocaleString("ru-RU")}`;
 }
+
+const DISCORD_WEBHOOK_RE = /^https:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/api(?:\/v\d+)?\/webhooks\/\d{1,20}\/[\w-]+$/;
+
+/** Only real Discord webhook URLs: the bot posts to this address, so an arbitrary host would be SSRF. */
+export const discordWebhookUrlSchema = z
+  .string()
+  .trim()
+  .regex(DISCORD_WEBHOOK_RE, "Нужна ссылка вебхука Discord вида https://discord.com/api/webhooks/…");

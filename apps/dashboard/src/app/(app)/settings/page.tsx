@@ -28,7 +28,6 @@ export default async function SettingsIndexPage() {
       "core.mainGuildId",
       "core.incidentGuildId",
       "wanted.channelId",
-      "fines.channelId",
       "cp.syncEnabled",
     ] as const),
     listActiveRoleMappings(),
@@ -47,21 +46,20 @@ export default async function SettingsIndexPage() {
   const mainGuildId = settings["core.mainGuildId"];
   const incidentGuildId = settings["core.incidentGuildId"];
   const wantedChannelId = settings["wanted.channelId"];
-  const finesChannelId = settings["fines.channelId"];
   const cpSyncEnabled = settings["cp.syncEnabled"];
 
   const core: ModuleCard[] = [
     {
       href: "/settings/system",
       title: "Система",
-      description: "Главный сервер, сервер ЧП и синхронизация ролей.",
+      description: "Главный сервер, сервер ЧП, синхронизация, аварийная блокировка, мониторинг.",
       status: "ready",
       meta: `Серверов: ${guildCount} · ЧП sync: ${cpSyncEnabled ? "вкл" : "выкл"} · Главный: ${mainGuildId ? "задан" : "нет"} · ЧП: ${incidentGuildId ? "задан" : "нет"}`,
     },
     {
       href: "/settings/roles",
       title: "Роли",
-      description: "Привязка Discord-ролей к уровням доступа и фракциям.",
+      description: "Привязка Discord-ролей к уровням доступа и фракциям, права на команды бота.",
       status: "ready",
       meta: `Активных привязок: ${mappings.length}`,
     },
@@ -92,9 +90,9 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/fines",
       title: "Штрафы",
-      description: "Штрафы, срок оплаты, канал ЧП и реестр.",
+      description: "Штрафы, уведомление о просрочке и реестр.",
       status: "ready",
-      meta: `Реестр: ${fineCount} · канал: ${finesChannelId ? "задан" : "нет"}`,
+      meta: `Реестр: ${fineCount} · публикация в канал документов фракции`,
     },
     {
       href: "/settings/embeds",

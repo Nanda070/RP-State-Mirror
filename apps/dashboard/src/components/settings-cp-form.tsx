@@ -32,6 +32,51 @@ export function SettingsCpForm({
   const [dryRun, setDryRun] = useState(initialDryRun);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [run, setRun] = useState<{ state: "running" | "done" | "failed"; text: string } | null>(null);
+
+  /** Starts a full reconcile now and shows what the bot did. */
+  async function runNow() {
+    setRun({ state: "running", text: "Бот сверяет участников сервера ЧП…" });
+    try {
+      const started = await fetch("/api/settings/cp-sync", { method: "POST" });
+      const startedData = (await started.json()) as { error?: string; job?: { id: string } };
+      if (!started.ok || !startedData.job) throw new Error(startedData.error ?? "Не удалось запустить");
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const res = await fetch(`/api/settings/cp-sync?job=${encodeURIComponent(startedData.job.id)}`);
+        const data = (await res.json()) as {
+          job?: { status: string; lastError: string | null; result: Record<string, unknown> | null };
+        };
+        const job = data.job;
+        if (!job || job.status === "PENDING" || job.status === "RUNNING") continue;
+        if (job.status !== "SUCCEEDED") throw new Error(job.lastError ?? "Сверка завершилась с ошибкой");
+        const result = job.result ?? {};
+        if (result.status === "skipped") {
+          setRun({ state: "failed", text: String(result.reason ?? "Сверка не выполнена.") });
+          return;
+        }
+        const held = Number(result.kicksHeld ?? 0);
+        setRun({
+          state: held > 0 ? "failed" : "done",
+          text: [
+            `Проверено участников: ${Number(result.processed ?? 0)}`,
+            `обновлено ролей: ${Number(result.updates ?? 0)}`,
+            held > 0
+              ? `исключения остановлены пределом: ${held} (никто не исключён)`
+              : `исключено: ${Number(result.kicks ?? 0)}`,
+            Number(result.unknown ?? 0) > 0 ? `пропущено из-за недоступного сервера: ${Number(result.unknown)}` : null,
+            result.dryRun ? "сухой прогон — изменения не применялись" : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        });
+        return;
+      }
+      throw new Error("Бот не ответил за две минуты. Проверьте страницу «Статус».");
+    } catch (e) {
+      setRun({ state: "failed", text: e instanceof Error ? e.message : "Ошибка" });
+    }
+  }
 
   function toggleRole(roleId: string) {
     setExcluded((prev) =>
@@ -137,10 +182,25 @@ export function SettingsCpForm({
           )}
         </div>
       </div>
-      <button type="submit" className="btn btn-primary" disabled={pending}>
-        Сохранить синхронизацию
-      </button>
+      <div className="row">
+        <button type="submit" className="btn btn-primary" disabled={pending}>
+          Сохранить синхронизацию
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={run?.state === "running" || !incidentGuildId}
+          onClick={() => void runNow()}
+        >
+          {run?.state === "running" ? "Сверка идёт…" : "Запустить сверку сейчас"}
+        </button>
+      </div>
       {message ? <p className="muted">{message}</p> : null}
+      {run ? (
+        <p className={run.state === "failed" ? "form-error" : run.state === "done" ? "form-ok" : "muted"} role="status">
+          {run.text}
+        </p>
+      ) : null}
     </form>
   );
 }

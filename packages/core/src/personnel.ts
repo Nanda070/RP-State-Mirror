@@ -9,6 +9,7 @@ import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { toJsonValue } from "./db.js";
+import { UserError } from "./errors.js";
 
 // ──────────────────────────────────────────────────────────────
 // Personnel event types
@@ -115,7 +116,7 @@ export async function revokePersonnelEvent(id: string, context: AuditContext) {
   return auditedMutation(context, "personnel.revoked", "personnel_event", async (tx) => {
     const event = await tx.personnelEvent.findUnique({ where: { id } });
     if (!event || event.status !== RecordStatus.ACTIVE) {
-      throw new Error("Кадровое событие не найдено или не активно");
+      throw new UserError("Кадровое событие не найдено или не активно");
     }
     const updated = await tx.personnelEvent.update({
       where: { id },

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { type Db } from "./db.js";
 import { recordNumberSchema } from "./text.js";
+import { UserError } from "./errors.js";
 
 // ──────────────────────────────────────────────────────────────
 // Input schemas
@@ -68,9 +69,9 @@ export async function createWanted(input: CreateWantedInput, context: AuditConte
     const existing = await tx.wanted.findUnique({ where: { number: data.number } });
     if (existing) {
       if (existing.status === RecordStatus.ACTIVE) {
-        throw new Error("Открытый розыск с таким номером уже существует.");
+        throw new UserError("Открытый розыск с таким номером уже существует.");
       }
-      throw new Error("Розыск с таким номером уже существует.");
+      throw new UserError("Розыск с таким номером уже существует.");
     }
 
     const wanted = await tx.wanted.create({
@@ -95,7 +96,7 @@ export async function closeWanted(input: CloseWantedInput, context: AuditContext
   return auditedMutation(context, "wanted.closed", "wanted", async (tx) => {
     const wanted = await tx.wanted.findUnique({ where: { number: data.wantedNumber } });
     if (!wanted || wanted.status !== RecordStatus.ACTIVE) {
-      throw new Error(`Розыск ${data.wantedNumber} не найден или уже закрыт`);
+      throw new UserError(`Розыск ${data.wantedNumber} не найден или уже закрыт`);
     }
 
     const updated = await tx.wanted.update({
@@ -114,7 +115,7 @@ export async function cancelWanted(id: string, context: AuditContext) {
   return auditedMutation(context, "wanted.revoked", "wanted", async (tx) => {
     const wanted = await tx.wanted.findUnique({ where: { id } });
     if (!wanted || wanted.status !== RecordStatus.ACTIVE) {
-      throw new Error("Розыск не найден или не активен");
+      throw new UserError("Розыск не найден или не активен");
     }
     const updated = await tx.wanted.update({
       where: { id },

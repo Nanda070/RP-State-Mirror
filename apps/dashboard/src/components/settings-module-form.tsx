@@ -78,7 +78,6 @@ function RolePingPicker({
 export function SettingsWantedForm({
   initialEnabled,
   initialChannelId,
-  initialPingRoleIds,
   initialCoordinatorRoleIds,
   channels,
   incidentGuildId,
@@ -86,7 +85,6 @@ export function SettingsWantedForm({
 }: {
   initialEnabled: boolean;
   initialChannelId: string | null;
-  initialPingRoleIds: string[];
   initialCoordinatorRoleIds: string[];
   channels: ChannelOption[];
   incidentGuildId: string | null;
@@ -121,8 +119,7 @@ export function SettingsWantedForm({
           emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
         />
         <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
-          Slash-команды розыска принимаются только в этом канале (или в канале с именем
-          «федеральный розыск»).
+          Команды розыска принимаются только в этом канале.
         </p>
       </div>
       <div className="field">
@@ -153,95 +150,6 @@ export function SettingsWantedForm({
           <strong>кроме WN</strong>. Общей роли «Фракция» нет — пинг строится из
           привязок FACTION_MEMBER (или роли с именем кода фракции).
         </p>
-        {initialPingRoleIds.length > 0 ? (
-          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-            Снимок provision/настроек (информативно): {initialPingRoleIds.length}{" "}
-            ролей. Бот пересчитывает список при каждой публикации.
-          </p>
-        ) : null}
-      </div>
-    </ModuleSettingsForm>
-  );
-}
-
-export function SettingsFinesForm({
-  initialDueDays,
-  initialChannelId,
-  initialPingRoleIds,
-  channels,
-  incidentGuildId,
-  roles,
-}: {
-  initialDueDays: number;
-  initialChannelId: string | null;
-  initialPingRoleIds: string[];
-  channels: ChannelOption[];
-  incidentGuildId: string | null;
-  roles: RoleOption[];
-}) {
-  const [dueDays, setDueDays] = useState(String(initialDueDays));
-  const [channelId, setChannelId] = useState(initialChannelId ?? "");
-  const [pingRoleIds, setPingRoleIds] = useState<string[]>(initialPingRoleIds);
-  return (
-    <ModuleSettingsForm
-      module="fines"
-      fields={[
-        { key: "fines.dueDays", value: Number(dueDays) },
-        { key: "fines.channelId", value: channelId.trim() || null },
-        { key: "fines.pingRoleIds", value: pingRoleIds },
-      ]}
-      onBeforeSubmit={() => {
-        const n = Number(dueDays);
-        if (!Number.isFinite(n) || n < 1) throw new Error("Срок должен быть целым числом ≥ 1");
-      }}
-    >
-      <div className="field">
-        <label htmlFor="dueDays">Срок оплаты по умолчанию, дни</label>
-        <input
-          id="dueDays"
-          type="number"
-          min={1}
-          step={1}
-          value={dueDays}
-          onChange={(e) => setDueDays(e.target.value)}
-        />
-        <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
-          Slash-команда <code>/штраф</code> задаёт срок через параметр «срок_оплаты» (1m / 24h / 14d);
-          это значение — запасной ориентир для дашборда.
-        </p>
-      </div>
-      <div className="field">
-        <label htmlFor="finesChannel">Канал на сервере ЧП</label>
-        <ChannelSelect
-          id="finesChannel"
-          value={channelId}
-          onChange={setChannelId}
-          channels={channels}
-          guildDiscordId={incidentGuildId}
-          emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
-        />
-      </div>
-      <div className="field">
-        <span className="field-label">Роли для пинга на сервере ЧП</span>
-        <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
-          Отдельно от «старшего состава» фракции: основной реестр штрафов публикуется на ЧП.
-          Если у фракции настроены канал документов и роль старшего состава — туда уходит
-          дополнительное уведомление с пингом.
-        </p>
-        <RolePingPicker
-          roles={roles}
-          selected={pingRoleIds}
-          onToggle={(roleId) =>
-            setPingRoleIds((prev) =>
-              prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
-            )
-          }
-          emptyHint={
-            incidentGuildId
-              ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
-              : "Сначала задайте сервер ЧП"
-          }
-        />
       </div>
     </ModuleSettingsForm>
   );

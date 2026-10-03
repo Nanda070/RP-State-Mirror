@@ -21,6 +21,26 @@ export const settingDefinitions = {
   ),
   "app.timezone": defineSetting(z.string().min(1), "Europe/Moscow", "Часовой пояс отображения"),
   "documents.ttlHours": defineSetting(z.number().int().positive(), 72, "Срок актуальности документа, часы"),
+  "documents.posterRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли, которым разрешена команда /пост (пусто — любой сотрудник фракции)",
+  ),
+  "documents.responderRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли, которым разрешена команда /ответ (пусто — сотрудники фракции документа и GOV)",
+  ),
+  "fines.managerRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли, которым разрешены /штраф и /штраф-оплачено (кроме администраторов)",
+  ),
+  "personnel.managerRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Дополнительные роли для /кадровый-аудит в своей фракции (кроме лидера и заместителя)",
+  ),
   "registrations.ttlDays": defineSetting(z.number().int().positive(), 31, "Срок актуальности регистрации, дни"),
   "tokens.expandThresholdPercent": defineSetting(
     z.number().min(0).max(100),

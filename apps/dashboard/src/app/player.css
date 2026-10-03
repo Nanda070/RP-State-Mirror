@@ -763,3 +763,239 @@ a.metric-card .metric-value {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.command-roles-rule {
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.command-roles-guilds {
+  margin-top: 0.5rem;
+}
+
+.command-roles-guilds .admin-roles-guild {
+  margin-bottom: 0.4rem;
+  padding: 0.5rem 0.8rem;
+}
+
+/* ——— Stage 7: registries — search, pages, actions ——— */
+.registry-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.8rem;
+}
+
+.registry-toolbar .field {
+  margin: 0;
+  min-width: 9rem;
+}
+
+.registry-toolbar-search {
+  flex: 1 1 16rem;
+}
+
+.registry-toolbar-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.registry-empty {
+  margin: 0;
+}
+
+.registry-total {
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+}
+
+.registry-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+}
+
+.registry-pager-links {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.registry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.registry-actions .btn {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.registry-action-danger {
+  color: var(--danger);
+}
+
+.registry-done {
+  font-size: 0.82rem;
+  color: var(--ok);
+}
+
+.registry-note {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.registry-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.registry-add > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.registry-add[open] > summary {
+  margin-bottom: 1rem;
+}
+
+.audit-diff summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.audit-diff pre {
+  margin: 0.4rem 0 0;
+  max-width: 28rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.confirm-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.confirm-dialog p {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  white-space: normal;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+/* ——— Stage 7: urgent fixes from the UI review (PLAN §15.1) ——— */
+:root {
+  /* Native selects, date pickers, spinners and scrollbars follow the dark theme. */
+  color-scheme: dark;
+}
+
+/* Links inside text must look like links. */
+.panel p a:not(.btn),
+.panel li a:not(.btn),
+.section-head p a:not(.btn),
+.notice-text a,
+.field-hint a,
+.registry-table td > a:not(.btn) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.panel p a:not(.btn):hover,
+.section-head p a:not(.btn):hover,
+.notice-text a:hover {
+  color: var(--accent-hover);
+}
+
+/* One visible keyboard focus for every control. */
+:is(a, button, summary, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+code {
+  padding: 0.08em 0.36em;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.88em;
+}
+
+pre code {
+  padding: 0;
+  background: none;
+}
+
+/* ——— Stage 7: legal pages ——— */
+.legal .settings-tabs {
+  margin-bottom: 1.2rem;
+}
+
+.legal-text {
+  line-height: 1.65;
+}
+
+.legal-text h2 {
+  margin: 1.6rem 0 0.5rem;
+  font-size: 1.08rem;
+}
+
+.legal-text h2:first-child {
+  margin-top: 0;
+}
+
+.legal-text p,
+.legal-text ul {
+  margin: 0 0 0.75rem;
+}
+
+.legal-text ul {
+  padding-left: 1.2rem;
+}
+
+.legal-text li {
+  margin-bottom: 0.3rem;
+}
+
+.legal-table td,
+.legal-table th {
+  vertical-align: top;
+  white-space: normal;
+  font-size: 0.88rem;
+}
+
+.legal-table td.registry-mono {
+  word-break: break-word;
+  font-weight: 500;
+}

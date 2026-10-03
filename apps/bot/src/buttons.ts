@@ -28,6 +28,8 @@ import {
   getDiscordForm,
   getFormDraft,
   getButtonAction,
+  canManageModules,
+  deactivateButtonAction,
   isDiscordCompatible,
   saveFormDraft,
   validateFormValues,
@@ -634,6 +636,62 @@ async function handleTransferDecision(
   );
 }
 
+/**
+ * «Кикнуть с сервера» under a dismissal notice: removes the dismissed person from the faction
+ * server the notice is in. Allowed to the faction's leader or deputy and to admins.
+ */
+async function handlePersonnelKick(
+  interaction: ButtonInteraction,
+  params: Record<string, unknown>,
+  actionId: string,
+  ctx: InteractionContext,
+) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guild = interaction.guild;
+  const subjectDiscordId = String(params.subjectDiscordId ?? "");
+  const factionCode = String(params.factionCode ?? "").toUpperCase();
+  if (!guild || !subjectDiscordId) {
+    await interaction.editReply({ content: "Кнопка устарела или отключена." });
+    return;
+  }
+  const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
+  const faction = identity.factions.find((entry) => entry.code.toUpperCase() === factionCode);
+  if (!canManageModules(identity) && !(faction?.isLeader || faction?.isDeputy)) {
+    await interaction.editReply({ content: "Недостаточно прав: лидер или заместитель этой фракции, либо администратор." });
+    return;
+  }
+  if (subjectDiscordId === interaction.user.id) {
+    await interaction.editReply({ content: "Нельзя исключить самого себя." });
+    return;
+  }
+
+  const member = await guild.members.fetch(subjectDiscordId).catch(() => null);
+  let outcome: string;
+  if (!member) {
+    outcome = "Участника уже нет на сервере.";
+  } else if (!member.kickable) {
+    await interaction.editReply({
+      content: "Бот не может исключить этого участника: его роль выше роли бота или у бота нет права «Исключать участников».",
+    });
+    return;
+  } else {
+    await member.kick(`Увольнение: кадровый аудит, исключил ${interaction.user.tag}`);
+    outcome = `<@${subjectDiscordId}> исключён с сервера.`;
+  }
+
+  await writeAuditEvent({
+    ...auditContext(interaction, "discord.button"),
+    action: "personnel.kicked",
+    entityType: "personnel_event",
+    entityId: String(params.personnelEventId ?? subjectDiscordId),
+    after: { subjectDiscordId, factionCode, guildId: guild.id, wasMember: Boolean(member) },
+  });
+  // One use: the button goes away so the notice cannot be clicked twice.
+  await deactivateButtonAction(actionId).catch(() => undefined);
+  await interaction.message.edit({ components: [] }).catch(() => undefined);
+  await interaction.editReply({ content: outcome });
+}
+
 async function handleFeedbackOpen(interaction: ButtonInteraction) {
   const modal = new ModalBuilder()
     .setCustomId(`mirror:feedback.submit:${interaction.customId.split(":").at(-1)}`)
@@ -792,6 +850,8 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     await handleRegistrationDecision(interaction, params, DecisionStatus.REJECTED, parsed.id, ctx);
   } else if (action.startsWith("transfer.approve") || action.startsWith("transfer.reject")) {
     await handleTransferDecision(interaction, params, action, parsed.id, ctx);
+  } else if (action === "personnel.kick") {
+    await handlePersonnelKick(interaction, params, parsed.id, ctx);
   } else if (action === "feedback.open") {
     await handleFeedbackOpen(interaction);
   } else if (action === "token.receive") {

@@ -5,7 +5,8 @@ services:
     environment:
       POSTGRES_DB: mirror
       POSTGRES_USER: mirror
-      POSTGRES_PASSWORD: mirror_local_password
+      # Values come from .env next to this file; the defaults are for local development only.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mirror_local_password}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -21,8 +22,8 @@ services:
     restart: unless-stopped
     command: mini -dir=/data -s3.port=9000 -bucket=mirror -admin.ui=false
     environment:
-      AWS_ACCESS_KEY_ID: mirror_local
-      AWS_SECRET_ACCESS_KEY: mirror_local_password
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-mirror_local}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-mirror_local_password}
     ports:
       - "127.0.0.1:9000:9000"
     volumes:
@@ -43,14 +44,14 @@ services:
       PGHOST: postgres
       PGDATABASE: mirror
       PGUSER: mirror
-      PGPASSWORD: mirror_local_password
+      PGPASSWORD: ${POSTGRES_PASSWORD:-mirror_local_password}
       S3_ENDPOINT: http://storage:9000
       S3_REGION: us-east-1
       S3_BUCKET: mirror
-      S3_ACCESS_KEY: mirror_local
-      S3_SECRET_KEY: mirror_local_password
-      BACKUP_AT: "04:00"
-      BACKUP_KEEP_DAYS: "14"
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-mirror_local}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-mirror_local_password}
+      BACKUP_AT: "${BACKUP_AT:-04:00}"
+      BACKUP_KEEP_DAYS: "${BACKUP_KEEP_DAYS:-14}"
     volumes:
       - mirror-backups:/backups
 

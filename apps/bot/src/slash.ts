@@ -17,7 +17,6 @@ import {
   normalizePlate,
   resolveVehicleModelName,
   storeMediaFromUrl,
-  canActOnModuleRecord,
   canFindTokens,
   canManageIcBlacklist,
   canManageModules,
@@ -112,22 +111,47 @@ function interactionRoleIds(interaction: ChatInputCommandInteraction): string[] 
     : [...interaction.member.roles.cache.keys()];
 }
 
-function canPostDocument(identity: Identity): boolean {
+/** Faction staff or an admin: who may ask for a webhook. */
+function isStaff(identity: Identity): boolean {
   return canManageModules(identity) || hasFactionMembership(identity);
 }
 
-function canReplyDocument(identity: Identity, documentFactionCode: string): boolean {
-  return (
-    canManageModules(identity) ||
-    hasFactionMembership(identity, documentFactionCode) ||
-    hasFactionMembership(identity, "GOV")
-  );
+// Command rights come from the dashboard (Настройки → Роли → Права команд): no role ids in code.
+// Admins always pass. While a list is empty, the rule that existed before the setting applies.
+
+async function canPostDocument(interaction: ChatInputCommandInteraction, identity: Identity): Promise<boolean> {
+  if (canManageModules(identity)) return true;
+  const roleIds = await getSetting("documents.posterRoleIds");
+  return roleIds.length > 0 ? memberHasAnyRole(interaction, roleIds) : hasFactionMembership(identity);
 }
 
-function canPersonnel(identity: Identity, factionCode: string): boolean {
+async function canReplyDocument(
+  interaction: ChatInputCommandInteraction,
+  identity: Identity,
+  documentFactionCode: string,
+): Promise<boolean> {
+  if (canManageModules(identity)) return true;
+  const roleIds = await getSetting("documents.responderRoleIds");
+  if (roleIds.length > 0) return memberHasAnyRole(interaction, roleIds);
+  return hasFactionMembership(identity, documentFactionCode) || hasFactionMembership(identity, "GOV");
+}
+
+async function canManageFines(interaction: ChatInputCommandInteraction, identity: Identity): Promise<boolean> {
+  if (canManageModules(identity)) return true;
+  return memberHasAnyRole(interaction, await getSetting("fines.managerRoleIds"));
+}
+
+async function canPersonnel(
+  interaction: ChatInputCommandInteraction,
+  identity: Identity,
+  factionCode: string,
+): Promise<boolean> {
   if (canManageModules(identity)) return true;
   const faction = identity.factions.find((f) => f.code.toUpperCase() === factionCode.toUpperCase());
-  return Boolean(faction?.isLeader || faction?.isDeputy);
+  if (!faction) return false;
+  if (faction.isLeader || faction.isDeputy) return true;
+  // Extra roles (e.g. a personnel department) work only inside the holder's own faction.
+  return memberHasAnyRole(interaction, await getSetting("personnel.managerRoleIds"));
 }
 
 function primaryFactionCode(identity: Identity): string | null {
@@ -148,21 +172,9 @@ function memberHasAnyRole(interaction: ChatInputCommandInteraction, roleIds: rea
   return roleIds.some((id) => held.has(id));
 }
 
-function normalizeChannelName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
+/** The wanted channel is the one chosen in the dashboard — never guessed by its name. */
 function isWantedCommandChannel(interaction: ChatInputCommandInteraction, configuredChannelId: string | null): boolean {
-  if (configuredChannelId && interaction.channelId === configuredChannelId) return true;
-  const channel = interaction.channel;
-  if (channel && "name" in channel && typeof channel.name === "string") {
-    return normalizeChannelName(channel.name) === "федеральный розыск";
-  }
-  return false;
+  return Boolean(configuredChannelId) && interaction.channelId === configuredChannelId;
 }
 
 async function assertWantedCommandAllowed(
@@ -176,8 +188,11 @@ async function assertWantedCommandAllowed(
     getSetting("wanted.channelId"),
     getSetting("wanted.coordinatorRoleIds"),
   ]);
+  if (!channelId) {
+    return "Канал розыска не выбран. Главный администратор задаёт его в дашборде: Настройки → Розыск.";
+  }
   if (!isWantedCommandChannel(interaction, channelId)) {
-    return "Команды розыска можно использовать только в канале «федеральный розыск».";
+    return `Команды розыска работают только в канале <#${channelId}>.`;
   }
   if (memberHasAnyRole(interaction, coordinatorRoleIds) || canManageModules(identity)) {
     return null;
@@ -525,7 +540,7 @@ async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ct
   }
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canPostDocument(identity)) {
+  if (!isStaff(identity)) {
     await interaction.editReply("Запрос webhook доступен сотрудникам фракций и администраторам.");
     return;
   }
@@ -760,8 +775,8 @@ async function handleAdminInvite(interaction: ChatInputCommandInteraction, ctx: 
 async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canPostDocument(identity)) {
-    await interaction.editReply("Недостаточно прав: нужна фракция или уровень администратора.");
+  if (!(await canPostDocument(interaction, identity))) {
+    await interaction.editReply("Недостаточно прав: команда доступна ролям, выбранным администрацией, и администраторам.");
     return;
   }
 
@@ -809,7 +824,7 @@ async function handleReply(interaction: ChatInputCommandInteraction, ctx: SlashH
   }
 
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canReplyDocument(identity, existing.factionCode)) {
+  if (!(await canReplyDocument(interaction, identity, existing.factionCode))) {
     await interaction.editReply("Недостаточно прав для ответа на этот документ.");
     return;
   }
@@ -898,8 +913,8 @@ async function handleWantedClose(interaction: ChatInputCommandInteraction, ctx: 
 async function handleFineCreate(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canManageModules(identity)) {
-    await interaction.editReply("Недостаточно прав: нужен уровень администратора.");
+  if (!(await canManageFines(interaction, identity))) {
+    await interaction.editReply("Недостаточно прав: нужна роль, выбранная администрацией для штрафов, или уровень администратора.");
     return;
   }
 
@@ -928,8 +943,8 @@ async function handleFineCreate(interaction: ChatInputCommandInteraction, ctx: S
 async function handleFinePaid(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canActOnModuleRecord(identity)) {
-    await interaction.editReply("Недостаточно прав: нужен уровень администратора.");
+  if (!(await canManageFines(interaction, identity))) {
+    await interaction.editReply("Недостаточно прав: нужна роль, выбранная администрацией для штрафов, или уровень администратора.");
     return;
   }
 
@@ -967,8 +982,8 @@ async function handlePersonnel(interaction: ChatInputCommandInteraction, ctx: Sl
     return;
   }
   const factionCode = await requireActiveFaction(factionRaw);
-  if (!canPersonnel(identity, factionCode)) {
-    await interaction.editReply("Недостаточно прав: лидер/зам фракции или администратор.");
+  if (!(await canPersonnel(interaction, identity, factionCode))) {
+    await interaction.editReply("Недостаточно прав: лидер или заместитель фракции, кадровая роль своей фракции или администратор.");
     return;
   }
 

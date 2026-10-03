@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Shell scripts and server configs run on Linux: always LF, whatever the editor's platform.
+*.sh text eol=lf
+deploy/** text eol=lf
+Dockerfile text eol=lf

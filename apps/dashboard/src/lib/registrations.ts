@@ -4,8 +4,21 @@ export type RegistrationListFilter = {
   kind: RegistrationKind;
   decision?: DecisionStatus;
   status?: RecordStatus;
+  /** Free text: static, plate, applicant id. */
+  q?: string | undefined;
+  /** One of the display statuses (PENDING, APPROVED, REJECTED, EXPIRED, REVOKED). */
+  display?: string | undefined;
   limit?: number;
   offset?: number;
+};
+
+/** Stored fields behind each status the registry shows. */
+const DISPLAY_FILTERS: Record<string, Prisma.RegistrationWhereInput> = {
+  PENDING: { decision: DecisionStatus.PENDING, status: RecordStatus.ACTIVE },
+  APPROVED: { decision: DecisionStatus.APPROVED, status: RecordStatus.ACTIVE },
+  REJECTED: { decision: DecisionStatus.REJECTED },
+  EXPIRED: { status: RecordStatus.EXPIRED },
+  REVOKED: { status: RecordStatus.REVOKED },
 };
 
 export type RegistrationListItem = {
@@ -16,7 +29,7 @@ export type RegistrationListItem = {
   modelOrDescription: string;
   decision: DecisionStatus;
   status: RecordStatus;
-  displayStatus: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  displayStatus: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "REVOKED";
   applicantDiscordId: string;
   applicantLabel: string;
   rejectionReason: string | null;
@@ -38,6 +51,7 @@ export function registrationDisplayStatus(
   status: RecordStatus,
 ): RegistrationListItem["displayStatus"] {
   if (status === RecordStatus.EXPIRED) return "EXPIRED";
+  if (status === RecordStatus.REVOKED) return "REVOKED";
   if (decision === DecisionStatus.REJECTED) return "REJECTED";
   if (decision === DecisionStatus.APPROVED) return "APPROVED";
   return "PENDING";
@@ -48,6 +62,7 @@ export const REGISTRATION_DISPLAY_STATUS_RU: Record<RegistrationListItem["displa
   APPROVED: "Одобрено",
   REJECTED: "Отказано",
   EXPIRED: "Истекла",
+  REVOKED: "Снята",
 };
 
 export function registrationStatusTone(
@@ -80,10 +95,21 @@ async function resolveApplicantLabels(discordIds: string[]): Promise<Map<string,
 export async function listRegistrations(
   filter: RegistrationListFilter,
 ): Promise<{ total: number; items: RegistrationListItem[] }> {
-  const where = {
+  const q = filter.q?.trim();
+  const where: Prisma.RegistrationWhereInput = {
     kind: filter.kind,
     ...(filter.decision ? { decision: filter.decision } : {}),
     ...(filter.status ? { status: filter.status } : {}),
+    ...(filter.display ? (DISPLAY_FILTERS[filter.display] ?? {}) : {}),
+    ...(q
+      ? {
+          OR: [
+            { staticId: { contains: q, mode: "insensitive" } },
+            { plate: { contains: q, mode: "insensitive" } },
+            { applicantDiscordId: { contains: q } },
+          ],
+        }
+      : {}),
   };
   const [total, rows] = await Promise.all([
     prisma.registration.count({ where }),

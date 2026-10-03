@@ -9,8 +9,10 @@
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
+import { enqueueFineOverdue } from "./module-jobs.js";
 import { type Db } from "./db.js";
 import { recordNumberSchema } from "./text.js";
+import { UserError } from "./errors.js";
 
 // ──────────────────────────────────────────────────────────────
 // Duration helper (legacy utils.parse_duration + days)
@@ -23,7 +25,7 @@ export function parsePaymentDeadline(value: string): { ms: number; text: string 
   const trimmed = value.trim();
   const match = DURATION_RE.exec(trimmed);
   if (!match) {
-    throw new Error("Формат срока оплаты: 1m, 24h или 14d");
+    throw new UserError("Формат срока оплаты: 1m, 24h или 14d");
   }
   const amount = Number(match[1]);
   const unit = match[2]!.toLowerCase();
@@ -88,7 +90,7 @@ export async function createFine(input: CreateFineInput, context: AuditContext) 
   return auditedMutation(context, "fine.created", "fine", async (tx) => {
     const existing = await tx.fine.findUnique({ where: { number: data.number } });
     if (existing) {
-      throw new Error("Штраф уже есть.");
+      throw new UserError("Штраф уже есть.");
     }
 
     const fine = await tx.fine.create({
@@ -116,7 +118,7 @@ export async function markFinePaid(input: MarkFinePaidInput, context: AuditConte
   return auditedMutation(context, "fine.paid", "fine", async (tx) => {
     const fine = await tx.fine.findUnique({ where: { number: data.fineNumber } });
     if (!fine || fine.status !== RecordStatus.ACTIVE) {
-      throw new Error(`Штраф ${data.fineNumber} не найден или уже закрыт`);
+      throw new UserError(`Штраф ${data.fineNumber} не найден или уже закрыт`);
     }
     const now = new Date();
     const updated = await tx.fine.update({
@@ -135,7 +137,7 @@ export async function cancelFine(id: string, context: AuditContext) {
   return auditedMutation(context, "fine.revoked", "fine", async (tx) => {
     const fine = await tx.fine.findUnique({ where: { id } });
     if (!fine || fine.status !== RecordStatus.ACTIVE) {
-      throw new Error("Штраф не найден или не активен");
+      throw new UserError("Штраф не найден или не активен");
     }
     const updated = await tx.fine.update({
       where: { id },
@@ -180,4 +182,24 @@ export async function listFines(filter: ListFinesFilter = {}) {
     }),
   ]);
   return { total, items };
+}
+
+/**
+ * Fines whose payment deadline has passed and that nobody was told about yet: each is marked as
+ * notified and gets a delivery job, in one transaction — so a fine is announced exactly once.
+ */
+export async function claimOverdueFines(now: Date = new Date(), limit = 50): Promise<number> {
+  return prisma.$transaction(async (tx) => {
+    const fines = await tx.fine.findMany({
+      where: { status: RecordStatus.ACTIVE, overdueNotified: false, dueAt: { lte: now } },
+      orderBy: { dueAt: "asc" },
+      take: limit,
+      select: { id: true },
+    });
+    for (const fine of fines) {
+      await tx.fine.update({ where: { id: fine.id }, data: { overdueNotified: true } });
+      await enqueueFineOverdue(fine.id, tx);
+    }
+    return fines.length;
+  });
 }
