@@ -7,6 +7,7 @@ import { WebhooksQueue } from "@/components/webhooks-queue";
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Вебхуки" };
 
@@ -88,7 +89,7 @@ async function ArchiveTab({ params }: { params: Search }) {
       </RegistryToolbar>
       <div className="panel">
         {forms.length === 0 ? (
-          <p className="muted registry-empty">Форм не найдено.</p>
+          <EmptyState title="Форм не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -123,7 +124,7 @@ async function ArchiveTab({ params }: { params: Search }) {
                       <td>{form.webhookUrl ? "вебхук" : form.deliveryChannelId ? "канал" : "—"}</td>
                       <td>{labels.get(form.createdByDiscordId) ?? form.createdByDiscordId}</td>
                       <td className="nowrap">{formatMoscowShort(form.createdAt)}</td>
-                      <td>
+                      <td className="cell-actions">
                         <div className="registry-actions">
                           <Link href={`/settings/forms/${form.id}/responses`} className="btn btn-ghost">
                             Ответы

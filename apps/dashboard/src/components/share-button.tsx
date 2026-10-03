@@ -77,16 +77,38 @@ export function ShareButton({
 
   return (
     <div className="share-cell">
-      <div className="row share-actions">
-        <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => void share()}>
-          {link ? "Скопировать ссылку" : "Поделиться"}
+      <button
+        type="button"
+        className="icon-action"
+        data-on={link ? "" : undefined}
+        disabled={pending}
+        title={link ? "Скопировать публичную ссылку" : "Поделиться: создать публичную ссылку"}
+        aria-label={link ? "Скопировать публичную ссылку" : "Поделиться"}
+        onClick={() => void share()}
+      >
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
+          <path
+            d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.700l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.700l1-1"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+      {link ? (
+        <button
+          type="button"
+          className="icon-action"
+          disabled={pending}
+          title="Отозвать ссылку"
+          aria-label="Отозвать ссылку"
+          onClick={() => void revoke()}
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden>
+            <path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
         </button>
-        {link ? (
-          <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => void revoke()}>
-            Отозвать
-          </button>
-        ) : null}
-      </div>
+      ) : null}
       {note ? (
         <span className="share-note" role="status">
           {note}

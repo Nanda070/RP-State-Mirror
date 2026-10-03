@@ -13,7 +13,8 @@ import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { SessionsList } from "@/components/sessions-list";
-import { formatMoscow } from "@/lib/moscow";
+import { getFactionColors } from "@/lib/catalog";
+import { formatMoscow, formatMoscowShort } from "@/lib/moscow";
 import { toSessionRows } from "@/lib/session-rows";
 import {
   REGISTRATION_DISPLAY_STATUS_RU,
@@ -21,6 +22,7 @@ import {
   registrationStatusTone,
 } from "@/lib/registrations";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { FactionBadge, Money, Plate, WantedStars, factionStyle } from "@/components/ui";
 
 const TABS = [
   { key: "overview", label: "Обзор" },
@@ -79,13 +81,13 @@ function payloadText(payload: unknown, key: string): string {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="muted" style={{ margin: 0 }}>
-      {children}
-    </p>
+    <p className="muted u-m0">{children}</p>
   );
 }
 
-function CharactersTab({ profile }: { profile: PlayerProfile }) {
+type FactionColor = Awaited<ReturnType<typeof getFactionColors>>;
+
+function CharactersTab({ profile, factionColor }: { profile: PlayerProfile; factionColor: FactionColor }) {
   if (profile.characters.length === 0) {
     return (
       <div className="panel">
@@ -98,48 +100,64 @@ function CharactersTab({ profile }: { profile: PlayerProfile }) {
     );
   }
   return (
-    <div className="profile-card-grid">
+    <div className="id-card-grid">
       {profile.characters.map((character) => (
-        <div className="panel profile-card" key={character.id}>
-          <div className="row profile-card-head">
-            <h2 className="panel-title">{character.name}</h2>
-            <span className="badge">Слот {character.slot}</span>
+        <article className="id-card" key={character.id} style={factionStyle(factionColor(character.factionCode))}>
+          <div className="id-card-photo" aria-hidden>
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="none">
+              <circle cx="12" cy="9" r="3.5" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M5 20c.6-3.6 3.4-5.5 7-5.5s6.4 1.9 7 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
           </div>
-          <dl className="profile-facts">
-            <div>
-              <dt>Статик</dt>
-              <dd className="registry-mono">{character.staticId}</dd>
+          <div className="id-card-body">
+            <div className="id-card-top">
+              <span className="id-card-title">San Andreas · ID</span>
+              <span className="badge">Слот {character.slot}</span>
             </div>
-            <div>
-              <dt>Фракция</dt>
-              <dd>
-                {[character.factionCode, character.department, character.rank ? `ранг ${character.rank}` : null]
-                  .filter(Boolean)
-                  .join(" · ") || "—"}
-              </dd>
-            </div>
-            <div>
-              <dt>Нашивка</dt>
-              <dd>
-                {character.activeToken ? (
-                  <>
-                    <span className="registry-mono">{character.activeToken.number}</span>
-                    <span className="muted"> · с {formatMoscow(character.activeToken.issuedAt)}</span>
-                  </>
-                ) : (
-                  <span className="muted">нет активной</span>
-                )}
-              </dd>
-            </div>
-          </dl>
+            <h2 className="id-card-name">{character.name}</h2>
+            <dl className="id-card-facts">
+              <div>
+                <dt>Статик</dt>
+                <dd className="registry-mono">{character.staticId}</dd>
+              </div>
+              <div>
+                <dt>Фракция</dt>
+                <dd>
+                  <FactionBadge code={character.factionCode} color={factionColor(character.factionCode)} />
+                </dd>
+              </div>
+              {character.department ? (
+                <div>
+                  <dt>Отдел</dt>
+                  <dd>{character.department}</dd>
+                </div>
+              ) : null}
+              {character.rank ? (
+                <div>
+                  <dt>Ранг</dt>
+                  <dd>{character.rank}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Нашивка</dt>
+                <dd className="registry-mono">{character.activeToken ? character.activeToken.number : "—"}</dd>
+              </div>
+              {character.activeToken ? (
+                <div>
+                  <dt>Выдана</dt>
+                  <dd>{formatMoscowShort(character.activeToken.issuedAt)}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
           {character.blacklist ? (
-            <p className="form-error">
+            <p className="form-error id-card-wide">
               В IC чёрном списке: запись <strong>{character.blacklist.number}</strong>. Причина:{" "}
               {character.blacklist.reason}
             </p>
           ) : null}
           {character.tokens.some((token) => token.status !== RecordStatus.ACTIVE) ? (
-            <p className="muted profile-card-note">
+            <p className="muted id-card-wide">
               Прежние нашивки:{" "}
               {character.tokens
                 .filter((token) => token.status !== RecordStatus.ACTIVE)
@@ -147,7 +165,7 @@ function CharactersTab({ profile }: { profile: PlayerProfile }) {
                 .join(", ")}
             </p>
           ) : null}
-        </div>
+        </article>
       ))}
     </div>
   );
@@ -169,12 +187,12 @@ function RegistrationsTab({ profile }: { profile: PlayerProfile }) {
                 <tr>
                   <th>Тип</th>
                   <th>Статик</th>
-                  <th>Модель / описание</th>
+                  <th>Описание</th>
                   <th>Госномер</th>
                   <th>Статус</th>
-                  <th>Подана (МСК)</th>
-                  <th>Действует до</th>
-                  <th>Причина отказа</th>
+                  <th>Подана</th>
+                  <th>До</th>
+                  <th>Отказ</th>
                 </tr>
               </thead>
               <tbody>
@@ -186,14 +204,16 @@ function RegistrationsTab({ profile }: { profile: PlayerProfile }) {
                       <td>{vehicle ? "ТС" : "Униформа"}</td>
                       <td className="registry-mono">{row.staticId}</td>
                       <td>{payloadText(row.payload, vehicle ? "model" : "description")}</td>
-                      <td className="registry-mono">{row.plate ?? "—"}</td>
+                      <td>
+                        <Plate value={row.plate} />
+                      </td>
                       <td>
                         <span className="registry-status" data-status={registrationStatusTone(display)}>
                           {REGISTRATION_DISPLAY_STATUS_RU[display]}
                         </span>
                       </td>
-                      <td>{formatMoscow(row.createdAt)}</td>
-                      <td>{formatMoscow(row.expiresAt)}</td>
+                      <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
+                      <td className="nowrap">{formatMoscowShort(row.expiresAt)}</td>
                       <td>{row.rejectionReason?.trim() || "—"}</td>
                     </tr>
                   );
@@ -220,8 +240,8 @@ function RegistrationsTab({ profile }: { profile: PlayerProfile }) {
                   <th>Перевод</th>
                   <th>Ранг</th>
                   <th>Статус</th>
-                  <th>Подана (МСК)</th>
-                  <th>Причина отказа</th>
+                  <th>Подана</th>
+                  <th>Отказ</th>
                 </tr>
               </thead>
               <tbody>
@@ -244,7 +264,7 @@ function RegistrationsTab({ profile }: { profile: PlayerProfile }) {
                         {TRANSFER_STATUS_RU[row.status] ?? row.status}
                       </span>
                     </td>
-                    <td>{formatMoscow(row.createdAt)}</td>
+                    <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
                     <td>{row.rejectionReason?.trim() || "—"}</td>
                   </tr>
                 ))}
@@ -279,7 +299,7 @@ function RecordsTab({ profile }: { profile: PlayerProfile }) {
                   <th>Сумма</th>
                   <th>Основание</th>
                   <th>Статус</th>
-                  <th>Оплатить до (МСК)</th>
+                  <th>Оплатить до</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,7 +307,9 @@ function RecordsTab({ profile }: { profile: PlayerProfile }) {
                   <tr key={row.id}>
                     <td className="registry-mono">{row.number}</td>
                     <td className="registry-mono">{row.staticId}</td>
-                    <td>{formatMoney(row.amount)}</td>
+                    <td>
+                      <Money state={row.status === RecordStatus.ACTIVE ? "due" : row.paidAt ? "paid" : "void"}>{formatMoney(row.amount)}</Money>
+                    </td>
                     <td>{row.reason}</td>
                     <td>
                       <span className="registry-status" data-status={row.status === RecordStatus.ACTIVE ? "warn" : "ok"}>
@@ -298,7 +320,7 @@ function RecordsTab({ profile }: { profile: PlayerProfile }) {
                             : RECORD_STATUS_RU[row.status]}
                       </span>
                     </td>
-                    <td>{formatMoscow(row.dueAt)}</td>
+                    <td className="nowrap">{formatMoscowShort(row.dueAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -325,7 +347,7 @@ function RecordsTab({ profile }: { profile: PlayerProfile }) {
                   <th>Обвинение</th>
                   <th>Срок</th>
                   <th>Статус</th>
-                  <th>Объявлен (МСК)</th>
+                  <th>Объявлен</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,15 +358,18 @@ function RecordsTab({ profile }: { profile: PlayerProfile }) {
                     <td>{row.reason}</td>
                     <td>{row.termText}</td>
                     <td>
-                      <span className="registry-status" data-status={row.status === RecordStatus.ACTIVE ? "warn" : "ok"}>
-                        {row.status === RecordStatus.ACTIVE
-                          ? "В розыске"
-                          : row.status === RecordStatus.CLOSED
-                            ? "Исполнен"
-                            : RECORD_STATUS_RU[row.status]}
-                      </span>
+                      <WantedStars
+                        active={row.status === RecordStatus.ACTIVE}
+                        label={
+                          row.status === RecordStatus.ACTIVE
+                            ? "В розыске"
+                            : row.status === RecordStatus.CLOSED
+                              ? "Исполнен"
+                              : (RECORD_STATUS_RU[row.status] ?? row.status)
+                        }
+                      />
                     </td>
-                    <td>{formatMoscow(row.createdAt)}</td>
+                    <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -361,6 +386,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const requested = (await searchParams).tab;
   const tab: TabKey = TABS.some((entry) => entry.key === requested) ? (requested as TabKey) : "overview";
 
+  const factionColor = await getFactionColors();
   const [identity, memberships, profile] = await Promise.all([
     resolveFreshIdentity(session.user.discordId),
     prisma.guildMember.findMany({
@@ -517,7 +543,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
         </>
       ) : null}
 
-      {tab === "characters" ? <CharactersTab profile={profile} /> : null}
+      {tab === "characters" ? <CharactersTab profile={profile} factionColor={factionColor} /> : null}
       {tab === "registrations" ? <RegistrationsTab profile={profile} /> : null}
       {tab === "records" ? <RecordsTab profile={profile} /> : null}
 
@@ -541,8 +567,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
                     {personnel.map((event) => (
                       <tr key={event.id}>
                         <td>{PERSONNEL_EVENT_LABELS_RU[event.type as keyof typeof PERSONNEL_EVENT_LABELS_RU] ?? event.type}</td>
-                        <td>{event.factionCode}</td>
-                        <td className="nowrap">{formatMoscow(event.createdAt)}</td>
+                        <td>
+                          <FactionBadge code={event.factionCode} color={factionColor(event.factionCode)} />
+                        </td>
+                        <td className="nowrap">{formatMoscowShort(event.createdAt)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -568,7 +596,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
                   <tbody>
                     {history.items.map((event) => (
                       <tr key={event.id}>
-                        <td className="nowrap">{formatMoscow(event.createdAt)}</td>
+                        <td className="nowrap">{formatMoscowShort(event.createdAt)}</td>
                         <td className="registry-mono">{event.action}</td>
                         <td>{event.entityType}</td>
                         <td className="muted">{event.source}</td>
@@ -585,7 +613,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       {tab === "sessions" ? (
         <div className="panel">
           <h2 className="panel-title">Входы в дашборд</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
+          <p className="muted u-mt0">
             Устройства, с которых выполнен вход в ваш аккаунт. Не узнаёте сессию — завершите её.
           </p>
           <SessionsList sessions={toSessionRows(sessions, session.sid)} allowRevokeOthers />
@@ -619,7 +647,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           ) : null}
           <div className="panel">
             <h2 className="panel-title">Серверы</h2>
-            <p className="muted" style={{ marginTop: 0, marginBottom: "1rem" }}>
+            <p className="muted u-mt0 u-mb4">
               Активные членства по снимку Discord. Роли считаются на момент последней синхронизации.
             </p>
             {memberships.length === 0 ? (

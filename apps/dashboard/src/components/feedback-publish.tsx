@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { LinkActions } from "./copy-button";
 
 type GuildOption = { discordId: string; name: string };
 
@@ -69,12 +70,12 @@ export function FeedbackPublish({
 
   return (
     <section className="panel stack">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+      <div className="row u-between u-wrap u-gap2">
         <div>
-          <h2 className="panel-title" style={{ marginTop: 0, marginBottom: "0.25rem" }}>
+          <h2 className="panel-title u-mt0 u-mb1">
             Кнопка для игроков
           </h2>
-          <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+          <p className="muted u-m0 u-text-sm">
             Игроки пишут обращения только через кнопку в Discord. Опубликуйте её в нужный канал.
           </p>
         </div>
@@ -89,20 +90,18 @@ export function FeedbackPublish({
       </div>
 
       {link ? (
-        <p style={{ margin: 0, fontSize: "0.9rem" }}>
-          Ссылка на сообщение:{" "}
-          <a href={link} target="_blank" rel="noreferrer">
-            {link}
-          </a>
-        </p>
+        <div className="row u-gap2 u-text-sm">
+          <span className="muted">Сообщение с кнопкой</span>
+          <LinkActions href={link} />
+        </div>
       ) : (
-        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="muted u-m0 u-text-sm">
           Кнопка ещё не опубликована — без неё игроки не смогут открыть форму обращения.
         </p>
       )}
 
       {open ? (
-        <div className="stack" style={{ gap: "0.5rem" }}>
+        <div className="stack u-gap2">
           <div className="form-grid-3">
             <label className="field">
               <span>Сервер</span>

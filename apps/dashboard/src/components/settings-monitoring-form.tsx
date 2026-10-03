@@ -46,7 +46,7 @@ export function SettingsMonitoringForm({
 
   return (
     <form className="panel" onSubmit={(event) => void onSubmit(event)}>
-      <h2 className="panel-title" style={{ marginTop: 0 }}>
+      <h2 className="panel-title u-mt0">
         Мониторинг и журнал
       </h2>
       <div className="field">

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import type { MouseEvent } from "react";
+import { LinkActions } from "./copy-button";
+import { EmptyState, MoreMenu } from "./ui";
 
 type FormRow = {
   id: string;
@@ -140,8 +143,8 @@ export function DiscordFormsManager({
 
   return (
     <section className="panel stack">
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
-        <h2 className="panel-title" style={{ marginTop: 0, marginBottom: 0 }}>
+      <div className="row u-between u-wrap u-gap2">
+        <h2 className="panel-title u-mt0 u-mb0">
           Формы
         </h2>
         <div className="row">
@@ -154,105 +157,125 @@ export function DiscordFormsManager({
         </div>
       </div>
       {message ? (
-        <p className="muted" role="status" style={{ margin: 0 }}>
+        <p className="form-ok u-m0" role="status">
           {message}
         </p>
       ) : null}
       {forms.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>
-          Форм пока нет. Создайте первую кнопкой «Новая форма».
-        </p>
+        <EmptyState
+          icon="form"
+          title="Форм пока нет"
+          action={
+            <Link href="/settings/forms/new" className="btn btn-primary">
+              Новая форма
+            </Link>
+          }
+        />
       ) : (
-        <div className="stack" style={{ gap: "0.85rem" }}>
+        <div className="form-list">
           {forms.map((form) => {
             const link = formMessageUrl(form);
             const publishing = publishFormId === form.id;
             const disabled = form.status === "CLOSED";
             const publicUrl = form.publicEnabled && form.slug ? `${publicBaseUrl}/f/${form.slug}` : null;
+            const closeMenu = (event: MouseEvent<HTMLElement>) => event.currentTarget.closest("details")?.removeAttribute("open");
             return (
-              <div key={form.id} className="builder-field">
-                <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
-                  <div>
+              <div key={form.id} className="form-item" data-off={disabled ? "" : undefined}>
+                <div className="form-item-head">
+                  <div className="form-item-title">
                     <strong>{form.name}</strong>
-                    {disabled ? (
-                      <span className="stub-badge" style={{ marginLeft: "0.4rem" }}>
-                        Отключена
-                      </span>
-                    ) : null}
-                    <span className="muted">
-                      {" "}
-                      · полей: {form.fields.length} · ответов: {form._count.submissions}
+                    <span className="registry-status" data-status={disabled ? "muted" : "ok"}>
+                      {disabled ? "Отключена" : "Активна"}
                     </span>
                   </div>
-                  <div className="row" style={{ flexWrap: "wrap", gap: "0.4rem" }}>
+                  <div className="row u-gap2">
                     <Link href={`/settings/forms/${form.id}`} className="btn btn-secondary">
                       Изменить
                     </Link>
                     <Link href={`/settings/forms/${form.id}/responses`} className="btn btn-secondary">
                       Ответы
                     </Link>
-                    {!disabled ? (
+                    <MoreMenu label={`Действия: ${form.name}`}>
+                      {!disabled ? (
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={(event) => {
+                            closeMenu(event);
+                            if (publishing) setPublishFormId(null);
+                            else openPublish(form);
+                          }}
+                        >
+                          {publishing ? "Скрыть публикацию" : "Кнопка в Discord"}
+                        </button>
+                      ) : null}
                       <button
-                        className="btn btn-secondary"
                         type="button"
                         disabled={pending}
-                        onClick={() => (publishing ? setPublishFormId(null) : openPublish(form))}
+                        onClick={(event) => {
+                          closeMenu(event);
+                          void setFormLifecycle(form.id, disabled ? "enable-form" : "disable-form");
+                        }}
                       >
-                        {publishing ? "Скрыть" : "Кнопка в Discord"}
+                        {disabled ? "Включить" : "Отключить"}
                       </button>
-                    ) : null}
-                    <button
-                      className="btn btn-secondary"
-                      type="button"
-                      disabled={pending}
-                      onClick={() => void setFormLifecycle(form.id, disabled ? "enable-form" : "disable-form")}
-                    >
-                      {disabled ? "Включить" : "Отключить"}
-                    </button>
-                    <button
-                      className="btn btn-ghost"
-                      type="button"
-                      disabled={pending}
-                      onClick={() => void setFormLifecycle(form.id, "archive-form")}
-                    >
-                      В архив
-                    </button>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        disabled={pending}
+                        onClick={(event) => {
+                          closeMenu(event);
+                          void setFormLifecycle(form.id, "archive-form");
+                        }}
+                      >
+                        В архив
+                      </button>
+                    </MoreMenu>
                   </div>
                 </div>
-                <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                  Доставка:{" "}
-                  {[form.deliveryChannelId ? "канал" : null, form.webhookUrl ? "webhook" : null]
-                    .filter(Boolean)
-                    .join(" · ") || "—"}
-                  {form.discordCompatible ? "" : " · есть поля выбора: заполняется только на сайте"}
-                </p>
-                {publicUrl ? (
-                  <p style={{ margin: 0, fontSize: "0.9rem" }}>
-                    Публичная страница:{" "}
-                    <a href={publicUrl} target="_blank" rel="noreferrer">
-                      {publicUrl}
-                    </a>
-                  </p>
-                ) : null}
-                {link ? (
-                  <p style={{ margin: 0, fontSize: "0.9rem" }}>
-                    Сообщение с кнопкой:{" "}
-                    <a href={link} target="_blank" rel="noreferrer">
-                      {link}
-                    </a>
-                  </p>
-                ) : !disabled && !publicUrl ? (
-                  <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                    Форму пока негде заполнить: опубликуйте кнопку в Discord или включите публичную страницу.
-                  </p>
+                <dl className="form-item-facts">
+                  <div>
+                    <dt>Полей</dt>
+                    <dd>{form.fields.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Ответов</dt>
+                    <dd>{form._count.submissions}</dd>
+                  </div>
+                  <div>
+                    <dt>Доставка</dt>
+                    <dd>
+                      {[form.deliveryChannelId ? "канал" : null, form.webhookUrl ? "вебхук" : null].filter(Boolean).join(" · ") ||
+                        "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Заполнение</dt>
+                    <dd>{form.discordCompatible ? "Discord и сайт" : "только сайт"}</dd>
+                  </div>
+                </dl>
+                {publicUrl || link ? (
+                  <div className="form-item-links">
+                    {publicUrl ? (
+                      <span>
+                        <span className="muted">Страница</span>
+                        <LinkActions href={publicUrl} />
+                      </span>
+                    ) : null}
+                    {link ? (
+                      <span>
+                        <span className="muted">Кнопка в Discord</span>
+                        <LinkActions href={link} />
+                      </span>
+                    ) : null}
+                  </div>
+                ) : !disabled ? (
+                  <p className="muted u-m0 u-text-sm">Форму пока негде заполнить</p>
                 ) : null}
                 {publishing && !disabled ? (
-                  <div className="stack" style={{ gap: "0.5rem" }}>
-                    {!form.discordCompatible ? (
-                      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                        В Discord эта форма не открывается окном: кнопка пришлёт ссылку на публичную страницу.
-                        Для этого включите публичную страницу в настройках формы.
-                      </p>
+                  <div className="stack u-gap2">
+                    {!form.discordCompatible && !publicUrl ? (
+                      <p className="form-error u-m0">Сначала включите публичную страницу: кнопка даст ссылку на неё.</p>
                     ) : null}
                     <div className="form-grid-3">
                       <label className="field">

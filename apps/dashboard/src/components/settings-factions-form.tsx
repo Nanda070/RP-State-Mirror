@@ -140,7 +140,7 @@ export function SettingsFactionsForm({
     <div className="stack">
       {rows.map((row) => (
         <div key={row.code} className="panel">
-          <h2 className="panel-title" style={{ marginTop: 0 }}>
+          <h2 className="panel-title u-mt0">
             <span
               className="faction-swatch"
               style={{ background: row.color ?? "var(--ink-soft)" }}
@@ -180,7 +180,7 @@ export function SettingsFactionsForm({
                 row.guildDiscordId ? "Не выбрана" : "Сначала привяжите сервер фракции"
               }
             />
-            <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+            <p className="muted u-m0 u-mt1 u-text-sm">
               Роль из снимка Discord на сервере фракции. Упоминается при отправке документов
               (<code>/пост</code>) и при уведомлении фракции о штрафе.
             </p>

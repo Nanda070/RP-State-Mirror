@@ -101,7 +101,7 @@ export function LegalEditor({ documents }: { documents: LegalDocState[] }) {
         </p>
       ) : null}
       {current.history.length > 0 ? (
-        <div className="registry-table-wrap" style={{ marginTop: "1rem" }}>
+        <div className="registry-table-wrap u-mt4">
           <table className="registry-table">
             <thead>
               <tr>
@@ -167,7 +167,7 @@ export function AnonymizeForm() {
   return (
     <form className="panel" onSubmit={(event) => void submit(event)}>
       <h2 className="panel-title">Обезличивание по запросу</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted u-mt0">
         Discord ID человека заменяется случайным псевдонимом во всех записях, ник, аватар, IP и устройство
         стираются, приложенные файлы удаляются из хранилища. Записи реестров, имена персонажей и статики остаются.
         Отменить нельзя. Человек не должен состоять на серверах проекта.

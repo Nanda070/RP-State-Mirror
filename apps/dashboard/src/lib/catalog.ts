@@ -38,6 +38,12 @@ export const getRolesForGuild = cache(async (guildDiscordId: string) =>
   }),
 );
 
+/** Colour of a faction by its code, for badges and row stripes; null — no colour set or no such faction. */
+export const getFactionColors = cache(async () => {
+  const colors = new Map((await getActiveFactionOptions()).map((faction) => [faction.code, faction.color]));
+  return (code: string | null | undefined): string | null => (code ? (colors.get(code) ?? null) : null);
+});
+
 export const getActiveFactionOptions = cache(async () =>
   prisma.faction.findMany({
     where: { status: RecordStatus.ACTIVE },

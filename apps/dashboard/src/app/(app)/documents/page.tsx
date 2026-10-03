@@ -5,6 +5,8 @@ import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/co
 import { ShareButton } from "@/components/share-button";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { getFactionColors } from "@/lib/catalog";
+import { EmptyState, FactionBadge, Stamp, factionStyle } from "@/components/ui";
 
 export const metadata = { title: "Документы" };
 
@@ -21,6 +23,7 @@ export default async function DocumentsRegistryPage({ searchParams }: { searchPa
   if (!canViewModules(identity)) redirect("/overview");
 
   const query = registryQuery(await searchParams);
+  const factionColor = await getFactionColors();
   const { items, total, page, pages } = await listDocumentsPage(query);
   // Public links are created and revoked by «Админ» and above; helpers only read the registry.
   const shareLinks = canManageModules(identity)
@@ -46,7 +49,7 @@ export default async function DocumentsRegistryPage({ searchParams }: { searchPa
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -59,28 +62,27 @@ export default async function DocumentsRegistryPage({ searchParams }: { searchPa
                   <th>Статус</th>
                   <th>Создан</th>
                   <th>Истекает</th>
-                  {shareLinks ? <th>Ссылка</th> : null}
+                  {shareLinks ? <th className="cell-actions">Ссылка</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {items.map((doc) => (
-                  <tr key={doc.id}>
+                  <tr key={doc.id} data-faction="" style={factionStyle(factionColor(doc.factionCode))}>
                     <td className="registry-mono nowrap">{doc.number}</td>
-                    <td>{doc.factionCode}</td>
+                    <td>
+                      <FactionBadge code={doc.factionCode} color={factionColor(doc.factionCode)} />
+                    </td>
                     <td>{doc.subject}</td>
                     <td>{doc._count.responses}</td>
                     <td>
-                      <span
-                        className="registry-status"
-                        data-status={doc.status === RecordStatus.ACTIVE ? "warn" : doc.status === RecordStatus.CLOSED ? "ok" : "muted"}
-                      >
+                      <Stamp status={doc.status === RecordStatus.ACTIVE ? "warn" : doc.status === RecordStatus.CLOSED ? "ok" : "muted"}>
                         {STATUS_RU[doc.status] ?? doc.status}
-                      </span>
+                      </Stamp>
                     </td>
                     <td className="nowrap">{formatMoscowShort(doc.createdAt)}</td>
                     <td className="nowrap">{formatMoscowShort(doc.expiresAt)}</td>
                     {shareLinks ? (
-                      <td>
+                      <td className="cell-actions">
                         <ShareButton entityType="document" entityId={doc.id} initialLink={shareLinks.get(doc.id) ?? null} />
                       </td>
                     ) : null}

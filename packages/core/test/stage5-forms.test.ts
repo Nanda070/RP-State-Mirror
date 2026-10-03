@@ -12,6 +12,7 @@ import {
   getDiscordForm,
   getFormDraft,
   getPublicForm,
+  getPublicFormState,
   isDiscordCompatible,
   listFormColumns,
   saveFormDraft,
@@ -204,6 +205,22 @@ describe("form submissions", () => {
     const results = await Promise.allSettled(Array.from({ length: 5 }, () => submitPublicForm("anketa", VALID)));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
     await expect(submitPublicForm("anketa", VALID)).rejects.toThrow(/Лимит ответов/);
+  });
+
+  it("tells the public page why a form takes no answers", async () => {
+    expect(await getPublicFormState("nope")).toBeNull();
+
+    await makeForm({ slug: "open", publicEnabled: true, responseLimit: 1 });
+    expect((await getPublicFormState("open"))?.state).toBe("open");
+    await submitPublicForm("open", VALID);
+    expect((await getPublicFormState("open"))?.state).toBe("full");
+
+    await makeForm({ slug: "old", publicEnabled: true, expiresAt: new Date(Date.now() - 1000) });
+    expect((await getPublicFormState("old"))?.state).toBe("expired");
+
+    // A form that is not public keeps its name and questions to itself.
+    await makeForm({ slug: "hidden" });
+    expect(await getPublicFormState("hidden")).toEqual({ state: "disabled", form: null });
   });
 
   it("keeps multi-step drafts per user and clears them on submit", async () => {

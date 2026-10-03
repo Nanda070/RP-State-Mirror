@@ -6,6 +6,8 @@ import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/co
 import { ShareButton } from "@/components/share-button";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { getFactionColors } from "@/lib/catalog";
+import { EmptyState, FactionBadge, Money, factionStyle } from "@/components/ui";
 
 export const metadata = { title: "Штрафы" };
 
@@ -22,6 +24,7 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
   if (!canViewModules(identity)) redirect("/overview");
 
   const query = registryQuery(await searchParams);
+  const factionColor = await getFactionColors();
   const { items, total, page, pages } = await listFinesPage(query);
   const canAct = canManageModules(identity);
   const shareLinks = canAct ? await listShareLinksFor("fine", items.map((item) => item.id)) : null;
@@ -44,7 +47,7 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -58,7 +61,7 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                   <th>Статус</th>
                   <th>Оплатить до</th>
                   <th>Выписан</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -66,12 +69,16 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                   const active = row.status === RecordStatus.ACTIVE;
                   const overdue = active && row.dueAt !== null && row.dueAt.getTime() <= now;
                   return (
-                    <tr key={row.id}>
+                    <tr key={row.id} data-faction="" style={factionStyle(factionColor(row.factionCode))}>
                       <td className="registry-mono nowrap">{row.number}</td>
                       <td className="registry-mono">{row.staticId}</td>
                       <td>{row.characterName}</td>
-                      <td className="registry-mono nowrap">{formatMoney(row.amount)}</td>
-                      <td>{row.factionCode}</td>
+                      <td>
+                        <Money state={active ? "due" : row.status === RecordStatus.CLOSED ? "paid" : "void"}>{formatMoney(row.amount)}</Money>
+                      </td>
+                      <td>
+                        <FactionBadge code={row.factionCode} color={factionColor(row.factionCode)} />
+                      </td>
                       <td>
                         <span
                           className="registry-status"
@@ -83,7 +90,7 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                       <td className="nowrap">{formatMoscowShort(row.dueAt)}</td>
                       <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
                       {canAct ? (
-                        <td>
+                        <td className="cell-actions">
                           <div className="registry-actions">
                             {shareLinks ? (
                               <ShareButton entityType="fine" entityId={row.id} initialLink={shareLinks.get(row.id) ?? null} />

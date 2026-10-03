@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { formatMoscow } from "@/lib/moscow";
+import { formatMoscowShort } from "@/lib/moscow";
+import { CopyButton } from "./copy-button";
+import { EmptyState } from "./ui";
 
 type WebhookRequest = {
   id: string;
@@ -15,6 +17,17 @@ type WebhookRequest = {
   status: string;
   createdAt: string | Date;
 };
+
+/** A webhook address holds a secret token: show where it leads, not the token. */
+function shortUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const id = parsed.pathname.split("/").filter(Boolean)[2] ?? "";
+    return `${parsed.host}/…/${id.slice(0, 6)}…`;
+  } catch {
+    return "адрес вебхука";
+  }
+}
 
 const STATUS_RU: Record<string, string> = {
   PENDING: "Ожидает",
@@ -53,12 +66,12 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
     <div className="stack">
       <section className="panel stack">
         <h2 className="panel-title">Очередь запросов webhook</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted u-mt0">
           Запросы из <code>/создать-вебхук</code>. URL создаёт бот — подставьте его при сборке
           Discord-формы, опубликуйте кнопку формы (чтобы в ЛС была ссылка), затем отметьте «Форма
           собрана» — заявитель получит уведомление в личные сообщения.
         </p>
-        <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+        <div className="row u-wrap u-gap2">
           <Link href="/settings/forms" className="btn btn-secondary">
             Открыть Discord-формы
           </Link>
@@ -70,30 +83,30 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
 
       {items.length === 0 ? (
         <section className="panel">
-          <p className="muted" style={{ margin: 0 }}>
-            Запросов пока нет.
-          </p>
+          <EmptyState icon="inbox" title="Запросов пока нет" />
         </section>
       ) : (
         items.map((req) => (
           <section key={req.id} className="panel stack">
-            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div className="row u-between u-wrap u-gap2">
               <div>
-                <strong>{STATUS_RU[req.status] ?? req.status}</strong>
-                <span className="muted"> · {formatMoscow(new Date(req.createdAt))}</span>
+                <strong>Запрос формы</strong>
+                <span className="muted"> · {formatMoscowShort(new Date(req.createdAt))}</span>
               </div>
-              <code style={{ fontSize: "0.8rem" }}>{req.id}</code>
+              <span className="registry-status" data-status={req.status === "PENDING" ? "warn" : req.status === "APPROVED" ? "ok" : "muted"}>
+                {STATUS_RU[req.status] ?? req.status}
+              </span>
             </div>
-            <p style={{ margin: 0 }}>{req.description}</p>
-            <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-              Сервер / канал из запроса Discord · заявитель Discord
-            </p>
+            <p className="u-m0">{req.description}</p>
             {req.webhookUrl ? (
-              <code style={{ wordBreak: "break-all", fontSize: "0.85rem" }}>{req.webhookUrl}</code>
+              <div className="row u-gap2 u-wrap">
+                <code className="url-short">{shortUrl(req.webhookUrl)}</code>
+                <CopyButton value={req.webhookUrl} />
+              </div>
             ) : (
-              <span className="muted">URL ещё не сохранён</span>
+              <span className="muted">Адрес вебхука ещё не сохранён</span>
             )}
-            <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+            <div className="row u-wrap u-gap2">
               {req.webhookUrl ? (
                 <Link
                   href={`/settings/forms/new?request=${encodeURIComponent(req.id)}`}

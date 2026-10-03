@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { FormPreview } from "./form-preview";
 import { ToggleRow } from "./toggle-row";
 
 // Mirrors FORM_FIELD_TYPES in @mirror/core (the core entry point is server-only).
@@ -50,13 +51,54 @@ export type FormBuilderValue = {
   fields: FormBuilderField[];
 };
 
-type Row = FormBuilderField & { rowId: number; optionsText: string };
+/** `autoKey`: the key follows the label until someone edits it or the field is saved. */
+type Row = FormBuilderField & { rowId: number; optionsText: string; autoKey: boolean };
 
 let nextRowId = 1;
 
-function toRow(field: FormBuilderField): Row {
-  return { ...field, rowId: nextRowId++, optionsText: field.options.join("\n") };
+function toRow(field: FormBuilderField, autoKey = false): Row {
+  return { ...field, rowId: nextRowId++, optionsText: field.options.join("\n"), autoKey };
 }
+
+const TRANSLIT: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m",
+  н: "n", о: "o", п: "p", р: "r", с: "s", т: "t", у: "u", ф: "f", х: "h", ц: "c", ч: "ch", ш: "sh", щ: "sch",
+  ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+};
+
+/** Storage key made from the label: «Ваш возраст» → «vash_vozrast»; unique among `taken`. */
+function keyFromLabel(label: string, taken: ReadonlySet<string>, fallback: string): string {
+  const base =
+    [...label.toLowerCase()]
+      .map((char) => TRANSLIT[char] ?? char)
+      .join("")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^[^a-z]+|_+$/g, "")
+      .slice(0, 28) || fallback;
+  let key = base;
+  for (let n = 2; taken.has(key); n += 1) key = `${base}_${n}`;
+  return key;
+}
+
+function TypeIcon({ type }: { type: FieldType }) {
+  const paths: Record<FieldType, string> = {
+    short: "M5 8h14M5 12h8",
+    paragraph: "M5 7h14M5 11h14M5 15h14M5 19h8",
+    number: "M9 5 7.5 19M16.5 5 15 19M5 9.5h15M4 14.5h15",
+    date: "M6 6.5h12a1 1 0 0 1 1 1V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1ZM5 10.5h14M9 4.5v3M15 4.5v3",
+    select: "M5 7h14M5 12h14M5 17h14M16 10.5l1.5 1.5 1.5-1.5",
+    multiselect: "m4.5 7 1.5 1.5L8.5 6M4.5 13l1.5 1.5L8.5 12M11.5 7.5H19M11.5 13.5H19M4.5 19H19",
+    checkbox: "M6 5.5h12a.5.5 0 0 1 .5.5v12a.5.5 0 0 1-.5.5H6a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5ZM8.5 12.5l2.5 2.5 4.5-5",
+  };
+  return (
+    <span className="builder-type" aria-hidden>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+        <path d={paths[type]} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+}
+
 
 function blankField(index: number): FormBuilderField {
   return {
@@ -88,6 +130,28 @@ function isoToLocal(iso: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+const RU_DATE_TIME = /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[\s,]+(\d{1,2}):(\d{2}))?$/;
+
+/** «05.10.2026 18:00» → local `YYYY-MM-DDTHH:mm`; empty text → empty; anything else → null. */
+function ruToLocal(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const match = RU_DATE_TIME.exec(trimmed);
+  if (!match) return null;
+  const [day, month, year, hours, minutes] = match.slice(1).map((part) => Number(part ?? 0));
+  const date = new Date(year ?? 0, (month ?? 1) - 1, day, hours, minutes);
+  // 31.02 rolls over to March: reject it instead of silently moving the deadline.
+  if (date.getDate() !== day || date.getMonth() !== (month ?? 1) - 1) return null;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** Local `YYYY-MM-DDTHH:mm` → «05.10.2026 18:00». */
+function localToRu(local: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
+  return match ? `${match[3]}.${match[2]}.${match[1]} ${match[4]}:${match[5]}` : "";
+}
+
 /** `datetime-local` value (local time) → ISO string, or null. */
 function localToIso(value: string): string | null {
   if (!value) return null;
@@ -109,10 +173,15 @@ export function FormBuilder({
   // `initial.expiresAt` is an ISO instant; the input needs the viewer's local time, which only the
   // browser knows — so it is filled in after mount to keep server and client markup identical.
   const [form, setForm] = useState({ ...initial, expiresAt: "" });
+  // The deadline is typed the Russian way; the browser's own date field follows the system language.
+  const [expiresText, setExpiresText] = useState("");
   useEffect(() => {
-    if (initial.expiresAt) setForm((current) => ({ ...current, expiresAt: isoToLocal(initial.expiresAt) }));
+    if (!initial.expiresAt) return;
+    const local = isoToLocal(initial.expiresAt);
+    setForm((current) => ({ ...current, expiresAt: local }));
+    setExpiresText(localToRu(local));
   }, [initial.expiresAt]);
-  const [rows, setRows] = useState<Row[]>(() => initial.fields.map(toRow));
+  const [rows, setRows] = useState<Row[]>(() => initial.fields.map((field) => toRow(field, initial.id === null)));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -123,7 +192,30 @@ export function FormBuilder({
   };
   const setRow = (rowId: number, patch: Partial<Row>) => {
     setSaved(false);
-    setRows((current) => current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
+    setRows((current) =>
+      current.map((row) => {
+        if (row.rowId !== rowId) return row;
+        const next = { ...row, ...patch };
+        if (next.autoKey && patch.label !== undefined) {
+          const taken = new Set(current.filter((entry) => entry.rowId !== rowId).map((entry) => entry.key));
+          next.key = keyFromLabel(patch.label, taken, row.key);
+        }
+        return next;
+      }),
+    );
+  };
+  // Drag a field by its handle to reorder.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const dropRow = (target: number) => {
+    if (dragIndex === null || dragIndex === target) return;
+    setSaved(false);
+    setRows((current) => {
+      const next = [...current];
+      const [row] = next.splice(dragIndex, 1);
+      if (row) next.splice(target, 0, row);
+      return next;
+    });
+    setDragIndex(null);
   };
   const moveRow = (index: number, delta: -1 | 1) => {
     setSaved(false);
@@ -158,11 +250,12 @@ export function FormBuilder({
         list.push(`«${name}»: добавьте варианты выбора.`);
       }
     }
+    if (ruToLocal(expiresText) === null) list.push("Срок приёма ответов: дата в виде ДД.ММ.ГГГГ ЧЧ:ММ.");
     if (form.publicEnabled && !SLUG_RE.test(form.slug)) {
       list.push("Адрес публичной страницы: 3–48 символов, латиница, цифры и дефис.");
     }
     return list;
-  }, [form, rows]);
+  }, [form, rows, expiresText]);
 
   async function save() {
     setPending(true);
@@ -223,6 +316,7 @@ export function FormBuilder({
   }
 
   return (
+    <div className="builder-layout">
     <div className="stack">
       <section className="panel">
         <h2 className="panel-title">Основное</h2>
@@ -250,9 +344,6 @@ export function FormBuilder({
 
       <section className="panel">
         <h2 className="panel-title">Куда приходят ответы</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Нужен хотя бы один адресат. Все ответы также сохраняются и доступны в дашборде.
-        </p>
         <div className="form-grid-3">
           <div className="field">
             <label htmlFor="formChannel">Канал Discord</label>
@@ -263,7 +354,7 @@ export function FormBuilder({
               channels={channels}
             />
           </div>
-          <div className="field" style={{ gridColumn: "span 2" }}>
+          <div className="field u-span2">
             <label htmlFor="formWebhook">Webhook URL</label>
             <input
               id="formWebhook"
@@ -289,11 +380,15 @@ export function FormBuilder({
             <label htmlFor="formExpires">Принимать ответы до</label>
             <input
               id="formExpires"
-              type="datetime-local"
-              value={form.expiresAt}
-              onChange={(event) => set("expiresAt", event.target.value)}
+              inputMode="numeric"
+              placeholder="ДД.ММ.ГГГГ ЧЧ:ММ"
+              value={expiresText}
+              onChange={(event) => {
+                setExpiresText(event.target.value);
+                const local = ruToLocal(event.target.value);
+                if (local !== null) set("expiresAt", local);
+              }}
             />
-            <span className="field-hint">По времени вашего устройства. Пусто — без срока.</span>
           </div>
         </div>
       </section>
@@ -307,64 +402,111 @@ export function FormBuilder({
             disabled={rows.length >= MAX_FIELDS}
             onClick={() => {
               setSaved(false);
-              setRows((current) => [...current, toRow(blankField(current.length + 1))]);
+              setRows((current) => {
+                const taken = new Set(current.map((entry) => entry.key));
+                let index = current.length + 1;
+                while (taken.has(`field_${index}`)) index += 1;
+                return [...current, toRow(blankField(index), true)];
+              });
             }}
           >
             Добавить поле
           </button>
         </div>
-        <p className="muted" style={{ marginTop: 0 }}>
-          {rows.length === 0
-            ? "Полей пока нет."
-            : discordReady
+        {rows.length > 0 ? (
+          <p className="muted u-mt0">
+            {discordReady
               ? steps > 1
-                ? `В Discord форма откроется в ${steps} шага по ${MODAL_FIELDS} полей.`
-                : "В Discord форма откроется одним окном."
-              : "Есть поля выбора или флажки: такую форму можно заполнить только на веб-странице. Кнопка в Discord даст ссылку на неё."}
-        </p>
+                ? `В Discord — ${steps} окна по ${MODAL_FIELDS} полей`
+                : "В Discord — одно окно"
+              : "Только сайт: есть поля выбора или флажки"}
+          </p>
+        ) : null}
 
         <div className="builder-fields">
           {rows.map((row, index) => {
             const choice = row.type === "select" || row.type === "multiselect";
             const text = row.type === "short" || row.type === "paragraph";
             return (
-              <div key={row.rowId} className="builder-field">
+              <div
+                key={row.rowId}
+                className="builder-field"
+                data-dragging={dragIndex === index ? "" : undefined}
+                onDragOver={(event) => {
+                  if (dragIndex !== null) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  dropRow(index);
+                }}
+              >
                 <div className="row builder-field-head">
-                  <strong>
+                  <span
+                    className="builder-handle"
+                    draggable
+                    title="Перетащите, чтобы изменить порядок"
+                    aria-hidden
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      setDragIndex(index);
+                    }}
+                    onDragEnd={() => setDragIndex(null)}
+                  >
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                      <circle cx="9" cy="6" r="1.5" />
+                      <circle cx="15" cy="6" r="1.5" />
+                      <circle cx="9" cy="12" r="1.5" />
+                      <circle cx="15" cy="12" r="1.5" />
+                      <circle cx="9" cy="18" r="1.5" />
+                      <circle cx="15" cy="18" r="1.5" />
+                    </svg>
+                  </span>
+                  <TypeIcon type={row.type} />
+                  <strong className="builder-field-name">
                     {index + 1}. {row.label.trim() || "Новое поле"}
                   </strong>
-                  <div className="row faq-controls">
+                  <div className="row u-gap1">
                     <button
                       type="button"
-                      className="btn btn-ghost"
+                      className="icon-action"
                       aria-label="Поднять поле"
+                      title="Выше"
                       disabled={index === 0}
                       onClick={() => moveRow(index, -1)}
                     >
-                      ↑
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden>
+                        <path d="m6 14 6-6 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
                     </button>
                     <button
                       type="button"
-                      className="btn btn-ghost"
+                      className="icon-action"
                       aria-label="Опустить поле"
+                      title="Ниже"
                       disabled={index === rows.length - 1}
                       onClick={() => moveRow(index, 1)}
                     >
-                      ↓
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden>
+                        <path d="m6 10 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
                     </button>
                     <button
                       type="button"
-                      className="btn btn-ghost"
+                      className="icon-action"
+                      aria-label="Убрать поле"
+                      title="Убрать"
                       onClick={() => {
                         setSaved(false);
                         setRows((current) => current.filter((entry) => entry.rowId !== row.rowId));
                       }}
                     >
-                      Убрать
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden>
+                        <path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
                     </button>
                   </div>
                 </div>
-                <div className="form-grid-3">
+                <div className="builder-grid-2">
                   <div className="field">
                     <label htmlFor={`label-${row.rowId}`}>Подпись</label>
                     <input
@@ -392,16 +534,6 @@ export function FormBuilder({
                       ))}
                     </select>
                   </div>
-                  <div className="field">
-                    <label htmlFor={`key-${row.rowId}`}>Ключ</label>
-                    <input
-                      id={`key-${row.rowId}`}
-                      maxLength={32}
-                      value={row.key}
-                      onChange={(event) => setRow(row.rowId, { key: event.target.value.toLowerCase() })}
-                    />
-                    <span className="field-hint">Под этим именем ответ хранится. Не меняйте после запуска.</span>
-                  </div>
                 </div>
                 <div className="field">
                   <label htmlFor={`help-${row.rowId}`}>Подсказка</label>
@@ -423,59 +555,73 @@ export function FormBuilder({
                     />
                   </div>
                 ) : null}
-                {text ? (
-                  <div className="form-grid-3">
-                    <div className="field">
-                      <label htmlFor={`minlen-${row.rowId}`}>Мин. длина</label>
-                      <input
-                        id={`minlen-${row.rowId}`}
-                        type="number"
-                        min={0}
-                        value={row.minLength}
-                        onChange={(event) => setRow(row.rowId, { minLength: event.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`maxlen-${row.rowId}`}>Макс. длина</label>
-                      <input
-                        id={`maxlen-${row.rowId}`}
-                        type="number"
-                        min={1}
-                        placeholder={row.type === "paragraph" ? "4000" : "300"}
-                        value={row.maxLength}
-                        onChange={(event) => setRow(row.rowId, { maxLength: event.target.value })}
-                      />
-                    </div>
+                <div className="builder-limits">
+                  {text ? (
+                    <>
+                      <div className="field">
+                        <label htmlFor={`minlen-${row.rowId}`}>Мин. длина</label>
+                        <input
+                          id={`minlen-${row.rowId}`}
+                          type="number"
+                          min={0}
+                          value={row.minLength}
+                          onChange={(event) => setRow(row.rowId, { minLength: event.target.value })}
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`maxlen-${row.rowId}`}>Макс. длина</label>
+                        <input
+                          id={`maxlen-${row.rowId}`}
+                          type="number"
+                          min={1}
+                          placeholder={row.type === "paragraph" ? "4000" : "300"}
+                          value={row.maxLength}
+                          onChange={(event) => setRow(row.rowId, { maxLength: event.target.value })}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                  {row.type === "number" ? (
+                    <>
+                      <div className="field">
+                        <label htmlFor={`min-${row.rowId}`}>Минимум</label>
+                        <input
+                          id={`min-${row.rowId}`}
+                          inputMode="decimal"
+                          value={row.min}
+                          onChange={(event) => setRow(row.rowId, { min: event.target.value })}
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`max-${row.rowId}`}>Максимум</label>
+                        <input
+                          id={`max-${row.rowId}`}
+                          inputMode="decimal"
+                          value={row.max}
+                          onChange={(event) => setRow(row.rowId, { max: event.target.value })}
+                        />
+                      </div>
+                    </>
+                  ) : null}
+                  <ToggleRow
+                    id={`required-${row.rowId}`}
+                    checked={row.required}
+                    onChange={(checked) => setRow(row.rowId, { required: checked })}
+                    label={row.type === "checkbox" ? "Нужно отметить" : "Обязательное"}
+                  />
+                </div>
+                <details className="builder-more">
+                  <summary>Дополнительно</summary>
+                  <div className="field">
+                    <label htmlFor={`key-${row.rowId}`}>Ключ хранения</label>
+                    <input
+                      id={`key-${row.rowId}`}
+                      maxLength={32}
+                      value={row.key}
+                      onChange={(event) => setRow(row.rowId, { key: event.target.value.toLowerCase(), autoKey: false })}
+                    />
                   </div>
-                ) : null}
-                {row.type === "number" ? (
-                  <div className="form-grid-3">
-                    <div className="field">
-                      <label htmlFor={`min-${row.rowId}`}>Минимум</label>
-                      <input
-                        id={`min-${row.rowId}`}
-                        inputMode="decimal"
-                        value={row.min}
-                        onChange={(event) => setRow(row.rowId, { min: event.target.value })}
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`max-${row.rowId}`}>Максимум</label>
-                      <input
-                        id={`max-${row.rowId}`}
-                        inputMode="decimal"
-                        value={row.max}
-                        onChange={(event) => setRow(row.rowId, { max: event.target.value })}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-                <ToggleRow
-                  id={`required-${row.rowId}`}
-                  checked={row.required}
-                  onChange={(checked) => setRow(row.rowId, { required: checked })}
-                  label={row.type === "checkbox" ? "Нужно обязательно отметить" : "Обязательное поле"}
-                />
+                </details>
               </div>
             );
           })}
@@ -550,6 +696,20 @@ export function FormBuilder({
           </a>
         ) : null}
       </div>
+    </div>
+      <FormPreview
+        name={form.name}
+        description={form.description}
+        discordReady={discordReady}
+        fields={rows.map((row) => ({
+          id: row.rowId,
+          label: row.label,
+          type: row.type,
+          required: row.required,
+          helpText: row.helpText,
+          options: row.optionsText.split("\n").map((option) => option.trim()).filter(Boolean),
+        }))}
+      />
     </div>
   );
 }

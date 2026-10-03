@@ -6,6 +6,7 @@ import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/co
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Нашивки и персонажи" };
 
@@ -44,7 +45,7 @@ export default async function TokensRegistryPage({ searchParams }: { searchParam
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -57,7 +58,7 @@ export default async function TokensRegistryPage({ searchParams }: { searchParam
                   <th>Нашивка</th>
                   <th>Статус</th>
                   <th>Создан</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -101,7 +102,7 @@ export default async function TokensRegistryPage({ searchParams }: { searchParam
                       </td>
                       <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
                       {canAct ? (
-                        <td>
+                        <td className="cell-actions">
                           <div className="registry-actions">
                             {activeToken ? (
                               <RegistryActions

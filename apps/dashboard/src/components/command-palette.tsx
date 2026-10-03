@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 export const COMMAND_PALETTE_EVENT = "mirror:open-command-palette";
 
@@ -17,6 +17,8 @@ type PaletteItem = {
   requiresSystemSettings?: boolean;
   requiresStaff?: boolean;
   requiresAdmin?: boolean;
+  /** A record found by the search, not a section of the site. */
+  record?: boolean;
 };
 
 const ITEMS: PaletteItem[] = [
@@ -99,6 +101,7 @@ export function CommandPalette({
               href: hit.href,
               label: hit.detail ? `${hit.title} — ${hit.detail}` : hit.title,
               group: hit.kind,
+              record: true,
             })),
           );
         })
@@ -112,8 +115,11 @@ export function CommandPalette({
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return allowedItems;
-    const sections = allowedItems.filter(
+    // Sections of one group stand together, in the order the groups first appear.
+    const order = [...new Set(allowedItems.map((item) => item.group))];
+    const grouped = [...allowedItems].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
+    if (!q) return grouped;
+    const sections = grouped.filter(
       (item) =>
         item.label.toLowerCase().includes(q) ||
         item.href.includes(q) ||
@@ -183,26 +189,48 @@ export function CommandPalette({
         />
         <div className="command-list">
           {results.length === 0 ? (
-            <div style={{ padding: "1rem" }} className="muted">
-              Ничего не найдено
-            </div>
+            <div className="muted u-p4">Ничего не найдено</div>
           ) : (
             results.map((item, index) => (
-              <button
-                key={`${item.group}:${item.href}:${item.label}`}
-                type="button"
-                data-active={index === active}
-                onMouseEnter={() => setActive(index)}
-                onClick={() => {
-                  setOpen(false);
-                  router.push(item.href);
-                }}
-              >
-                <span className="command-item-label">{item.label}</span>
-                <span className="command-item-group muted">{item.group}</span>
-              </button>
+              <Fragment key={`${item.group}:${item.href}:${item.label}`}>
+                {index === 0 || results[index - 1]?.group !== item.group ? (
+                  <div className="command-group">{item.group}</div>
+                ) : null}
+                <button
+                  type="button"
+                  data-active={index === active}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => {
+                    setOpen(false);
+                    router.push(item.href);
+                  }}
+                >
+                  <span className="command-icon" aria-hidden>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+                      {item.record ? (
+                        <path d="M9 4.5 7.5 19.5M16.5 4.5 15 19.5M4.5 9h15M4 15h15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                      ) : (
+                        <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                      )}
+                    </svg>
+                  </span>
+                  <span className="command-item-label">{item.label}</span>
+                </button>
+              </Fragment>
             ))
           )}
+        </div>
+        <div className="command-foot">
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd>выбрать
+          </span>
+          <span>
+            <kbd>Enter</kbd>открыть
+          </span>
+          <span>
+            <kbd>Esc</kbd>закрыть
+          </span>
         </div>
       </div>
     </div>

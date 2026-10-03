@@ -8,7 +8,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { BrandMark } from "./brand-mark";
 import { CommandPalette, openCommandPalette } from "./command-palette";
-import { NotificationsBell } from "./notifications-bell";
+import { MskClock } from "./msk-clock";
+import { NotificationsBell, type Notice } from "./notifications-bell";
 
 type NavItem = {
   href: string;
@@ -45,14 +46,18 @@ type NavItem = {
     | "ban"
     | "sessions"
     | "audit"
-    | "transfer";
+    | "transfer"
+    | "catalog"
+    | "queue";
+  /** Key of the «needs attention» counter shown next to the item. */
+  countKey?: string;
 };
 
 const NAV: NavItem[] = [
   { href: "/overview", label: "Главная", group: "Главная", match: "exact", icon: "home" },
   { href: "/profile", label: "Профиль", group: "Главная", match: "exact", icon: "user" },
-  { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "vehicle" },
-  { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам", match: "prefix", icon: "calculator" },
+  { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "catalog" },
+  { href: "/calculator", label: "Калькулятор", group: "Игрокам", match: "prefix", icon: "calculator" },
   { href: "/faq", label: "FAQ", group: "Игрокам", match: "prefix", icon: "faq" },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Игрокам", match: "prefix", icon: "blacklist" },
   { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs", requiresStaff: true },
@@ -61,6 +66,7 @@ const NAV: NavItem[] = [
   { href: "/personnel", label: "Персонал", group: "Информация", match: "prefix", icon: "people", requiresStaff: true },
   {
     href: "/registrations/vehicles",
+    countKey: "vehicles",
     label: "Регистрации ТС",
     group: "Информация",
     match: "prefix",
@@ -69,16 +75,18 @@ const NAV: NavItem[] = [
   },
   {
     href: "/registrations/uniforms",
+    countKey: "uniforms",
     label: "Регистрации форм",
     group: "Информация",
     match: "prefix",
     icon: "uniform",
     requiresStaff: true,
   },
-  { href: "/transfers", label: "Переводы", group: "Информация", match: "prefix", icon: "transfer", requiresStaff: true },
+  { href: "/transfers", label: "Переводы", group: "Информация", match: "prefix", icon: "transfer", requiresStaff: true, countKey: "transfers" },
   { href: "/tokens", label: "Нашивки", group: "Информация", match: "prefix", icon: "user", requiresStaff: true },
   {
     href: "/feedback",
+    countKey: "feedback",
     label: "Обратная связь",
     group: "Администрирование",
     match: "prefix",
@@ -90,7 +98,8 @@ const NAV: NavItem[] = [
     label: "Очередь задач",
     group: "Администрирование",
     match: "prefix",
-    icon: "modules",
+    icon: "queue",
+    countKey: "jobs",
     requiresSystemSettings: true,
   },
   {
@@ -220,8 +229,8 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
     case "fines":
       return (
         <svg {...common}>
-          <rect x="4.5" y="5.5" width="15" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M8 10h8M8 14h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.1 0-2-.4-2.5-1.2M12 6.5v11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case "people":
@@ -287,15 +296,15 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
     case "embeds":
       return (
         <svg {...common}>
-          <rect x="4.5" y="5.5" width="15" height="13" rx="2" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M8 9.5h5M8 13h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M4.5 6.5h15v9.5H11l-4 3v-3H4.5v-9.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8 10h8M8 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case "forms":
       return (
         <svg {...common}>
-          <rect x="5" y="4.5" width="14" height="15" rx="2" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M8 9h8M8 12.5h8M8 16h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M8 4.5h8v2.5H8zM8 5.5H6.5a1 1 0 0 0-1 1V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1H16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="m8.5 12 1.5 1.5 2.5-3M14 16.5h2M8.5 16.5h2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case "webhooks":
@@ -417,6 +426,21 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
           />
         </svg>
       );
+    case "catalog":
+      return (
+        <svg {...common}>
+          <rect x="4" y="5" width="16" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="4" y="13.5" width="7" height="5.5" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="13" y="13.5" width="7" height="5.5" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "queue":
+      return (
+        <svg {...common}>
+          <path d="M5 7h14M5 12h14M5 17h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="m16.5 17 1.5 1.5 2.5-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
     case "modules":
       return (
         <svg {...common}>
@@ -430,6 +454,9 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
       return null;
   }
 }
+
+const COLLAPSED_KEY = "mirror.nav.collapsed";
+const NOTICES_REFRESH_MS = 60_000;
 
 export function AppShell({
   children,
@@ -451,15 +478,102 @@ export function AppShell({
   const pathname = usePathname();
   // Phone layout: the menu is a drawer. It closes when a page opens and on Escape.
   const [navOpen, setNavOpen] = useState(false);
-  useEffect(() => setNavOpen(false), [pathname]);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+
   useEffect(() => {
-    if (!navOpen) return;
+    setNavOpen(false);
+    setUserMenuOpen(false);
+  }, [pathname]);
+  useEffect(() => {
+    if (!navOpen && !userMenuOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNavOpen(false);
+      if (event.key === "Escape") {
+        setNavOpen(false);
+        setUserMenuOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [navOpen]);
+  }, [navOpen, userMenuOpen]);
+
+  // A click outside closes the user menu and any open «⋯» menu.
+  useEffect(() => {
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target?.closest(".sidebar-foot")) setUserMenuOpen(false);
+      for (const menu of document.querySelectorAll("details.more-menu[open]")) {
+        if (!target || !menu.contains(target)) menu.removeAttribute("open");
+      }
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, []);
+
+  // On a phone a table row is a card: every cell needs the name of its column.
+  useEffect(() => {
+    const main = document.querySelector(".content");
+    if (!main) return;
+    const label = () => {
+      for (const table of main.querySelectorAll("table.registry-table")) {
+        const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent?.trim() ?? "");
+        for (const row of table.querySelectorAll("tbody tr")) {
+          [...row.children].forEach((cell, index) => {
+            const text = heads[index] ?? "";
+            if (cell instanceof HTMLElement && cell.dataset.label !== text) cell.dataset.label = text;
+          });
+        }
+      }
+    };
+    label();
+    const observer = new MutationObserver(label);
+    observer.observe(main, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [pathname]);
+
+  // Which groups the viewer folded: remembered in this browser.
+  useEffect(() => {
+    try {
+      const saved: unknown = JSON.parse(window.localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+      if (Array.isArray(saved)) setCollapsed(saved.filter((entry): entry is string => typeof entry === "string"));
+    } catch {
+      // Storage is blocked: every group stays open.
+    }
+  }, []);
+  function toggleGroup(group: string) {
+    setCollapsed((prev) => {
+      const next = prev.includes(group) ? prev.filter((entry) => entry !== group) : [...prev, group];
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+      } catch {
+        // Not remembered, but folded for this page view.
+      }
+      return next;
+    });
+  }
+
+  // One request feeds both the bell and the counters in the menu.
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch("/api/notifications", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { notices?: Notice[] };
+        if (!cancelled) setNotices(data.notices ?? []);
+      } catch {
+        // Offline or the server is restarting: keep what is shown.
+      }
+    }
+    void load();
+    const timer = setInterval(() => void load(), NOTICES_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pathname]);
+
   const visibleNav = NAV.filter(
     (item) =>
       (!item.requiresSystemSettings || canManageSystemSettings) &&
@@ -467,6 +581,8 @@ export function AppShell({
       (!item.requiresAdmin || canManageModules),
   );
   const groups = [...new Set(visibleNav.map((item) => item.group))];
+  const current = visibleNav.find((item) => isActive(pathname, item)) ?? null;
+  const counts = new Map(notices.map((notice) => [notice.key, notice.count]));
   const initial = (displayName.trim().charAt(0) || "?").toUpperCase();
   const handleLabel = username ? `@${username}` : displayName;
 
@@ -483,50 +599,86 @@ export function AppShell({
         </div>
 
         <nav className="sidebar-nav">
-          {groups.map((group) => (
-            <div key={group} className="nav-group">
-              <div className="nav-label">{group}</div>
-              {visibleNav
-                .filter((item) => item.group === group)
-                .map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="nav-link"
-                    data-active={isActive(pathname, item)}
-                  >
-                    <span className="nav-link-icon">
-                      <NavIcon name={item.icon} />
-                    </span>
-                    <span className="nav-link-label">{item.label}</span>
-                  </Link>
-                ))}
-            </div>
-          ))}
+          {groups.map((group) => {
+            const items = visibleNav.filter((item) => item.group === group);
+            const holdsCurrent = items.some((item) => item === current);
+            // The group with the open page never hides it.
+            const folded = collapsed.includes(group) && !holdsCurrent;
+            const groupCount = items.reduce((sum, item) => sum + (item.countKey ? (counts.get(item.countKey) ?? 0) : 0), 0);
+            return (
+              <div key={group} className="nav-group" data-folded={folded ? "" : undefined}>
+                <button type="button" className="nav-label" aria-expanded={!folded} onClick={() => toggleGroup(group)}>
+                  <span>{group}</span>
+                  {folded && groupCount > 0 ? <span className="nav-count">{groupCount}</span> : null}
+                  <svg className="nav-label-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden>
+                    <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+                {folded
+                  ? null
+                  : items.map((item) => {
+                      const count = item.countKey ? (counts.get(item.countKey) ?? 0) : 0;
+                      return (
+                        <Link key={item.href} href={item.href} className="nav-link" data-active={item === current}>
+                          <span className="nav-link-icon">
+                            <NavIcon name={item.icon} />
+                          </span>
+                          <span className="nav-link-label">{item.label}</span>
+                          {count > 0 ? <span className="nav-count">{count > 99 ? "99+" : count}</span> : null}
+                        </Link>
+                      );
+                    })}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-foot">
+          {userMenuOpen ? (
+            <div className="user-menu" role="menu">
+              <Link href="/profile" role="menuitem">
+                Профиль
+              </Link>
+              <Link href="/profile?tab=sessions" role="menuitem">
+                Мои сессии
+              </Link>
+              <div className="user-menu-sep" />
+              <Link href="/terms" role="menuitem">
+                Условия использования
+              </Link>
+              <Link href="/privacy" role="menuitem">
+                Конфиденциальность
+              </Link>
+              <Link href="/cookies" role="menuitem">
+                Cookie
+              </Link>
+              <div className="user-menu-sep" />
+              <button type="button" role="menuitem" className="user-menu-danger" onClick={() => signOut({ callbackUrl: "/" })}>
+                Выйти
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
-            className="sidebar-signout"
-            onClick={() => signOut({ callbackUrl: "/" })}
+            className="user-card"
+            aria-haspopup="menu"
+            aria-expanded={userMenuOpen}
+            onClick={() => setUserMenuOpen((value) => !value)}
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>
-              <path
-                d="M10 7V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-1"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M15 12H4m0 0 3-3M4 12l3 3"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            {avatarUrl ? (
+              <Image className="topbar-avatar" src={avatarUrl} alt="" width={34} height={34} unoptimized />
+            ) : (
+              <span className="topbar-avatar topbar-avatar-fallback" aria-hidden>
+                {initial}
+              </span>
+            )}
+            <span className="user-card-meta">
+              <span className="user-card-name">{displayName}</span>
+              <span className="user-card-handle">{handleLabel}</span>
+            </span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden>
+              <path d="m8 10 4-4 4 4M8 14l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            Выйти
           </button>
         </div>
       </aside>
@@ -546,23 +698,18 @@ export function AppShell({
                 <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
               </svg>
             </button>
-            <Link href="/overview" className="topbar-brand">
-              <BrandMark />
-              <span className="brand">Mirror</span>
-            </Link>
-            <nav className="topbar-links" aria-label="Ссылки">
-              <Link href="/terms">Условия</Link>
-              <Link href="/privacy">Конфиденциальность</Link>
-            </nav>
+            {current ? (
+              <div className="topbar-crumbs">
+                <span className="topbar-crumb-group">{current.group}</span>
+                <span aria-hidden>/</span>
+                <span className="topbar-crumb-page">{current.label}</span>
+              </div>
+            ) : null}
           </div>
 
           <div className="topbar-right">
-            <button
-              type="button"
-              className="topbar-search"
-              onClick={() => openCommandPalette()}
-              aria-label="Поиск"
-            >
+            <MskClock />
+            <button type="button" className="topbar-search" onClick={() => openCommandPalette()} aria-label="Поиск">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>
                 <circle cx="11" cy="11" r="5.5" stroke="currentColor" strokeWidth="1.6" />
                 <path d="M15.5 15.5 20 20" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -570,28 +717,7 @@ export function AppShell({
               <span className="topbar-search-label">Поиск</span>
               <kbd className="topbar-kbd">Ctrl K</kbd>
             </button>
-
-            <NotificationsBell />
-
-            <div className="topbar-user">
-              {avatarUrl ? (
-                <Image
-                  className="topbar-avatar"
-                  src={avatarUrl}
-                  alt=""
-                  width={32}
-                  height={32}
-                  unoptimized
-                />
-              ) : (
-                <div className="topbar-avatar topbar-avatar-fallback" aria-hidden>
-                  {initial}
-                </div>
-              )}
-              <span className="topbar-username" title={handleLabel}>
-                {handleLabel}
-              </span>
-            </div>
+            <NotificationsBell notices={notices} />
           </div>
         </header>
 
@@ -599,11 +725,13 @@ export function AppShell({
           className="content"
           initial={{ y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.28, ease: "easeOut" }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          key={pathname}
         >
           {children}
         </motion.main>
       </div>
+
       <CommandPalette
         canManageSystemSettings={canManageSystemSettings}
         canViewModules={canViewModules}

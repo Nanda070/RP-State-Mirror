@@ -4,6 +4,7 @@ import { RegistryActions } from "@/components/registry-actions";
 import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/components/registry-toolbar";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Очередь задач" };
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Задач не найдено.</p>
+          <EmptyState title="Задач не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -55,7 +56,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                   <th>Создана</th>
                   <th>Следующий запуск</th>
                   <th>Сообщение</th>
-                  <th>Действия</th>
+                  <th className="cell-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>

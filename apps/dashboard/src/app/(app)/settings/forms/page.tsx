@@ -1,5 +1,4 @@
 import { isDiscordCompatible, listForms } from "@mirror/core";
-import Link from "next/link";
 import { DiscordFormsManager } from "@/components/discord-forms-manager";
 import { getDashboardEnv } from "@/env";
 import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
@@ -20,16 +19,6 @@ export default async function SettingsFormsPage() {
     <div className="stack">
       <div className="section-head">
         <h1>Формы</h1>
-        <p className="muted">
-          Конструктор форм: поля разных типов, заполнение в Discord (кнопка открывает окно ввода, длинные
-          формы — в несколько шагов) и на публичной странице без входа. Ответы приходят в канал и/или webhook
-          и сохраняются здесь.
-        </p>
-      </div>
-      <div className="row">
-        <Link href="/settings/webhooks" className="btn btn-secondary">
-          Запросы форм от игроков
-        </Link>
       </div>
       <DiscordFormsManager
         publicBaseUrl={getDashboardEnv().PUBLIC_BASE_URL}

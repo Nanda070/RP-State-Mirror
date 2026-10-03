@@ -196,7 +196,7 @@ export function RolePanelsManager({
             </div>
 
             <div className="form-grid-3">
-              <div className="field" style={{ gridColumn: "span 2" }}>
+              <div className="field u-span2">
                 <label htmlFor="panelTitle">Заголовок сообщения</label>
                 <input
                   id="panelTitle"
@@ -324,8 +324,8 @@ export function RolePanelsManager({
                   {items.length > 1 ? (
                     <button
                       type="button"
-                      className="btn btn-ghost"
-                      style={{ alignSelf: "flex-start" }}
+                      className="btn btn-ghost u-self-start"
+                     
                       onClick={() => setItems((current) => current.filter((entry) => entry.rowId !== item.rowId))}
                     >
                       Убрать
@@ -375,8 +375,8 @@ export function RolePanelsManager({
             ) : null}
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ marginTop: "0.75rem" }}
+              className="btn btn-primary u-mt3"
+             
               disabled={pending || problems.length > 0}
               onClick={() => void create()}
             >
@@ -385,7 +385,7 @@ export function RolePanelsManager({
           </>
         )}
         {message ? (
-          <p className={message.ok ? "form-ok" : "form-error"} role="status" style={{ marginTop: "0.75rem" }}>
+          <p className={message.ok ? "form-ok u-mt3" : "form-error u-mt3"} role="status">
             {message.text}
           </p>
         ) : null}
@@ -399,7 +399,7 @@ export function RolePanelsManager({
           </button>
         </div>
         {panels.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted u-m0">
             Панелей пока нет.
           </p>
         ) : (
@@ -433,15 +433,15 @@ export function RolePanelsManager({
                     </button>
                   </div>
                 </div>
-                <p className="muted" style={{ margin: 0, fontSize: "0.88rem" }}>
+                <p className="muted u-m0 u-text-sm">
                   {panel.labels.join(", ") || "без ролей"} · изменена {panel.updatedAt}
                 </p>
                 {panel.messageUrl ? (
-                  <a href={panel.messageUrl} target="_blank" rel="noreferrer" style={{ fontSize: "0.9rem" }}>
+                  <a href={panel.messageUrl} target="_blank" rel="noreferrer" className="u-text-sm">
                     Открыть сообщение в Discord
                   </a>
                 ) : (
-                  <span className="muted" style={{ fontSize: "0.85rem" }}>
+                  <span className="muted u-text-sm">
                     Сообщение ещё не опубликовано. Если оно не появляется, проверьте, что бот запущен и видит
                     канал.
                   </span>

@@ -4,6 +4,8 @@ import { EmbedManager } from "@/components/embed-manager";
 import { getActiveChannelOptions, getActiveGuildOptions, getActiveRoleOptions } from "@/lib/catalog";
 import { requireSystemSettingsPage } from "@/lib/session";
 
+export const metadata = { title: "Эмбеды" };
+
 export default async function SettingsEmbedsPage() {
   await requireSystemSettingsPage();
 

@@ -44,6 +44,15 @@ function Metrics({ items }: { items: Metric[] }) {
   );
 }
 
+/** Los Santos skyline, drawn once: a flat silhouette behind the page title. */
+function Skyline() {
+  return (
+    <svg className="overview-skyline" viewBox="0 0 640 140" preserveAspectRatio="xMaxYMax slice" fill="currentColor" aria-hidden>
+      <path d="M0 140V118h24V96h18v22h14V84h10V70h16v14h8v34h18V100h22v18h12V62h8V48h20v14h8v56h16V88h26v30h10V40h6V22h10V10h8v12h10v18h6v78h18V74h24v44h12V92h20v26h14V56h10V44h18v12h8v62h16V98h22v20h12V80h28v38h14V104h20v14h18V90h24v28h12v22Z" />
+    </svg>
+  );
+}
+
 export default async function OverviewPage() {
   const session = await requireSignedIn();
   const identity = await resolveFreshIdentity(session.user.discordId);
@@ -53,10 +62,14 @@ export default async function OverviewPage() {
 
   return (
     <div className="stack overview-page">
-      <div className="section-head">
-        <h1>Добро пожаловать, {displayName}</h1>
-        <p className="muted">{[badge.primary, badge.secondary].filter(Boolean).join(" · ")}</p>
-      </div>
+      <header className="overview-hero">
+        <div className="section-head">
+          <span className="hud-label">Los Santos · San Andreas</span>
+          <h1>{displayName}</h1>
+          <p className="muted">{[badge.primary, badge.secondary].filter(Boolean).join(" · ")}</p>
+        </div>
+        <Skyline />
+      </header>
       {isStaff ? <StaffOverview showModules={canManageSystemSettings(identity)} /> : <PlayerOverview discordId={session.user.discordId} />}
     </div>
   );

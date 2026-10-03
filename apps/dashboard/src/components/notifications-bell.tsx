@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
-type Notice = { key: string; text: string; href: string; count: number; tone: "warn" | "bad" };
+export type Notice = { key: string; text: string; href: string; count: number; tone: "warn" | "bad" };
 /** What the viewer has waved away: notice key → the count it had at that moment. */
 type Dismissed = Record<string, number>;
 
-const REFRESH_MS = 60_000;
 const STORE_KEY = "mirror.notices.dismissed";
 
 function readDismissed(): Dismissed {
@@ -24,32 +23,14 @@ function readDismissed(): Dismissed {
  * Counted on the server from the registries. A notice can be hidden; it comes back only when its
  * count grows — that is, when something new has happened.
  */
-export function NotificationsBell() {
+export function NotificationsBell({ notices }: { notices: Notice[] }) {
   const [open, setOpen] = useState(false);
-  const [notices, setNotices] = useState<Notice[]>([]);
   const [dismissed, setDismissed] = useState<Dismissed>({});
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
   useEffect(() => {
     setDismissed(readDismissed());
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/notifications", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { notices?: Notice[] };
-        if (!cancelled) setNotices(data.notices ?? []);
-      } catch {
-        // Offline or the server is restarting: keep what is shown, try again on the next tick.
-      }
-    }
-    void load();
-    const timer = setInterval(() => void load(), REFRESH_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
   }, []);
 
   useEffect(() => {

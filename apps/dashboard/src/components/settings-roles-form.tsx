@@ -295,14 +295,14 @@ export function SettingsRolesForm({
       {message ? <p className="muted">{message}</p> : null}
 
       <div className="panel">
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
+        <h2 className="panel-title u-mt0">
           Уровни доступа
         </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted u-mt0">
           Несколько Discord-ролей могут соответствовать одному уровню. Системные настройки и уровень
           главного администратора доступны только главному админу.
         </p>
-        <div className="stack" style={{ gap: "1rem" }}>
+        <div className="stack u-gap4">
           {ADMIN_VALUES.map((level) => {
             const key = mappingKey("ADMIN_LEVEL", level.value, null);
             return (
@@ -321,23 +321,23 @@ export function SettingsRolesForm({
       </div>
 
       <div className="panel">
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
+        <h2 className="panel-title u-mt0">
           Фракции
         </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted u-mt0">
           Роли участников, лидеров и заместителей по каждой фракции. Для GOV — дополнительные отделы.
         </p>
         {factions.length === 0 ? (
           <p className="muted">Нет активных фракций.</p>
         ) : (
-          <div className="stack" style={{ gap: "1.25rem" }}>
+          <div className="stack u-gap5">
             {factions.map((faction) => (
               <div key={faction.code} className="role-faction-block">
                 <h3 className="role-faction-title">
                   {faction.code}
                   <span className="muted"> — {faction.name}</span>
                 </h3>
-                <div className="stack" style={{ gap: "0.85rem" }}>
+                <div className="stack u-gap3">
                   {FACTION_KINDS.map((item) => {
                     const key = mappingKey(item.kind, "true", faction.code);
                     return (
@@ -380,10 +380,10 @@ export function SettingsRolesForm({
       </div>
 
       <div className="panel">
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
+        <h2 className="panel-title u-mt0">
           Отделы, ранги и права
         </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted u-mt0">
           Создайте цель привязки, затем добавьте одну или несколько ролей. Удаление архивирует
           привязку (не стирает запись).
         </p>
@@ -437,11 +437,11 @@ export function SettingsRolesForm({
         </form>
 
         {extraTargets.length === 0 ? (
-          <p className="muted" style={{ marginTop: "1rem" }}>
+          <p className="muted u-mt4">
             Пока нет целей отдела / ранга / права.
           </p>
         ) : (
-          <div className="stack" style={{ gap: "1rem", marginTop: "1rem" }}>
+          <div className="stack u-gap4 u-mt4">
             {extraTargets.map((target) => {
               const key = mappingKey(target.kind, target.value, target.factionCode);
               const title = `${KIND_LABELS[target.kind] ?? target.kind}: ${target.value}${

@@ -48,7 +48,7 @@ export function SettingsGuildForm({
 
   return (
     <form className="panel" onSubmit={onSubmit}>
-      <h2 style={{ marginTop: 0 }}>Главный сервер и сервер ЧП</h2>
+      <h2 className="u-mt0">Главный сервер и сервер ЧП</h2>
       <p className="muted">
         Главный сервер — источник уровней доступа. Сервер ЧП — синхронизация ролей, розыск и
         регистрации. Они должны быть разными.

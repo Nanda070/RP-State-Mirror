@@ -112,10 +112,10 @@ export function SettingsCpForm({
 
   return (
     <form className="panel" onSubmit={(e) => void onSubmit(e)}>
-      <h2 className="panel-title" style={{ marginTop: 0 }}>
+      <h2 className="panel-title u-mt0">
         Синхронизация ЧП
       </h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted u-mt0">
         Роли на сервере ЧП выдаются по фракционным ролям. Без фракции — автокик. Привязки ролей ЧП: на
         сервере ЧП создайте роли фракции для каждой фракции.
       </p>
@@ -165,7 +165,7 @@ export function SettingsCpForm({
         <span className="field-label">Исключённые роли (не кикать / не трогать)</span>
         <div className="chip-row">
           {roles.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
+            <p className="muted u-m0">
               Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота.
             </p>
           ) : (

@@ -157,6 +157,27 @@ export async function getPublicForm(slug: string) {
   });
 }
 
+export type PublicFormState = "open" | "disabled" | "expired" | "full";
+
+/**
+ * What the public address `/f/<slug>` shows: the form, or why it takes no responses.
+ * A switched-off form keeps its address, so the visitor sees «отключена» instead of «не найдена»;
+ * its name and questions are not returned in that case.
+ */
+export async function getPublicFormState(slug: string, now = new Date()) {
+  const form = await prisma.discordForm.findFirst({
+    where: { slug: slug.toLowerCase(), status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } },
+    include: { fields: ACTIVE_FIELDS, _count: { select: { submissions: true } } },
+  });
+  if (!form) return null;
+  if (!form.publicEnabled || form.status !== RecordStatus.ACTIVE) return { state: "disabled" as const, form: null };
+  if (form.expiresAt !== null && form.expiresAt <= now) return { state: "expired" as const, form };
+  if (form.responseLimit !== null && form._count.submissions >= form.responseLimit) {
+    return { state: "full" as const, form };
+  }
+  return { state: "open" as const, form };
+}
+
 /** Form for the editor: any non-archived status, ACTIVE fields. */
 export async function getFormForEdit(formId: string) {
   return prisma.discordForm.findFirst({

@@ -124,10 +124,10 @@ export function CommandRolesForm({
 
   return (
     <form className="panel" onSubmit={(event) => void save(event)}>
-      <h2 className="panel-title" style={{ marginTop: 0 }}>
+      <h2 className="panel-title u-mt0">
         Права команд
       </h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted u-mt0">
         Какие роли могут выполнять команды бота. Администраторы («Админ» и выше) могут всегда. Роль считается
         на том сервере, где набрана команда.
       </p>

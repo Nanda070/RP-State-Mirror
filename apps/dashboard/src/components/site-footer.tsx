@@ -26,7 +26,6 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
           <span className="site-footer-brand">Mirror · GTA5RP</span>
           <nav className="footer-inline-nav" aria-label="Навигация футера">
             <Link href="/">Вход</Link>
-            <Link href="/overview">Обзор</Link>
             <Link href="/terms">Условия</Link>
             <Link href="/privacy">Приватность</Link>
             <Link href="/cookies">Cookies</Link>

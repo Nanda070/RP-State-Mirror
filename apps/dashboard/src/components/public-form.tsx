@@ -23,6 +23,20 @@ function initialValue(field: PublicFormField): Value {
   return "";
 }
 
+/** The server names the field in its message: «Подпись»: что не так. */
+function splitFieldError(message: string, fields: PublicFormField[]): { key: string; text: string } | null {
+  const match = /^«(.+?)»:\s*(.+)$/s.exec(message);
+  if (!match) return null;
+  const field = fields.find((entry) => entry.label === match[1]);
+  return field && match[2] ? { key: field.key, text: match[2] } : null;
+}
+
+function isEmpty(field: PublicFormField, value: Value | undefined): boolean {
+  if (field.type === "checkbox") return value !== true;
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value !== "string" || value.trim() === "";
+}
+
 export function PublicForm({
   slug,
   fields,
@@ -38,13 +52,35 @@ export function PublicForm({
   const [website, setWebsite] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState<string | null>(null);
-  const set = (key: string, value: Value) => setValues((current) => ({ ...current, [key]: value }));
+  const set = (key: string, value: Value) => {
+    setValues((current) => ({ ...current, [key]: value }));
+    setFieldErrors((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    setPending(true);
     setError(null);
+    const missing: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.required && isEmpty(field, values[field.key])) {
+        missing[field.key] = field.type === "checkbox" ? "Нужно отметить" : "Заполните поле";
+      }
+    }
+    setFieldErrors(missing);
+    const firstMissing = fields.find((field) => field.key in missing);
+    if (firstMissing) {
+      document.getElementById(`f-${firstMissing.key}`)?.focus();
+      return;
+    }
+
+    setPending(true);
     try {
       const res = await fetch(`/api/public/forms/${encodeURIComponent(slug)}`, {
         method: "POST",
@@ -55,7 +91,14 @@ export function PublicForm({
       if (!res.ok) throw new Error(data.error ?? "Не удалось отправить ответ. Попробуйте позже.");
       setDone(data.message?.trim() || successMessage?.trim() || "Спасибо! Ваш ответ принят.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось отправить ответ. Попробуйте позже.");
+      const message = e instanceof Error ? e.message : "Не удалось отправить ответ. Попробуйте позже.";
+      const named = splitFieldError(message, fields);
+      if (named) {
+        setFieldErrors({ [named.key]: named.text });
+        document.getElementById(`f-${named.key}`)?.focus();
+      } else {
+        setError(message);
+      }
     } finally {
       setPending(false);
     }
@@ -63,18 +106,26 @@ export function PublicForm({
 
   if (done) {
     return (
-      <div className="panel empty-state" role="status">
-        <h2 className="panel-title">Ответ отправлен</h2>
-        <p className="muted">{done}</p>
+      <div className="form-state" role="status">
+        <span className="form-state-icon" aria-hidden>
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+            <path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <h2>Ответ отправлен</h2>
+        <p>{done}</p>
       </div>
     );
   }
 
   return (
-    <form className="panel public-form" onSubmit={(event) => void submit(event)} noValidate={false}>
+    <form className="public-form" onSubmit={(event) => void submit(event)} noValidate>
       {fields.map((field) => {
         const id = `f-${field.key}`;
         const hintId = field.helpText ? `${id}-hint` : undefined;
+        const problem = fieldErrors[field.key];
+        const errorId = problem ? `${id}-error` : undefined;
+        const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
         const value = values[field.key];
         const label = (
           <>
@@ -87,26 +138,36 @@ export function PublicForm({
             ) : null}
           </>
         );
+        const notes = (
+          <>
+            {field.helpText ? (
+              <span className="field-hint" id={hintId}>
+                {field.helpText}
+              </span>
+            ) : null}
+            {problem ? (
+              <span className="field-error" id={errorId} role="alert">
+                {problem}
+              </span>
+            ) : null}
+          </>
+        );
 
         if (field.type === "checkbox") {
           return (
-            <div className="field" key={field.key}>
+            <div className="field" key={field.key} data-invalid={problem ? "" : undefined}>
               <label className="toggle-row" htmlFor={id}>
                 <input
                   id={id}
                   type="checkbox"
-                  required={field.required}
-                  aria-describedby={hintId}
+                  aria-describedby={describedBy}
+                  aria-invalid={problem ? true : undefined}
                   checked={value === true}
                   onChange={(event) => set(field.key, event.target.checked)}
                 />
                 <span>{label}</span>
               </label>
-              {field.helpText ? (
-                <span className="field-hint" id={hintId}>
-                  {field.helpText}
-                </span>
-              ) : null}
+              {notes}
             </div>
           );
         }
@@ -114,12 +175,13 @@ export function PublicForm({
         if (field.type === "multiselect") {
           const picked = Array.isArray(value) ? value : [];
           return (
-            <fieldset className="field public-form-group" key={field.key} aria-describedby={hintId}>
+            <fieldset className="field public-form-group" key={field.key} aria-describedby={describedBy} data-invalid={problem ? "" : undefined}>
               <legend>{label}</legend>
               <div className="chip-row">
-                {field.options.map((option) => (
-                  <label key={option} className="chip-check">
+                {field.options.map((option, index) => (
+                  <label key={option} className="chip-toggle">
                     <input
+                      id={index === 0 ? id : undefined}
                       type="checkbox"
                       checked={picked.includes(option)}
                       onChange={(event) =>
@@ -133,25 +195,21 @@ export function PublicForm({
                   </label>
                 ))}
               </div>
-              {field.helpText ? (
-                <span className="field-hint" id={hintId}>
-                  {field.helpText}
-                </span>
-              ) : null}
+              {notes}
             </fieldset>
           );
         }
 
         const text = typeof value === "string" ? value : "";
         return (
-          <div className="field" key={field.key}>
+          <div className="field" key={field.key} data-invalid={problem ? "" : undefined}>
             <label htmlFor={id}>{label}</label>
             {field.type === "paragraph" ? (
               <textarea
                 id={id}
                 rows={5}
-                required={field.required}
-                aria-describedby={hintId}
+                aria-describedby={describedBy}
+                aria-invalid={problem ? true : undefined}
                 minLength={field.minLength ?? undefined}
                 maxLength={field.maxLength ?? 4000}
                 value={text}
@@ -160,8 +218,8 @@ export function PublicForm({
             ) : field.type === "select" ? (
               <select
                 id={id}
-                required={field.required}
-                aria-describedby={hintId}
+                aria-describedby={describedBy}
+                aria-invalid={problem ? true : undefined}
                 value={text}
                 onChange={(event) => set(field.key, event.target.value)}
               >
@@ -177,8 +235,8 @@ export function PublicForm({
                 id={id}
                 type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
                 step={field.type === "number" ? "any" : undefined}
-                required={field.required}
-                aria-describedby={hintId}
+                aria-describedby={describedBy}
+                aria-invalid={problem ? true : undefined}
                 min={field.type === "number" ? (field.min ?? undefined) : undefined}
                 max={field.type === "number" ? (field.max ?? undefined) : undefined}
                 minLength={field.type === "short" ? (field.minLength ?? undefined) : undefined}
@@ -187,11 +245,7 @@ export function PublicForm({
                 onChange={(event) => set(field.key, event.target.value)}
               />
             )}
-            {field.helpText ? (
-              <span className="field-hint" id={hintId}>
-                {field.helpText}
-              </span>
-            ) : null}
+            {notes}
           </div>
         );
       })}
@@ -219,9 +273,6 @@ export function PublicForm({
       <button type="submit" className="btn btn-primary" disabled={pending}>
         {pending ? "Отправка…" : "Отправить"}
       </button>
-      <p className="muted public-form-note">
-        Поля со звёздочкой обязательны.
-      </p>
     </form>
   );
 }

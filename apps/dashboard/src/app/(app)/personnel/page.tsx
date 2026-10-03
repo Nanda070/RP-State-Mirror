@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { PersonnelAddForm } from "@/components/personnel-add-form";
 import { RegistryActions, type RegistryActionButton } from "@/components/registry-actions";
 import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/components/registry-toolbar";
-import { getActiveFactionOptions } from "@/lib/catalog";
+import { getActiveFactionOptions, getFactionColors } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { EmptyState, FactionBadge } from "@/components/ui";
 
 export const metadata = { title: "Персонал" };
 
@@ -24,6 +25,7 @@ export default async function PersonnelRegistryPage({ searchParams }: { searchPa
   const query = registryQuery(await searchParams);
   const { items, total, page, pages } = await listPersonnelPage(query);
   const canAct = canManageModules(identity);
+  const factionColor = await getFactionColors();
   const [labels, factions] = await Promise.all([
     resolveAuthorLabels(items.map((item) => item.actorDiscordId)),
     canAct ? getActiveFactionOptions() : Promise.resolve([]),
@@ -77,7 +79,7 @@ export default async function PersonnelRegistryPage({ searchParams }: { searchPa
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -89,14 +91,16 @@ export default async function PersonnelRegistryPage({ searchParams }: { searchPa
                   <th>Оформил</th>
                   <th>Статус</th>
                   <th>Создано</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {items.map((event) => (
                   <tr key={event.id}>
                     <td>{PERSONNEL_EVENT_LABELS_RU[event.type as keyof typeof PERSONNEL_EVENT_LABELS_RU] ?? event.type}</td>
-                    <td>{event.factionCode}</td>
+                    <td>
+                      <FactionBadge code={event.factionCode} color={factionColor(event.factionCode)} />
+                    </td>
                     <td>
                       {event.subjectName} <span className="muted registry-mono">({event.subjectDiscordId})</span>
                     </td>

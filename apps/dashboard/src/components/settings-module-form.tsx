@@ -31,7 +31,7 @@ export function SettingsDocumentsForm({
           value={ttlHours}
           onChange={(e) => setTtlHours(e.target.value)}
         />
-        <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+        <p className="muted u-m0 u-mt1 u-text-sm">
           После истечения запись переводится в статус EXPIRED (по умолчанию 72 ч, как в старом боте).
         </p>
       </div>
@@ -54,7 +54,7 @@ function RolePingPicker({
 }) {
   if (roles.length === 0) {
     return (
-      <p className="muted" style={{ margin: 0 }}>
+      <p className="muted u-m0">
         {emptyHint}
       </p>
     );
@@ -118,13 +118,13 @@ export function SettingsWantedForm({
           guildDiscordId={incidentGuildId}
           emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
         />
-        <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+        <p className="muted u-m0 u-mt1 u-text-sm">
           Команды розыска принимаются только в этом канале.
         </p>
       </div>
       <div className="field">
         <span className="field-label">Роли координаторов</span>
-        <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+        <p className="muted u-m0 u-mb1 u-text-sm">
           Только выбранные роли могут выполнять <code>/объявить-розыск</code> и{" "}
           <code>/розыск-исполнено</code>.
         </p>
@@ -185,7 +185,7 @@ function ModuleSettingsForm({
 
   return (
     <form className="panel" onSubmit={onSubmit}>
-      <h2 className="panel-title" style={{ marginTop: 0 }}>
+      <h2 className="panel-title u-mt0">
         {_module === "documents" ? "Документы" : "Розыск"}
       </h2>
       {children}

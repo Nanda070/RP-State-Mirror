@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { LinkActions } from "./copy-button";
 
 type GuildOption = { discordId: string; name: string };
 
@@ -70,11 +71,11 @@ export function TokenReceivePublish({
   }
 
   return (
-    <div className="stack" style={{ gap: "0.65rem" }}>
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+    <div className="stack u-gap3">
+      <div className="row u-between u-wrap u-gap2">
         <div>
-          <h3 style={{ margin: "0 0 0.25rem", fontSize: "1rem" }}>Кнопка для игроков</h3>
-          <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+          <h3 className="u-m0 u-mb1 u-text-md">Кнопка для игроков</h3>
+          <p className="muted u-m0 u-text-sm">
             Игроки могут получить нашивку через slash-команду или через кнопку в Discord.
             Опубликуйте кнопку в нужный канал.
           </p>
@@ -90,21 +91,19 @@ export function TokenReceivePublish({
       </div>
 
       {link ? (
-        <p style={{ margin: 0, fontSize: "0.9rem" }}>
-          Ссылка на сообщение:{" "}
-          <a href={link} target="_blank" rel="noreferrer">
-            {link}
-          </a>
-        </p>
+        <div className="row u-gap2 u-text-sm">
+          <span className="muted">Сообщение с кнопкой</span>
+          <LinkActions href={link} />
+        </div>
       ) : (
-        <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        <p className="muted u-m0 u-text-sm">
           Кнопка ещё не опубликована — игроки по-прежнему могут использовать{" "}
           <code>/нашивка получить</code>.
         </p>
       )}
 
       {open ? (
-        <div className="stack" style={{ gap: "0.5rem" }}>
+        <div className="stack u-gap2">
           <div className="form-grid-3">
             <label className="field">
               <span>Сервер</span>

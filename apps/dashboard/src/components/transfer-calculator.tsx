@@ -272,7 +272,7 @@ export function TransferCalculator({
               </div>
             </div>
           ) : pairRules.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
+            <p className="muted u-m0">
               Правил для этой пары нет.
             </p>
           ) : (

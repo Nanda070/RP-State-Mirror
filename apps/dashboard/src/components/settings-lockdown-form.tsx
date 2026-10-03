@@ -51,10 +51,10 @@ export function SettingsLockdownForm({
 
   return (
     <div className="panel lockdown-panel" data-active={enabled ? "" : undefined}>
-      <h2 className="panel-title" style={{ marginTop: 0 }}>
+      <h2 className="panel-title u-mt0">
         Аварийная блокировка
       </h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted u-mt0">
         Закрывает команды и кнопки бота, дашборд и публичные формы для всех, кроме главных администраторов.
         Фоновая работа (синхронизация ЧП, очередь задач, истечение сроков) продолжается. Переключатель
         срабатывает в течение нескольких секунд.

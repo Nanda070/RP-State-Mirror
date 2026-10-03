@@ -20,7 +20,7 @@ export function RoleChipPicker({
 }) {
   if (roles.length === 0) {
     return (
-      <p className="muted" style={{ margin: 0 }}>
+      <p className="muted u-m0">
         {emptyHint}
       </p>
     );
@@ -96,7 +96,7 @@ export function GuildChipPicker({
 }) {
   if (guilds.length === 0) {
     return (
-      <p className="muted" style={{ margin: 0 }}>
+      <p className="muted u-m0">
         {emptyHint}
       </p>
     );

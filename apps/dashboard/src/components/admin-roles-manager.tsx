@@ -200,10 +200,10 @@ export function AdminRolesManager({
   return (
     <div className="stack">
       <div className="panel">
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
+        <h2 className="panel-title u-mt0">
           Роли по уровням
         </h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted u-mt0">
           Для каждого сервера отметьте роли, которые должен носить администратор каждого уровня. При выдаче
           уровня бот выдаст эти роли и снимет роли остальных уровней.
         </p>
@@ -259,7 +259,7 @@ export function AdminRolesManager({
       </div>
 
       <form className="panel" onSubmit={(event) => void apply(event)}>
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
+        <h2 className="panel-title u-mt0">
           Выдать или снять уровень
         </h2>
         <div className="form-grid-3">
@@ -297,7 +297,7 @@ export function AdminRolesManager({
           </p>
         ) : null}
         {live ? (
-          <div className="stack" style={{ marginTop: "1rem" }}>
+          <div className="stack u-mt4">
             <p>
               <span className="registry-status" data-status={(STATUS_RU[live.status] ?? STATUS_RU.PENDING)!.tone}>
                 {(STATUS_RU[live.status] ?? STATUS_RU.PENDING)!.text}
@@ -309,7 +309,7 @@ export function AdminRolesManager({
       </form>
 
       <div className="panel">
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
+        <h2 className="panel-title u-mt0">
           Последние операции
         </h2>
         {operations.length === 0 ? (

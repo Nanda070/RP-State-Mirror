@@ -6,6 +6,7 @@ import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/co
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Переводы" };
 
@@ -64,7 +65,7 @@ export default async function TransfersRegistryPage({ searchParams }: { searchPa
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -77,7 +78,7 @@ export default async function TransfersRegistryPage({ searchParams }: { searchPa
                   <th>Статус</th>
                   <th>Подал</th>
                   <th>Подана</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>

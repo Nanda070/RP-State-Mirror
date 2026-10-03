@@ -1,5 +1,6 @@
 "use client";
 
+import { EmptyState, MoreMenu } from "./ui";
 import { confirmDialog } from "@/lib/confirm";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
@@ -228,18 +229,26 @@ export function VehicleCatalog({ models, canEdit }: { models: CatalogModel[]; ca
       ) : null}
 
       {models.length === 0 ? (
-        <div className="panel empty-state">
-          <h2 className="panel-title">Каталог пока пуст</h2>
-          <p className="muted">
-            {canEdit
-              ? "Добавьте первую модель кнопкой выше."
-              : "Администрация ещё не добавила модели. Загляните позже."}
-          </p>
+        <div className="panel">
+          <EmptyState icon="car" title="Каталог пока пуст" text={canEdit ? undefined : "Администрация ещё не добавила модели."} />
         </div>
       ) : visible.length === 0 ? (
-        <div className="panel empty-state">
-          <h2 className="panel-title">Ничего не найдено</h2>
-          <p className="muted">Измените запрос или сбросьте фильтр по марке.</p>
+        <div className="panel">
+          <EmptyState
+            title="Ничего не найдено"
+            action={
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setQuery("");
+                  setBrand("");
+                }}
+              >
+                Сбросить поиск
+              </button>
+            }
+          />
         </div>
       ) : (
         <div className="catalog-grid">
@@ -249,7 +258,17 @@ export function VehicleCatalog({ models, canEdit }: { models: CatalogModel[]; ca
                 {model.imageFileId ? (
                   <img src={`/api/media/${model.imageFileId}`} alt={model.name} loading="lazy" />
                 ) : (
-                  <span className="muted">Нет фото</span>
+                  <svg className="catalog-card-blank" viewBox="0 0 120 48" fill="none" role="img" aria-label="Нет фото">
+                    <path
+                      d="M6 34h8m92 0h8M14 34c0-6 3-9 9-10l10-9c2-2 5-3 8-3h30c4 0 7 1 10 4l9 8c8 1 14 3 14 10M30 34h60"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="24" cy="35" r="6" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="96" cy="35" r="6" stroke="currentColor" strokeWidth="2" />
+                  </svg>
                 )}
               </div>
               <div className="catalog-card-body">
@@ -262,19 +281,28 @@ export function VehicleCatalog({ models, canEdit }: { models: CatalogModel[]; ca
                     {copiedId === model.id ? "Скопировано" : "Скопировать"}
                   </button>
                   {canEdit ? (
-                    <>
-                      <button type="button" className="btn btn-ghost" onClick={() => startEdit(model)}>
+                    <MoreMenu label={`Действия: ${model.name}`}>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.currentTarget.closest("details")?.removeAttribute("open");
+                          startEdit(model);
+                        }}
+                      >
                         Изменить
                       </button>
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="btn-danger"
                         disabled={pending}
-                        onClick={() => void archive(model)}
+                        onClick={(event) => {
+                          event.currentTarget.closest("details")?.removeAttribute("open");
+                          void archive(model);
+                        }}
                       >
                         В архив
                       </button>
-                    </>
+                    </MoreMenu>
                   ) : null}
                 </div>
               </div>

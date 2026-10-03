@@ -7,6 +7,7 @@ import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { toSessionRows } from "@/lib/session-rows";
 import { requireSystemSettingsPage } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "Сессии и аудит" };
 
@@ -131,7 +132,7 @@ async function AuditTab({ params }: { params: Search }) {
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">

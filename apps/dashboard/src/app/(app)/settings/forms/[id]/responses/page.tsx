@@ -2,7 +2,9 @@ import { formatFormValue, getFormForEdit, listFormColumns, listFormSubmissions }
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatMoscow } from "@/lib/moscow";
+import { EmptyState } from "@/components/ui";
+import { resolveAuthorLabels } from "@/lib/discord-names";
+import { formatMoscowShort } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export const metadata = { title: "Ответы формы" };
@@ -27,6 +29,7 @@ export default async function FormResponsesPage({
     listFormSubmissions(id, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
   ]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const senders = await resolveAuthorLabels(items.flatMap((item) => (item.authorDiscordId ? [item.authorDiscordId] : [])));
   // Archived columns appear only when some answer on this page still has a value for them.
   const visibleColumns = columns.filter(
     (column) =>
@@ -39,8 +42,8 @@ export default async function FormResponsesPage({
       <div className="section-head">
         <h1>Ответы: {form.name}</h1>
         <p className="muted">
-          Всего ответов: {total.toLocaleString("ru-RU")}. <Link href={`/settings/forms/${id}`}>Изменить форму</Link>{" "}
-          · <Link href="/settings/forms">все формы</Link>
+          Всего: {total.toLocaleString("ru-RU")} · <Link href={`/settings/forms/${id}`}>изменить форму</Link> ·{" "}
+          <Link href="/settings/forms">все формы</Link>
         </p>
       </div>
 
@@ -54,16 +57,14 @@ export default async function FormResponsesPage({
           ) : null}
         </div>
         {items.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            {total === 0 ? "Ответов пока нет." : "На этой странице ответов нет."}
-          </p>
+          <EmptyState icon="inbox" title={total === 0 ? "Ответов пока нет" : "На этой странице ответов нет"} />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
               <thead>
                 <tr>
-                  <th>Получен (МСК)</th>
-                  <th>Откуда</th>
+                  <th>Получен</th>
+                  <th>Отправитель</th>
                   {visibleColumns.map((column) => (
                     <th key={column.key}>
                       {column.label}
@@ -77,15 +78,13 @@ export default async function FormResponsesPage({
                   const values = (item.values ?? {}) as Record<string, unknown>;
                   return (
                     <tr key={item.id}>
-                      <td>{formatMoscow(item.createdAt)}</td>
+                      <td className="nowrap">{formatMoscowShort(item.createdAt)}</td>
                       <td>
-                        {item.source === "web" ? (
-                          "сайт"
-                        ) : (
-                          <>
-                            Discord <span className="muted registry-mono">{item.authorDiscordId ?? "—"}</span>
-                          </>
-                        )}
+                        {item.authorDiscordId
+                          ? (senders.get(item.authorDiscordId) ?? item.authorDiscordId)
+                          : item.source === "web"
+                            ? "Сайт, без входа"
+                            : "—"}
                       </td>
                       {visibleColumns.map((column) => (
                         <td key={column.key} className="responses-cell">

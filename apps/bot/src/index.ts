@@ -1,5 +1,14 @@
 import { hostname } from "node:os";
-import { Client, Events, GatewayIntentBits, Partials, type Guild, type Interaction, type Role } from "discord.js";
+import {
+  ActivityType,
+  Client,
+  Events,
+  GatewayIntentBits,
+  Partials,
+  type Guild,
+  type Interaction,
+  type Role,
+} from "discord.js";
 import { prisma } from "@mirror/db";
 import {
   BOT_SERVICE,
@@ -38,6 +47,8 @@ import { JobWorker } from "./worker.js";
 const RECONCILE_INTERVAL_MS = 60 * 60_000;
 const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 
+const BOT_ACTIVITY = "GTA5RP Mirror";
+
 const env = parseEnv(botEnvSchema);
 // Commands read the same settings on every interaction: remember them for a few seconds.
 enableSettingsCache();
@@ -47,6 +58,8 @@ const log = createLogger("bot", env.LOG_LEVEL);
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   partials: [Partials.GuildMember],
+  // Shown under the bot's name in Discord: «Играет в GTA5RP Mirror».
+  presence: { status: "online", activities: [{ name: BOT_ACTIVITY, type: ActivityType.Playing }] },
 });
 
 const worker = new JobWorker(client, jobHandlers, log.child({ component: "worker" }), `${hostname()}:${process.pid}`, {
@@ -122,6 +135,10 @@ client.once(Events.ClientReady, (ready) => {
     maintenanceTimer = setInterval(() => guarded("maintenance", runMaintenance), MAINTENANCE_INTERVAL_MS);
     guarded("maintenance-initial", runMaintenance);
   });
+});
+
+client.on(Events.ShardResume, () => {
+  client.user?.setPresence({ status: "online", activities: [{ name: BOT_ACTIVITY, type: ActivityType.Playing }] });
 });
 
 process.on("unhandledRejection", (error) => {

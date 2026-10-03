@@ -9,7 +9,10 @@ import { FeedbackInbox } from "@/components/feedback-inbox";
 import { FeedbackPublish } from "@/components/feedback-publish";
 import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
+import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+
+export const metadata = { title: "Обратная связь" };
 
 export default async function FeedbackPage() {
   const session = await requireSignedIn();
@@ -37,10 +40,7 @@ export default async function FeedbackPage() {
     <div className="stack">
       <div className="section-head">
         <h1>Обратная связь</h1>
-        <p className="muted">
-          Тикеты из Discord. Всего: {tickets.length.toLocaleString("ru-RU")}.
-          {canReply ? " Ответ уходит игроку в ЛС." : null}
-        </p>
+        <p className="muted">Обращения из Discord: {tickets.length.toLocaleString("ru-RU")}</p>
       </div>
 
       {canPublish ? (
@@ -64,9 +64,11 @@ export default async function FeedbackPage() {
           category: ticket.category,
           status: ticket.status,
           authorLabel: label(ticket.authorDiscordId),
+          createdAt: formatMoscowShort(ticket.createdAt),
           messages: ticket.messages.map((m) => ({
             authorLabel: label(m.authorDiscordId),
             content: m.content,
+            at: formatMoscowShort(m.createdAt),
           })),
         }))}
       />

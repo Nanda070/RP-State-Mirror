@@ -6,6 +6,7 @@ import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/co
 import { ShareButton } from "@/components/share-button";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
 
 export const metadata = { title: "IC чёрный список" };
 
@@ -46,7 +47,7 @@ export default async function IcBlacklistRegistryPage({ searchParams }: { search
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -59,7 +60,7 @@ export default async function IcBlacklistRegistryPage({ searchParams }: { search
                   <th>Статус</th>
                   <th>Внесён</th>
                   <th>Действует до</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -83,7 +84,7 @@ export default async function IcBlacklistRegistryPage({ searchParams }: { search
                     <td className="nowrap">{formatMoscowShort(entry.createdAt)}</td>
                     <td className="nowrap">{entry.expiresAt ? formatMoscowShort(entry.expiresAt) : "бессрочно"}</td>
                     {canAct ? (
-                      <td>
+                      <td className="cell-actions">
                         <div className="registry-actions">
                           {shareLinks ? (
                             <ShareButton

@@ -7,6 +7,7 @@ import {
   registrationStatusTone,
   type RegistrationListItem,
 } from "@/lib/registrations";
+import { EmptyState, Plate } from "@/components/ui";
 
 type Props = {
   title: string;
@@ -87,7 +88,7 @@ export function RegistrationsRegistry({
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -100,7 +101,7 @@ export function RegistrationsRegistry({
                   <th>Заявитель</th>
                   <th>Подана</th>
                   <th>Решение / до</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -108,7 +109,11 @@ export function RegistrationsRegistry({
                   <tr key={row.id}>
                     <td className="registry-mono">{row.staticId}</td>
                     <td>{row.modelOrDescription}</td>
-                    {showPlate ? <td className="registry-mono nowrap">{row.plate ?? "—"}</td> : null}
+                    {showPlate ? (
+                      <td>
+                        <Plate value={row.plate} />
+                      </td>
+                    ) : null}
                     <td>
                       <span className="registry-status" data-status={registrationStatusTone(row.displayStatus)}>
                         {REGISTRATION_DISPLAY_STATUS_RU[row.displayStatus]}
@@ -123,7 +128,7 @@ export function RegistrationsRegistry({
                       {formatMoscowShort(row.displayStatus === "APPROVED" || row.displayStatus === "EXPIRED" ? row.expiresAt : row.decidedAt)}
                     </td>
                     {canAct ? (
-                      <td>
+                      <td className="cell-actions">
                         <div className="registry-actions">
                           {shareLinks ? (
                             <ShareButton entityType="registration" entityId={row.id} initialLink={shareLinks.get(row.id) ?? null} />

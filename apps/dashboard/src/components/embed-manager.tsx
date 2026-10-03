@@ -5,7 +5,9 @@ import type { EmbedSpec } from "@mirror/core/embeds";
 import { BUILT_IN_VARIABLES, extractVariables } from "@mirror/core/embeds";
 import { MessageSpecEditor, type EditorForm, type EditorRole } from "./message-spec-editor";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { LinkActions } from "./copy-button";
 import { EmbedPreview } from "./embed-preview";
+import { EmptyState } from "./ui";
 
 type Design = {
   id: string;
@@ -270,11 +272,11 @@ export function EmbedManager({
   return (
     <div className="embed-manager">
       <div className="embed-manager-sidebar panel">
-        <div className="row" style={{ justifyContent: "space-between", marginBottom: "0.75rem" }}>
-          <h2 className="panel-title" style={{ margin: 0 }}>
+        <div className="row u-between u-mb3">
+          <h2 className="panel-title u-m0">
             Шаблоны
           </h2>
-          <div className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
+          <div className="row u-gap1 u-wrap">
             <button type="button" className="btn btn-secondary" onClick={() => newDesign(1)}>
               + Classic
             </button>
@@ -284,7 +286,7 @@ export function EmbedManager({
           </div>
         </div>
         {designs.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="muted u-m0">
             Пока нет шаблонов.
           </p>
         ) : (
@@ -309,9 +311,9 @@ export function EmbedManager({
         )}
       </div>
 
-      <div className="stack" style={{ gap: "1rem" }}>
+      <div className="embed-main">
         <div className="panel">
-          <h2 className="panel-title" style={{ marginTop: 0 }}>
+          <h2 className="panel-title">
             Редактор {selected ? `«${selected.name}»` : "(новый)"}
           </h2>
           <div className="field">
@@ -340,7 +342,7 @@ export function EmbedManager({
 
           <MessageSpecEditor spec={spec} onChange={setSpec} roles={roles} forms={forms} />
 
-          <div className="row" style={{ marginTop: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+          <div className="row u-mt4 u-wrap u-gap2">
             <button type="button" className="btn btn-primary" disabled={pending} onClick={() => void save()}>
               Сохранить
             </button>
@@ -353,7 +355,7 @@ export function EmbedManager({
         </div>
 
         <div className="panel">
-          <h2 className="panel-title" style={{ marginTop: 0 }}>
+          <h2 className="panel-title u-mt0">
             Отправка
           </h2>
           <div className="field">
@@ -406,20 +408,22 @@ export function EmbedManager({
           </button>
         </div>
 
-        <div className="panel">
+        <div className="panel embed-preview-col">
           <EmbedPreview spec={spec} />
         </div>
 
-        {message ? <p className="muted">{message}</p> : null}
+        {message ? (
+          <p className="form-ok" role="status">
+            {message}
+          </p>
+        ) : null}
 
         <div className="panel">
-          <h2 className="panel-title" style={{ marginTop: 0 }}>
+          <h2 className="panel-title u-mt0">
             Отправленные
           </h2>
           {sent.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
-              Пока нет отправок.
-            </p>
+            <EmptyState icon="inbox" title="Отправок пока нет" />
           ) : (
             <div className="registry-table-wrap">
               <table className="registry-table">
@@ -435,8 +439,10 @@ export function EmbedManager({
                   {sent.map((s) => (
                     <tr key={s.id}>
                       <td>{s.design?.name ?? "—"}</td>
-                      <td className="registry-mono">{s.channelDiscordId}</td>
-                      <td className="registry-mono">{s.messageDiscordId}</td>
+                      <td>#{channels.find((channel) => channel.discordId === s.channelDiscordId)?.name ?? "канал удалён"}</td>
+                      <td>
+                        <LinkActions href={`https://discord.com/channels/${s.guildDiscordId}/${s.channelDiscordId}/${s.messageDiscordId}`} />
+                      </td>
                       <td>
                         <button
                           type="button"

@@ -300,7 +300,7 @@ export function FaqBrowser({ sections: initial, canEdit }: { sections: FaqSectio
               </div>
 
               {section.items.length === 0 ? (
-                <p className="muted" style={{ margin: 0 }}>
+                <p className="muted u-m0">
                   В разделе пока нет статей.
                 </p>
               ) : (

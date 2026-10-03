@@ -6,6 +6,7 @@ import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/co
 import { ShareButton } from "@/components/share-button";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { EmptyState, WantedStars } from "@/components/ui";
 
 export const metadata = { title: "Розыск" };
 
@@ -43,7 +44,7 @@ export default async function WantedRegistryPage({ searchParams }: { searchParam
 
       <div className="panel">
         {items.length === 0 ? (
-          <p className="muted registry-empty">Записей не найдено.</p>
+          <EmptyState title="Записей не найдено" />
         ) : (
           <div className="registry-table-wrap">
             <table className="registry-table">
@@ -56,7 +57,7 @@ export default async function WantedRegistryPage({ searchParams }: { searchParam
                   <th>Срок</th>
                   <th>Статус</th>
                   <th>Объявлен</th>
-                  {canAct ? <th>Действия</th> : null}
+                  {canAct ? <th className="cell-actions">Действия</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -68,13 +69,11 @@ export default async function WantedRegistryPage({ searchParams }: { searchParam
                     <td>{row.reason}</td>
                     <td className="nowrap">{row.termText}</td>
                     <td>
-                      <span className="registry-status" data-status={row.status === RecordStatus.ACTIVE ? "warn" : row.status === RecordStatus.CLOSED ? "ok" : "muted"}>
-                        {STATUS_RU[row.status] ?? row.status}
-                      </span>
+                      <WantedStars active={row.status === RecordStatus.ACTIVE} label={STATUS_RU[row.status] ?? row.status} />
                     </td>
                     <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
                     {canAct ? (
-                      <td>
+                      <td className="cell-actions">
                         <div className="registry-actions">
                           {shareLinks ? (
                             <ShareButton entityType="wanted" entityId={row.id} initialLink={shareLinks.get(row.id) ?? null} />

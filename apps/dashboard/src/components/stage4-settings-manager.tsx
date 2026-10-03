@@ -202,7 +202,7 @@ export function Stage4SettingsManager({
             </label>
             <div className="field">
               <span className="field-label">Кого тегать при заявке на перевод</span>
-              <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+              <p className="muted u-m0 u-mb1 u-text-sm">
                 Только роли сервера ЧП. В заявке тегаются выбранные роли, которые есть в снимке ЧП
                 (чужие id пропускаются, без @unknown-role).
               </p>
@@ -291,7 +291,7 @@ export function Stage4SettingsManager({
             </label>
             <div className="field">
               <span className="field-label">Роли /нашивка найти</span>
-              <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+              <p className="muted u-m0 u-mb1 u-text-sm">
                 Роли серверов GOV и ЧП, которым разрешён поиск нашивок.
               </p>
               <RoleChipPicker
@@ -301,7 +301,7 @@ export function Stage4SettingsManager({
                 emptyHint={finderRolesEmpty}
               />
             </div>
-            <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "0.5rem 0" }} />
+            <hr className="u-rule" />
             <TokenReceivePublish
               guilds={guilds}
               channels={channels}
