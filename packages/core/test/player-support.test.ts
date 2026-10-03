@@ -1,13 +1,16 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { AuditActorType } from "@mirror/db";
+import { AuditActorType, RecordStatus, RoleMappingKind } from "@mirror/db";
 import {
   MAX_OPEN_FEEDBACK_TICKETS,
   addFeedbackMessage,
+  assignFeedbackTicket,
   closeFeedbackTicket,
   createFeedbackTicket,
   getMutedDmKinds,
   listOwnFeedbackTickets,
+  listStaffDiscordIds,
   setMutedDmKinds,
+  setSetting,
   wantsDm,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
@@ -57,5 +60,52 @@ describe("DM preferences", () => {
     await expect(setMutedDmKinds("700", ["nonsense"], context)).rejects.toThrow(/Такого вида уведомлений нет/);
 
     expect(await wantsDm("unknown-player", "fine")).toBe(true);
+  });
+});
+
+describe("feedback assignee staff list", () => {
+  it("lists super admins and holders of ADMIN_LEVEL roles on the main guild", async () => {
+    const main = await prisma.guild.create({
+      data: { discordId: "800000000000000001", name: "Main", status: RecordStatus.ACTIVE },
+    });
+    await setSetting("core.mainGuildId", main.discordId, context);
+    await prisma.roleMapping.create({
+      data: {
+        guildId: main.id,
+        roleDiscordId: "900000000000000001",
+        kind: RoleMappingKind.ADMIN_LEVEL,
+        value: "ADMIN",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await prisma.guildMember.create({
+      data: {
+        guildId: main.id,
+        userDiscordId: "710000000000000001",
+        username: "admin.one",
+        roleIds: ["900000000000000001"],
+        isPresent: true,
+      },
+    });
+    await prisma.guildMember.create({
+      data: {
+        guildId: main.id,
+        userDiscordId: "710000000000000002",
+        username: "player.two",
+        roleIds: [],
+        isPresent: true,
+      },
+    });
+
+    const staff = await listStaffDiscordIds(["720000000000000001"]);
+    expect(staff.sort()).toEqual(["710000000000000001", "720000000000000001"]);
+
+    const ticket = await createFeedbackTicket(
+      { authorDiscordId: "730000000000000001", category: "support", content: "Нужна помощь" },
+      context,
+    );
+    const assigned = await assignFeedbackTicket(ticket.id, "710000000000000001", context);
+    expect(assigned.assignedToDiscordId).toBe("710000000000000001");
+    expect(assigned.status).toBe("IN_PROGRESS");
   });
 });

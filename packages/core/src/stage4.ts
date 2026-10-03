@@ -2,6 +2,7 @@ import {
   AuditActorType,
   DecisionStatus,
   RecordStatus,
+  RoleMappingKind,
   RegistrationKind,
   FeedbackTicketStatus,
   TransferStatus,
@@ -1034,6 +1035,36 @@ export async function assignFeedbackTicket(id: string, assigneeDiscordId: string
     });
     return { entityId: id, before: current, after: ticket, result: ticket };
   });
+}
+
+/**
+ * Discord ids of everyone who holds an admin-level role on the main server, plus the super admins:
+ * the people a ticket can be assigned to (the caller narrows the list by the level it needs).
+ */
+export async function listStaffDiscordIds(superAdminUserIds: readonly string[]): Promise<string[]> {
+  const mainGuildId = await getSetting("core.mainGuildId");
+  const mappings = mainGuildId
+    ? await prisma.roleMapping.findMany({
+        where: {
+          status: RecordStatus.ACTIVE,
+          kind: RoleMappingKind.ADMIN_LEVEL,
+          guild: { status: RecordStatus.ACTIVE, discordId: mainGuildId },
+        },
+        select: { roleDiscordId: true, guildId: true },
+      })
+    : [];
+  const members =
+    mappings.length > 0
+      ? await prisma.guildMember.findMany({
+          where: {
+            isPresent: true,
+            guildId: { in: [...new Set(mappings.map((mapping) => mapping.guildId))] },
+            roleIds: { hasSome: mappings.map((mapping) => mapping.roleDiscordId) },
+          },
+          select: { userDiscordId: true },
+        })
+      : [];
+  return [...new Set([...superAdminUserIds, ...members.map((member) => member.userDiscordId)])];
 }
 
 export async function closeFeedbackTicket(id: string, context: AuditContext) {

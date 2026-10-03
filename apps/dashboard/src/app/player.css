@@ -3422,6 +3422,17 @@ tr[data-faction] > td:first-child {
   overflow-wrap: anywhere;
 }
 
+.ticket-assign {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 28rem;
+}
+
+.ticket-assign-readonly {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
 .ticket-reply {
   display: grid;
   gap: 0.6rem;

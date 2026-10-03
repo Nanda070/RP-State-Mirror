@@ -1,12 +1,15 @@
 import {
+  canManageModules,
   canManageSystemSettings,
   canViewModules,
   getSetting,
   listFeedbackTickets,
+  listStaffDiscordIds,
 } from "@mirror/core";
 import { redirect } from "next/navigation";
 import { FeedbackInbox } from "@/components/feedback-inbox";
 import { FeedbackPublish } from "@/components/feedback-publish";
+import { getDashboardEnv } from "@/env";
 import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
@@ -20,13 +23,32 @@ export default async function FeedbackPage() {
   if (!canViewModules(identity)) redirect("/overview");
 
   const canPublish = canManageSystemSettings(identity);
+  const canAct = canManageModules(identity);
   const tickets = await listFeedbackTickets();
-  const canReply = canPublish;
+  const staffDiscordIds = canAct
+    ? await listStaffDiscordIds(getDashboardEnv().SUPER_ADMIN_USER_IDS)
+    : [];
+  const staffAssignable = (
+    await Promise.all(
+      staffDiscordIds.map(async (discordId) =>
+        canManageModules(await resolveFreshIdentity(discordId)) ? discordId : null,
+      ),
+    )
+  ).filter((id): id is string => id !== null);
+
   const authorLabels = await resolveAuthorLabels([
     session.user.discordId,
-    ...tickets.flatMap((ticket) => [ticket.authorDiscordId, ...ticket.messages.map((m) => m.authorDiscordId)]),
+    ...staffAssignable,
+    ...tickets.flatMap((ticket) => [
+      ticket.authorDiscordId,
+      ...(ticket.assignedToDiscordId ? [ticket.assignedToDiscordId] : []),
+      ...ticket.messages.map((m) => m.authorDiscordId),
+    ]),
   ]);
   const label = (id: string) => authorLabels.get(id) ?? id;
+  const staffOptions = staffAssignable
+    .map((discordId) => ({ discordId, label: label(discordId) }))
+    .sort((a, b) => a.label.localeCompare(b.label, "ru"));
 
   const [channels, guilds, openMessage] = canPublish
     ? await Promise.all([
@@ -57,7 +79,9 @@ export default async function FeedbackPage() {
       ) : null}
 
       <FeedbackInbox
-        canReply={canReply}
+        canReply={canAct}
+        canAssign={canAct}
+        staffOptions={staffOptions}
         replyAuthorLabel={label(session.user.discordId)}
         initial={tickets.map((ticket) => ({
           id: ticket.id,
@@ -65,6 +89,8 @@ export default async function FeedbackPage() {
           status: ticket.status,
           authorLabel: label(ticket.authorDiscordId),
           createdAt: formatMoscowShort(ticket.createdAt),
+          assignedToDiscordId: ticket.assignedToDiscordId,
+          assignedLabel: ticket.assignedToDiscordId ? label(ticket.assignedToDiscordId) : null,
           messages: ticket.messages.map((m) => ({
             authorLabel: label(m.authorDiscordId),
             content: m.content,

@@ -28,7 +28,11 @@ import {
   substituteVariables,
   writeAuditEvent,
   createButtonAction,
+  findDiscordIdByStatic,
+  formatMoney,
   getSetting,
+  wantsDm,
+  type DmKind,
   makeCompactAuditEmbed,
   makeDocumentEmbed,
   makeFineEmbed,
@@ -602,6 +606,19 @@ const icBlacklistEditClosed: JobHandler = async (payload, { client, log, job }) 
   return { status: "sent", number: entry.number, messageId: result.messageId };
 };
 
+/**
+ * Tells the owner of the fined character in direct messages. The fine names a static id, so the
+ * account is found through the active character; nobody is told when no character has that id.
+ */
+async function notifyFined(client: Client, job: Job, log: Logger, staticId: string, kind: DmKind, lines: string[]) {
+  const step = await runOnce(job, "dm", log, async () => {
+    const discordId = await findDiscordIdByStatic(staticId);
+    const sent = discordId ? await sendDirectMessage(client, discordId, lines.join("\n"), log, kind) : false;
+    return { sent };
+  });
+  return step.sent === true;
+}
+
 const finePublish: JobHandler = async (payload, { client, log, job }) => {
   const fineId = String(payload.fineId ?? "");
   const fine = await prisma.fine.findUnique({ where: { id: fineId } });
@@ -635,7 +652,12 @@ const finePublish: JobHandler = async (payload, { client, log, job }) => {
   });
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });
-  return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
+  const dm = await notifyFined(client, job, log, fine.staticId, "fine", [
+    `Вам выписан штраф **${fine.number}** на **${formatMoney(fine.amount)}** (статик ${fine.staticId}).`,
+    `**Основание:** ${fine.reason}`,
+    `**Срок оплаты:** ${fine.paymentDeadlineText}`,
+  ]);
+  return { status: "sent", fineNumber: fine.number, messageId: result.messageId, dm };
 };
 
 /** The payment deadline passed: the faction that must collect the fine is told once. */
@@ -670,7 +692,10 @@ const fineOverdue: JobHandler = async (payload, { client, log, job }) => {
     mentionRoleIds: pingRoleId ? [pingRoleId] : [],
   });
   if (result.status === "deferred") return result;
-  return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
+  const dm = await notifyFined(client, job, log, fine.staticId, "fineOverdue", [
+    `Срок оплаты штрафа **${fine.number}** на **${formatMoney(fine.amount)}** (статик ${fine.staticId}) истёк.`,
+  ]);
+  return { status: "sent", fineNumber: fine.number, messageId: result.messageId, dm };
 };
 
 /** Full ЧП reconcile requested from the dashboard; the summary is the job result the page shows. */
@@ -1006,7 +1031,18 @@ const registrationReview: JobHandler = async (payload, { client, log, job }) => 
   return { status: "sent", messageId: message.id, threadId, registrationId };
 };
 
-async function sendDirectMessage(client: Client, discordId: string, content: string, log: Logger): Promise<boolean> {
+/** `kind` — the notification the player may have switched off in the profile; without it the message always goes. */
+async function sendDirectMessage(
+  client: Client,
+  discordId: string,
+  content: string,
+  log: Logger,
+  kind?: DmKind,
+): Promise<boolean> {
+  if (kind && !(await wantsDm(discordId, kind))) {
+    log.info({ discordId, kind }, "direct message skipped: switched off in the profile");
+    return false;
+  }
   try {
     const user = await client.users.fetch(discordId);
     await user.send({ content, allowedMentions: { parse: [] } });
@@ -1056,6 +1092,7 @@ const registrationDecided: JobHandler = async (payload, { client, log }) => {
       registration.applicantDiscordId,
       `Ваша заявка на ${what} (${who}) отклонена.\n**Причина:** ${registration.rejectionReason ?? "—"}`,
       log,
+      "registration",
     );
     return { status: "sent", decision: "REJECTED", thread, dm };
   }
@@ -1072,6 +1109,7 @@ const registrationDecided: JobHandler = async (payload, { client, log }) => {
       registration.applicantDiscordId,
       `Ваша заявка на ${what} (${who}) одобрена. Регистрация действует до ${until}.`,
       log,
+      "registration",
     );
     return { status: "sent", decision: "APPROVED", thread, dm };
   }
@@ -1095,6 +1133,7 @@ const registrationExpired: JobHandler = async (payload, { client, log }) => {
       ? `Регистрация ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} снята администрацией.\n**Причина:** ${registration.rejectionReason ?? "—"}`
       : `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} истёк. При необходимости подайте заявку заново.`,
     log,
+    "registrationExpiry",
   );
   return { status: "sent", edited, dm };
 };
@@ -1144,6 +1183,7 @@ const transferDecided: JobHandler = async (payload, { client, log }) => {
       transfer.createdByDiscordId,
       `Заявка на перевод **${transfer.fromFactionCode} → ${transfer.toFactionCode}** (статик ${transfer.character.staticId}) закрыта.\n**Причина:** ${transfer.rejectionReason ?? "—"}`,
       log,
+      "transfer",
     );
     return { status: "sent", decision: "CLOSED", dm };
   }
@@ -1153,6 +1193,7 @@ const transferDecided: JobHandler = async (payload, { client, log }) => {
       transfer.createdByDiscordId,
       `Заявка на перевод **${transfer.fromFactionCode} → ${transfer.toFactionCode}** (статик ${transfer.character.staticId}) отклонена.\n**Причина:** ${transfer.rejectionReason ?? "—"}`,
       log,
+      "transfer",
     );
     return { status: "sent", decision: "REJECTED", dm };
   }
@@ -1163,6 +1204,7 @@ const transferDecided: JobHandler = async (payload, { client, log }) => {
       transfer.createdByDiscordId,
       `${text}\n\nПеревод: **${transfer.fromFactionCode} → ${transfer.toFactionCode}**, персонаж ${transfer.character.name} (${transfer.character.staticId}).`,
       log,
+      "transfer",
     );
     return { status: "sent", decision: "APPROVED", dm };
   }
@@ -1578,7 +1620,7 @@ const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
     return { status: "skipped", reason: "status not notifiable" };
   }
 
-  const dm = await sendDirectMessage(client, request.requesterDiscordId, content, log);
+  const dm = await sendDirectMessage(client, request.requesterDiscordId, content, log, "formRequest");
   log.info({ requestId, status: request.status, dm }, "webhook request status DM delivered");
   return { status: "sent", dm, requestId, requestStatus: request.status };
 };
