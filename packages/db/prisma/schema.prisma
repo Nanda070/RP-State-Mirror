@@ -280,6 +280,14 @@ model Document {
   authorDiscordId String             @map("author_discord_id")
   subject         String
   content         String
+  /// Уведомляемое лицо (legacy /пост)
+  notifiedPerson  String             @map("notified_person")
+  /// Ссылка на форум (spoiler in Discord embed)
+  forumLink       String             @map("forum_link")
+  /// Ответственный лидер
+  leaderText      String             @map("leader_text")
+  /// Ответственный зам
+  deputyText      String             @map("deputy_text")
   status          RecordStatus       @default(ACTIVE)
   expiresAt       DateTime?          @map("expires_at")
   createdAt       DateTime           @default(now()) @map("created_at")
@@ -297,6 +305,11 @@ model DocumentResponse {
   documentId      String           @map("document_id")
   document        Document         @relation(fields: [documentId], references: [id])
   authorDiscordId String           @map("author_discord_id")
+  /// Личное дело (legacy /ответ)
+  personalFile    String           @map("personal_file")
+  /// Видеофиксация
+  video           String
+  /// Комментарий (legacy field; stored as content historically)
   content         String
   status          RecordStatus     @default(ACTIVE)
   createdAt       DateTime         @default(now()) @map("created_at")
@@ -312,18 +325,22 @@ model DocumentResponse {
 // ──────────────────────────────────────────────────────────────
 
 model Wanted {
-  id                String           @id @default(cuid())
-  number            String           @unique
-  staticId          String           @map("static_id")
-  characterName     String           @map("character_name")
+  id                String            @id @default(cuid())
+  number            String            @unique
+  /// Passport / static id (legacy «паспорт»).
+  staticId          String            @map("static_id")
+  characterName     String            @map("character_name")
+  /// Charges / article (legacy «статья»).
   reason            String
-  issuedByDiscordId String           @map("issued_by_discord_id")
-  closedByDiscordId String?          @map("closed_by_discord_id")
+  termText          String            @map("term_text")
+  forumLink         String            @map("forum_link")
+  issuedByDiscordId String            @map("issued_by_discord_id")
+  closedByDiscordId String?           @map("closed_by_discord_id")
   evidence          String?
-  status            RecordStatus     @default(ACTIVE)
-  expiresAt         DateTime?        @map("expires_at")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
+  status            RecordStatus      @default(ACTIVE)
+  expiresAt         DateTime?         @map("expires_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
   sentMessages      SentMessageLink[] @relation("WantedMessages")
 
   @@index([staticId])
@@ -336,21 +353,26 @@ model Wanted {
 // ──────────────────────────────────────────────────────────────
 
 model Fine {
-  id                String           @id @default(cuid())
-  number            String           @unique
-  staticId          String           @map("static_id")
-  characterName     String           @map("character_name")
-  amount            Int
-  reason            String
-  issuedByDiscordId String           @map("issued_by_discord_id")
-  factionCode       String           @map("faction_code")
-  paidAt            DateTime?        @map("paid_at")
-  paidByDiscordId   String?          @map("paid_by_discord_id")
-  status            RecordStatus     @default(ACTIVE)
-  dueAt             DateTime?        @map("due_at")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
-  sentMessages      SentMessageLink[] @relation("FineMessages")
+  id                   String            @id @default(cuid())
+  number               String            @unique
+  /// Passport / static id (legacy «паспорт»).
+  staticId             String            @map("static_id")
+  characterName        String            @map("character_name")
+  amount               Int
+  /// Article / basis (legacy «статья»).
+  reason               String
+  issuedByDiscordId    String            @map("issued_by_discord_id")
+  factionCode          String            @map("faction_code")
+  /// Human-readable deadline as entered (e.g. «24h»).
+  paymentDeadlineText  String            @map("payment_deadline_text")
+  paidAt               DateTime?         @map("paid_at")
+  paidByDiscordId      String?           @map("paid_by_discord_id")
+  overdueNotified      Boolean           @default(false) @map("overdue_notified")
+  status               RecordStatus      @default(ACTIVE)
+  dueAt                DateTime?         @map("due_at")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  sentMessages         SentMessageLink[] @relation("FineMessages")
 
   @@index([staticId])
   @@index([status])

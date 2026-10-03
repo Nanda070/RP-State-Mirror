@@ -1,5 +1,23 @@
 # Mirror: dev blog
 
+## 2026-10-03: legacy slash parity + настройки модулей
+
+### Цель
+
+Довести slash-команды до полей старого Python-бота (`main.py` / `embeds.py`), добавить autocomplete фракций и убрать «скоро» у реализованных модулей в дашборде.
+
+### Что сделано
+
+- `/пост`: `фракция`, `описание`, `уведомляемое_лицо`, `ссылка_на_форум`, `ответственный_лидер`, `ответственный_зам` (номер — авто).
+- `/ответ`: `номер`, `личное_дело`, `видеофиксация`, `комментарий`.
+- `/объявить-розыск`, `/штраф` — legacy-имена; `фракция` с autocomplete всех ACTIVE из БД.
+- Prisma `20261003040000_legacy_slash_fields`: document/response/wanted/fine columns; embeds как в legacy.
+- Dashboard: настройки documents/wanted/fines/embeds — формы каналов/TTL; API `PUT /api/settings/modules`.
+
+### Проверка
+
+`pnpm lint`, `pnpm check`, `pnpm build`, `pnpm test`.
+
 ## 2026-10-03: этап 3 — handlers, jobs, реестры
 
 ### Цель

@@ -13,6 +13,8 @@ import { prisma, RecordStatus } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
   PERSONNEL_EVENT_LABELS_RU,
+  normalizeLinkOrText,
+  spoilerLink,
   recordSentMessage,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
@@ -25,7 +27,9 @@ import {
 } from "@mirror/core";
 import type { JobHandler } from "./worker.js";
 
-const COLOR_DOC = 0x3b_82_f6;
+/** Legacy embeds.py COLOR_DEFAULT / COLOR_RESPONSE */
+const COLOR_DOC = 0x89_89_a8;
+const COLOR_DOC_RESPONSE = 0x8b_6f_47;
 const COLOR_WANTED = 0xef_44_44;
 const COLOR_WANTED_CLOSED = 0x22_c5_5e;
 const COLOR_FINE = 0xf5_9e_0b;
@@ -159,21 +163,45 @@ async function findLinkedFineMessage(fineId: string) {
   });
 }
 
+async function resolveAuthorNames(
+  client: Client,
+  discordId: string,
+): Promise<{ displayName: string; username: string }> {
+  try {
+    const user = await client.users.fetch(discordId);
+    return { displayName: user.displayName || user.username, username: user.username };
+  } catch {
+    return { displayName: discordId, username: discordId };
+  }
+}
+
 const documentSend: JobHandler = async (payload, { client, log }) => {
   const documentId = String(payload.documentId ?? "");
   const doc = await prisma.document.findUnique({ where: { id: documentId } });
   if (!doc) throw new Error(`Document ${documentId} not found`);
 
   const target = await resolveFactionDocumentDelivery(doc.factionCode);
+  const { displayName, username } = await resolveAuthorNames(client, doc.authorDiscordId);
+
+  // Match legacy make_document_embed (описание → content; subject is truncated for registry).
+  const description = [
+    `**Уведомляемая фракция:** ${doc.factionCode}`,
+    `**Уведомляемое лицо:** ${doc.notifiedPerson}`,
+    `**Номер документа:** ${doc.number}`,
+    `**Краткое описание:** ${doc.content}`,
+    `**Ответственные:** ${doc.leaderText}, ${doc.deputyText}, ${doc.notifiedPerson}.`,
+  ].join("\n");
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_DOC as ColorResolvable)
-    .setTitle(`Документ ${doc.number}`)
-    .setDescription(doc.content.slice(0, 4096))
-    .addFields(
-      { name: "Тема", value: doc.subject.slice(0, 1024) },
-      { name: "Фракция", value: doc.factionCode, inline: true },
-      { name: "Автор", value: `<@${doc.authorDiscordId}>`, inline: true },
-    )
+    .setTitle(`Новый документ от ${displayName}`.slice(0, 256))
+    .setDescription(description.slice(0, 4096))
+    .addFields({
+      name: "Ссылка на форум",
+      value: spoilerLink(doc.forumLink.slice(0, 1000)),
+      inline: false,
+    })
+    .setAuthor({ name: `Автор: ${username}`.slice(0, 256) })
     .setTimestamp(doc.createdAt);
 
   const result = await sendEmbed(client, target, embed, log);
@@ -191,14 +219,20 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   if (!response) throw new Error(`Document response ${responseId} not found`);
 
   const target = await resolveFactionDocumentDelivery(response.document.factionCode);
+  const { username } = await resolveAuthorNames(client, response.authorDiscordId);
+
+  // Match legacy make_response_embed
+  const description = [
+    `**Личное дело:** ${normalizeLinkOrText(response.personalFile)}`,
+    `**Видеофиксация:** ${normalizeLinkOrText(response.video)}`,
+    `**Комментарий:** ${normalizeLinkOrText(response.content)}`,
+  ].join("\n");
+
   const embed = new EmbedBuilder()
-    .setColor(COLOR_DOC as ColorResolvable)
-    .setTitle(`Ответ на ${response.document.number}`)
-    .setDescription(response.content.slice(0, 4096))
-    .addFields(
-      { name: "Документ", value: response.document.number, inline: true },
-      { name: "Автор ответа", value: `<@${response.authorDiscordId}>`, inline: true },
-    )
+    .setColor(COLOR_DOC_RESPONSE as ColorResolvable)
+    .setTitle(`Ответ на Документ ${response.document.number}`)
+    .setDescription(description.slice(0, 4096))
+    .setAuthor({ name: `Автор ответа: ${username}`.slice(0, 256) })
     .setTimestamp(response.createdAt);
 
   const result = await sendEmbed(client, target, embed, log);
@@ -206,6 +240,24 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   await persistSend(result, { responseId: response.id, documentId: response.documentId });
   return { status: "sent", documentNumber: response.document.number, messageId: result.messageId };
 };
+
+function wantedDescriptionLines(wanted: {
+  issuedByDiscordId: string;
+  characterName: string;
+  staticId: string;
+  number: string;
+  reason: string;
+  termText: string;
+}): string[] {
+  return [
+    `Издал ордер: <@${wanted.issuedByDiscordId}>`,
+    `Разыскиваемый: **${wanted.characterName}**`,
+    `Номер паспорта: **${wanted.staticId}**`,
+    `Номер ордера: **${wanted.number}**`,
+    `Обвинения: **${wanted.reason}**`,
+    `Срок заключения: **${wanted.termText}**`,
+  ];
+}
 
 const wantedPublish: JobHandler = async (payload, { client, log }) => {
   const wantedId = String(payload.wantedId ?? "");
@@ -215,13 +267,13 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
   const target = await resolveWantedDelivery();
   const embed = new EmbedBuilder()
     .setColor(COLOR_WANTED as ColorResolvable)
-    .setTitle(`Розыск ${wanted.number}`)
-    .setDescription(wanted.reason.slice(0, 4096))
-    .addFields(
-      { name: "Статик", value: wanted.staticId, inline: true },
-      { name: "ФИО", value: wanted.characterName.slice(0, 1024), inline: true },
-      { name: "Объявил", value: `<@${wanted.issuedByDiscordId}>`, inline: true },
-    )
+    .setTitle("Новый ордер от правительства штата")
+    .setDescription(wantedDescriptionLines(wanted).join("\n").slice(0, 4096))
+    .addFields({
+      name: "Ссылка на форум",
+      value: `||${wanted.forumLink.slice(0, 1000)}||`,
+      inline: false,
+    })
     .setTimestamp(wanted.createdAt);
 
   const result = await sendEmbed(client, target, embed, log);
@@ -236,23 +288,22 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
   if (!wanted) throw new Error(`Wanted ${wantedId} not found`);
 
   const link = await findLinkedMessage(wanted.id);
+  const struck = wantedDescriptionLines(wanted)
+    .map((line) => `~~${line}~~`)
+    .join("\n");
+  const statusBlock = [
+    "",
+    "**Статус:** Исполнено",
+    `**Исполнение зарегистрировал:** ${
+      wanted.closedByDiscordId ? `<@${wanted.closedByDiscordId}>` : "—"
+    }`,
+    `**Доказательства:** ${normalizeLinkOrText(wanted.evidence ?? "")}`,
+  ].join("\n");
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_WANTED_CLOSED as ColorResolvable)
-    .setTitle(`Розыск ${wanted.number} — исполнено`)
-    .setDescription(wanted.reason.slice(0, 2000))
-    .addFields(
-      { name: "Статик", value: wanted.staticId, inline: true },
-      { name: "ФИО", value: wanted.characterName.slice(0, 1024), inline: true },
-      {
-        name: "Доказательства",
-        value: (wanted.evidence ?? "—").slice(0, 1024),
-      },
-      {
-        name: "Закрыл",
-        value: wanted.closedByDiscordId ? `<@${wanted.closedByDiscordId}>` : "—",
-        inline: true,
-      },
-    )
+    .setTitle("Исполненный ордер правительства штата")
+    .setDescription((struck + statusBlock).slice(0, 4096))
     .setTimestamp(new Date());
 
   if (link?.sentMessage && link.sentMessage.status === RecordStatus.ACTIVE) {
@@ -286,17 +337,21 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
   if (!fine) throw new Error(`Fine ${fineId} not found`);
 
   const target = await resolveFineDelivery();
+  const description = [
+    `**Уведомляемая фракция:** ${fine.factionCode}`,
+    `**Номер штрафа:** ${fine.number}`,
+    `**ФИО:** ${fine.characterName}`,
+    `**Паспорт:** ${fine.staticId}`,
+    `**Статья:** ${fine.reason}`,
+    `**Сумма штрафа:** ${fine.amount.toLocaleString("ru-RU")} ₽`,
+    `**Срок оплаты:** ${fine.paymentDeadlineText}`,
+  ].join("\n");
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_FINE as ColorResolvable)
-    .setTitle(`Штраф ${fine.number}`)
-    .setDescription(fine.reason.slice(0, 4096))
-    .addFields(
-      { name: "Статик", value: fine.staticId, inline: true },
-      { name: "ФИО", value: fine.characterName.slice(0, 1024), inline: true },
-      { name: "Сумма", value: `${fine.amount.toLocaleString("ru-RU")} ₽`, inline: true },
-      { name: "Фракция", value: fine.factionCode, inline: true },
-      { name: "Выдал", value: `<@${fine.issuedByDiscordId}>`, inline: true },
-    )
+    .setTitle("Новый штраф")
+    .setDescription(description.slice(0, 4096))
+    .setAuthor({ name: `Автор: <@${fine.issuedByDiscordId}>`.slice(0, 256) })
     .setTimestamp(fine.createdAt);
 
   const result = await sendEmbed(client, target, embed, log);
@@ -311,19 +366,20 @@ const fineEditPaid: JobHandler = async (payload, { client, log }) => {
   if (!fine) throw new Error(`Fine ${fineId} not found`);
 
   const link = await findLinkedFineMessage(fine.id);
+  const description = [
+    `**Номер штрафа:** ${fine.number}`,
+    `**ФИО:** ${fine.characterName}`,
+    `**Паспорт:** ${fine.staticId}`,
+    `**Сумма:** ${fine.amount.toLocaleString("ru-RU")} ₽`,
+    `**Оплату зарегистрировал:** ${
+      fine.paidByDiscordId ? `<@${fine.paidByDiscordId}>` : "—"
+    }`,
+  ].join("\n");
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_FINE_PAID as ColorResolvable)
-    .setTitle(`Штраф ${fine.number} — оплачен`)
-    .setDescription(fine.reason.slice(0, 2000))
-    .addFields(
-      { name: "Статик", value: fine.staticId, inline: true },
-      { name: "Сумма", value: `${fine.amount.toLocaleString("ru-RU")} ₽`, inline: true },
-      {
-        name: "Отметил оплату",
-        value: fine.paidByDiscordId ? `<@${fine.paidByDiscordId}>` : "—",
-        inline: true,
-      },
-    )
+    .setTitle("Штраф оплачен")
+    .setDescription(description.slice(0, 4096))
     .setTimestamp(fine.paidAt ?? new Date());
 
   if (link?.sentMessage && link.sentMessage.status === RecordStatus.ACTIVE) {

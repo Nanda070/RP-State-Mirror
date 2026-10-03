@@ -2,7 +2,11 @@
  * Slash command interaction handlers for Stage 3 modules.
  * Mutations go through core APIs; Discord delivery is enqueued as jobs.
  */
-import { type ChatInputCommandInteraction, MessageFlags } from "discord.js";
+import {
+  type AutocompleteInteraction,
+  type ChatInputCommandInteraction,
+  MessageFlags,
+} from "discord.js";
 import { AuditActorType } from "@mirror/db";
 import {
   canActOnModuleRecord,
@@ -21,8 +25,10 @@ import {
   enqueuePersonnelPublish,
   enqueueWantedEditClosed,
   enqueueWantedPublish,
+  getActiveFactionByCode,
   getDocumentByNumber,
   getSetting,
+  listActiveFactionsForAutocomplete,
   markFinePaid,
   PERSONNEL_EVENT_LABELS_RU,
   PERSONNEL_EVENT_TYPES,
@@ -122,6 +128,26 @@ async function loadIdentity(discordUserId: string, ctx: SlashHandlerContext): Pr
   return resolveIdentity(discordUserId, { superAdminUserIds: ctx.superAdminUserIds });
 }
 
+async function requireActiveFaction(code: string): Promise<string> {
+  const upper = code.toUpperCase();
+  const faction = await getActiveFactionByCode(upper);
+  if (!faction) {
+    throw new Error(`Фракция «${upper}» не найдена или не активна`);
+  }
+  return faction.code;
+}
+
+/** Autocomplete for «фракция» — always all ACTIVE factions from DB. */
+export async function handleFactionAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  const focused = interaction.options.getFocused(true);
+  if (focused.name !== "фракция") {
+    await interaction.respond([]);
+    return;
+  }
+  const choices = await listActiveFactionsForAutocomplete(focused.value);
+  await interaction.respond(choices);
+}
+
 export async function handleSlashCommand(
   interaction: ChatInputCommandInteraction,
   ctx: SlashHandlerContext,
@@ -173,16 +199,24 @@ async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHa
     return;
   }
 
-  const factionCode = interaction.options.getString("фракция", true).toUpperCase();
-  const subject = interaction.options.getString("тема", true);
-  const content = interaction.options.getString("содержание", true);
+  const factionCode = await requireActiveFaction(interaction.options.getString("фракция", true));
+  const description = interaction.options.getString("описание", true);
+  const notifiedPerson = interaction.options.getString("уведомляемое_лицо", true);
+  const forumLink = interaction.options.getString("ссылка_на_форум", true);
+  const leaderText = interaction.options.getString("ответственный_лидер", true);
+  const deputyText = interaction.options.getString("ответственный_зам", true);
+  const subject = description.slice(0, 256);
 
   const doc = await createDocument(
     {
       factionCode,
       authorDiscordId: interaction.user.id,
       subject,
-      content,
+      content: description,
+      notifiedPerson,
+      forumLink,
+      leaderText,
+      deputyText,
     },
     auditFromInteraction(interaction),
   );
@@ -196,7 +230,9 @@ async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHa
 async function handleReply(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const number = interaction.options.getString("номер", true).toUpperCase();
-  const content = interaction.options.getString("содержание", true);
+  const personalFile = interaction.options.getString("личное_дело", true);
+  const video = interaction.options.getString("видеофиксация", true);
+  const content = interaction.options.getString("комментарий", true);
 
   const existing = await getDocumentByNumber(number);
   if (!existing || existing.status !== "ACTIVE") {
@@ -214,6 +250,8 @@ async function handleReply(interaction: ChatInputCommandInteraction, ctx: SlashH
     {
       documentNumber: number,
       authorDiscordId: interaction.user.id,
+      personalFile,
+      video,
       content,
     },
     auditFromInteraction(interaction),
@@ -239,9 +277,11 @@ async function handleWantedCreate(interaction: ChatInputCommandInteraction, ctx:
 
   const wanted = await createWanted(
     {
-      staticId: interaction.options.getString("статик", true),
-      characterName: interaction.options.getString("имя", true),
-      reason: interaction.options.getString("основание", true),
+      characterName: interaction.options.getString("фио", true),
+      staticId: interaction.options.getString("паспорт", true),
+      reason: interaction.options.getString("статья", true),
+      termText: interaction.options.getString("срок", true),
+      forumLink: interaction.options.getString("ссылка_на_форум", true),
       issuedByDiscordId: interaction.user.id,
     },
     auditFromInteraction(interaction),
@@ -286,21 +326,15 @@ async function handleFineCreate(interaction: ChatInputCommandInteraction, ctx: S
     return;
   }
 
-  const factionCode =
-    interaction.options.getString("фракция")?.toUpperCase() ?? primaryFactionCode(identity);
-  if (!factionCode) {
-    await interaction.editReply(
-      "Укажите фракцию (параметр «фракция») или получите фракционную роль.",
-    );
-    return;
-  }
+  const factionCode = await requireActiveFaction(interaction.options.getString("фракция", true));
 
   const fine = await createFine(
     {
-      staticId: interaction.options.getString("статик", true),
-      characterName: interaction.options.getString("имя", true),
+      characterName: interaction.options.getString("фио", true),
+      staticId: interaction.options.getString("паспорт", true),
+      reason: interaction.options.getString("статья", true),
       amount: interaction.options.getInteger("сумма", true),
-      reason: interaction.options.getString("основание", true),
+      paymentDeadlineText: interaction.options.getString("срок_оплаты", true),
       issuedByDiscordId: interaction.user.id,
       factionCode,
     },
@@ -345,14 +379,14 @@ async function handlePersonnel(interaction: ChatInputCommandInteraction, ctx: Sl
   const subject = interaction.options.getUser("сотрудник", true);
   const detailsRaw = interaction.options.getString("детали");
 
-  const factionCode =
-    interaction.options.getString("фракция")?.toUpperCase() ?? primaryFactionCode(identity);
-  if (!factionCode) {
+  const factionRaw = interaction.options.getString("фракция") ?? primaryFactionCode(identity);
+  if (!factionRaw) {
     await interaction.editReply(
       "Укажите фракцию (параметр «фракция») или получите фракционную роль.",
     );
     return;
   }
+  const factionCode = await requireActiveFaction(factionRaw);
   if (!canPersonnel(identity, factionCode)) {
     await interaction.editReply("Недостаточно прав: лидер/зам фракции или администратор.");
     return;

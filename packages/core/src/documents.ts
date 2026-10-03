@@ -3,6 +3,10 @@
  *
  * Document numbers are per-faction, auto-incremented by finding the max
  * existing number for that faction. The TTL is read from system settings.
+ *
+ * Slash/field names match the legacy Python bot (main.py / embeds.py):
+ * уведомляемое_лицо, ссылка_на_форум, ответственный_лидер, ответственный_зам;
+ * for replies: личное_дело, видеофиксация, комментарий.
  */
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
@@ -19,12 +23,19 @@ export const createDocumentSchema = z.object({
   authorDiscordId: z.string().min(1),
   subject: z.string().min(1).max(256),
   content: z.string().min(1).max(4000),
+  notifiedPerson: z.string().min(1).max(256),
+  forumLink: z.string().min(1).max(1000),
+  leaderText: z.string().min(1).max(256),
+  deputyText: z.string().min(1).max(256),
 });
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 
 export const createDocumentResponseSchema = z.object({
   documentNumber: z.string().min(1),
   authorDiscordId: z.string().min(1),
+  personalFile: z.string().min(1).max(1000),
+  video: z.string().min(1).max(1000),
+  /** Комментарий (legacy /ответ) */
   content: z.string().min(1).max(4000),
 });
 export type CreateDocumentResponseInput = z.infer<typeof createDocumentResponseSchema>;
@@ -66,6 +77,10 @@ export async function createDocument(input: CreateDocumentInput, context: AuditC
         authorDiscordId: data.authorDiscordId,
         subject: data.subject,
         content: data.content,
+        notifiedPerson: data.notifiedPerson,
+        forumLink: data.forumLink,
+        leaderText: data.leaderText,
+        deputyText: data.deputyText,
         expiresAt,
         status: RecordStatus.ACTIVE,
       },
@@ -87,6 +102,8 @@ export async function createDocumentResponse(input: CreateDocumentResponseInput,
       data: {
         documentId: doc.id,
         authorDiscordId: data.authorDiscordId,
+        personalFile: data.personalFile,
+        video: data.video,
         content: data.content,
         status: RecordStatus.ACTIVE,
       },

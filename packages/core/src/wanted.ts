@@ -4,6 +4,8 @@
  * Wanted numbers are sequential global counters: W-001, W-002, …
  * Closing a wanted stores who closed it and the evidence text,
  * then the bot edits the original webhook message via a job.
+ *
+ * Legacy fields: фио, паспорт, статья, срок, ссылка_на_форум, доказательства.
  */
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
@@ -15,9 +17,15 @@ import { type Db } from "./db.js";
 // ──────────────────────────────────────────────────────────────
 
 export const createWantedSchema = z.object({
+  /** Паспорт / статик */
   staticId: z.string().min(1).max(32),
+  /** ФИО */
   characterName: z.string().min(1).max(128),
+  /** Статья / обвинения */
   reason: z.string().min(1).max(2000),
+  /** Срок заключения */
+  termText: z.string().min(1).max(256),
+  forumLink: z.string().min(1).max(1000),
   issuedByDiscordId: z.string().min(1),
 });
 export type CreateWantedInput = z.infer<typeof createWantedSchema>;
@@ -61,6 +69,8 @@ export async function createWanted(input: CreateWantedInput, context: AuditConte
         staticId: data.staticId,
         characterName: data.characterName,
         reason: data.reason,
+        termText: data.termText,
+        forumLink: data.forumLink,
         issuedByDiscordId: data.issuedByDiscordId,
         status: RecordStatus.ACTIVE,
       },

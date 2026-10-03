@@ -1,6 +1,6 @@
 # Mirror: этап 3 — базовые модули бота
 
-Статус: **в работе** (2026-10-03). Slash-обработчики, jobs доставки и реестры дашборда подняты; каналы/вебхуки и полноценный embed UI — дальше.
+Статус: **в работе** (2026-10-03). Ядро модулей, slash с parity legacy-полей, jobs и реестры/настройки дашборда подняты. Не закрыт: UI каналов фракций, button Components, синхронизация ЧП, конструктор эмбедов, токены/регистрации.
 
 ## Цель этапа
 
@@ -14,14 +14,13 @@
 
 | Слой | Содержимое |
 |---|---|
-| Prisma | `message_designs`, `sent_messages`, `button_actions`, `documents`, `document_responses`, `wanteds`, `fines`, `personnel_events`, `sent_message_links` |
-| Core | `documents`, `wanted`, `fines`, `personnel`, `embeds`, `message-designs`, `delivery`, `module-jobs` + access gates |
-| Settings | `fines.dueDays`, `fines.channelId`, `wanted.enabled`, `wanted.channelId`, `cp.syncEnabled` |
-| Bot | slash-команды + handlers: `/пост`, `/ответ`, `/объявить-розыск`, `/розыск-исполнено`, `/штраф`, `/штраф-оплачено`, `/кадровый-аудит` |
-| Jobs | `document.send`, `document.response.send`, `wanted.publish`, `wanted.edit_closed`, `fine.publish`, `fine.edit_paid`, `personnel.publish` |
-| Dashboard | реестры `/documents`, `/wanted`, `/fines` (canViewModules); stubs настроек модулей |
+| Prisma | модули Stage 3 + legacy-поля (`forum_link`, `term_text`, `payment_deadline_text`, …) |
+| Core | `documents`, `wanted`, `fines`, `personnel`, `factions` (autocomplete), `delivery`, `module-jobs` |
+| Settings | `documents.ttlHours`, `fines.*`, `wanted.*`, `cp.syncEnabled` |
+| Bot | 7 slash-команд; autocomplete «фракция» = все ACTIVE из БД; jobs доставки |
+| Dashboard | реестры + настройки документов/розыска/штрафов/эмбедов (**готово**); токены/регистрации — скоро |
 
-Номера документов (`LSPD-001`), розысков (`W-001`) и штрафов (`F-001`) выделяются **внутри** аудируемой транзакции.
+Номера документов (`LSPD-001`), розысков (`W-001`) и штрафов (`F-001`) выделяются **внутри** аудируемой транзакции (в отличие от ручного номера в legacy).
 
 Доставка в Discord идёт через очередь jobs. Если канал/вебхук ещё не настроен — запись в БД сохраняется, ephemeral-ответ сообщает об отложенной отправке; job завершается как `deferred` без ретраев.
 
@@ -29,15 +28,20 @@
 
 - Входит: отправка документа во фракцию, ответ, реестр, TTL/`EXPIRED`.
 - Не входит: шаблоны документов, генерация текстов, конструктор бланков.
+- Поля `/пост` (legacy): `фракция`, `описание`, `уведомляемое_лицо`, `ссылка_на_форум`, `ответственный_лидер`, `ответственный_зам`.
+- Поля `/ответ`: `номер`, `личное_дело`, `видеофиксация`, `комментарий`.
+- Поля `/объявить-розыск`: `фио`, `паспорт`, `статья`, `срок`, `ссылка_на_форум`.
+- Поля `/штраф`: `фракция`, `фио`, `паспорт`, `статья`, `сумма`, `срок_оплаты` (`1m`/`24h`/`14d`).
 
 ## Конфиг доставки (без хардкода ID)
 
 - Фракция `settings` JSON: `documentsChannelId`, `personnelChannelId`, опционально webhook URL.
-- Система: `wanted.channelId` + `fines.channelId` на сервере ЧП (`core.incidentGuildId`).
+- Система: `wanted.channelId` + `fines.channelId` на сервере ЧП (`core.incidentGuildId`); правятся в дашборде.
 
 ## Следующие шаги
 
-1. UI настройки каналов/вебхуков фракций и ЧП.
+1. UI настройки каналов/вебхуков фракций.
 2. Persist button actions → Discord Components.
 3. Синхронизация ЧП по `cp.syncEnabled`.
 4. Редактирование/закрытие записей из реестров дашборда.
+5. Визуальный конструктор эмбедов; модули токенов и регистраций.

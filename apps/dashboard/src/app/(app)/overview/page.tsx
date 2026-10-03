@@ -125,23 +125,25 @@ export default async function OverviewPage() {
       </div>
 
       <div className="panel">
-        <h2 className="panel-title">Что дальше</h2>
+        <h2 className="panel-title">Модули этапа 3</h2>
         <p className="muted" style={{ marginBottom: "0.85rem" }}>
-          Реестры документов, розысков, штрафов и модули бота появятся на отдельных страницах
-          настроек. Сейчас доступны вход, профиль, системные серверы и привязка ролей.
+          Документы, розыск, штрафы и эмбеды уже работают: реестры и настройки доступны ниже.
+          Токены и регистрации — следующие модули.
         </p>
         {canSettings ? (
           <div className="module-chip-row">
             {(
               [
-                { label: "Документы", href: "/settings/documents" },
-                { label: "Розыск", href: "/settings/wanted" },
-                { label: "Штрафы", href: "/settings/fines" },
-                { label: "Токены", href: "/settings/tokens" },
+                { label: "Документы", href: "/settings/documents", ready: true },
+                { label: "Розыск", href: "/settings/wanted", ready: true },
+                { label: "Штрафы", href: "/settings/fines", ready: true },
+                { label: "Эмбеды", href: "/settings/embeds", ready: true },
+                { label: "Токены", href: "/settings/tokens", ready: false },
               ] as const
             ).map((item) => (
               <Link key={item.href} href={item.href} className="module-chip">
-                {item.label} <span className="muted">скоро</span>
+                {item.label}{" "}
+                <span className="muted">{item.ready ? "готово" : "скоро"}</span>
               </Link>
             ))}
           </div>

@@ -19,11 +19,28 @@ export default async function SettingsIndexPage() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) redirect("/overview");
 
-  const [guildCount, mainGuildId, incidentGuildId, mappings] = await Promise.all([
+  const [
+    guildCount,
+    mainGuildId,
+    incidentGuildId,
+    mappings,
+    docCount,
+    wantedCount,
+    fineCount,
+    designCount,
+    wantedChannelId,
+    finesChannelId,
+  ] = await Promise.all([
     prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
     getSetting("core.mainGuildId"),
     getSetting("core.incidentGuildId"),
     listActiveRoleMappings(),
+    prisma.document.count(),
+    prisma.wanted.count(),
+    prisma.fine.count(),
+    prisma.messageDesign.count({ where: { status: RecordStatus.ACTIVE } }),
+    getSetting("wanted.channelId"),
+    getSetting("fines.channelId"),
   ]);
 
   const core: ModuleCard[] = [
@@ -48,19 +65,29 @@ export default async function SettingsIndexPage() {
       href: "/settings/documents",
       title: "Документы",
       description: "Отправка документов и реестр. Без шаблонов и генерации.",
-      status: "soon",
+      status: "ready",
+      meta: `Реестр: ${docCount} · /documents`,
     },
     {
       href: "/settings/wanted",
       title: "Розыск",
-      description: "Списки розыска и синхронизация с сервером ЧП.",
-      status: "soon",
+      description: "Федеральный розыск, канал ЧП и реестр.",
+      status: "ready",
+      meta: `Реестр: ${wantedCount} · канал: ${wantedChannelId ? "задан" : "нет"}`,
     },
     {
       href: "/settings/fines",
       title: "Штрафы",
-      description: "Штрафы, тарифы и журнал взысканий.",
-      status: "soon",
+      description: "Штрафы, срок оплаты, канал ЧП и реестр.",
+      status: "ready",
+      meta: `Реестр: ${fineCount} · канал: ${finesChannelId ? "задан" : "нет"}`,
+    },
+    {
+      href: "/settings/embeds",
+      title: "Эмбеды",
+      description: "Движок дизайнов и журнал отправленных сообщений.",
+      status: "ready",
+      meta: `Дизайнов: ${designCount}`,
     },
     {
       href: "/settings/tokens",
@@ -72,12 +99,6 @@ export default async function SettingsIndexPage() {
       href: "/settings/registrations",
       title: "Регистрации",
       description: "Регистрации персонажей и проверки на ЧП.",
-      status: "soon",
-    },
-    {
-      href: "/settings/embeds",
-      title: "Эмбеды",
-      description: "Шаблоны Discord-эмбедов для модулей бота.",
       status: "soon",
     },
   ];
@@ -117,9 +138,16 @@ export default async function SettingsIndexPage() {
             <Link key={card.href} href={card.href} className="settings-hub-card">
               <div className="settings-hub-card-top">
                 <h3>{card.title}</h3>
-                <span className="stub-badge">Скоро</span>
+                {card.status === "ready" ? (
+                  <span className="stub-badge" data-ready>
+                    Готово
+                  </span>
+                ) : (
+                  <span className="stub-badge">Скоро</span>
+                )}
               </div>
               <p className="muted">{card.description}</p>
+              {card.meta ? <p className="settings-hub-meta">{card.meta}</p> : null}
             </Link>
           ))}
         </div>

@@ -12,7 +12,7 @@ import {
   upsertMember,
 } from "@mirror/core";
 import { jobHandlers } from "./handlers.js";
-import { handleSlashCommand } from "./slash.js";
+import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
 import { guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
 import { syncAllGuilds, syncGuild } from "./sync.js";
 import { JobWorker } from "./worker.js";
@@ -47,6 +47,10 @@ client.once(Events.ClientReady, (ready) => {
 });
 
 client.on(Events.InteractionCreate, (interaction) => {
+  if (interaction.isAutocomplete()) {
+    guarded("autocomplete", () => handleFactionAutocomplete(interaction));
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
   guarded("interactionCreate", () =>
     handleSlashCommand(interaction, {

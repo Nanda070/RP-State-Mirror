@@ -61,13 +61,29 @@ describe("stage 3 delivery + job enqueue", () => {
     await seedFoundation({ superAdminUserIds: [] });
 
     const doc = await createDocument(
-      { factionCode: "LSPD", authorDiscordId: "1", subject: "A", content: "body" },
+      {
+        factionCode: "LSPD",
+        authorDiscordId: "1",
+        subject: "A",
+        content: "body",
+        notifiedPerson: "Officer A",
+        forumLink: "https://forum.example/t/1",
+        leaderText: "Leader",
+        deputyText: "Deputy",
+      },
       ctx,
     );
     await enqueueDocumentSend(doc.id);
 
     const wanted = await createWanted(
-      { staticId: "100", characterName: "Test", reason: "theft", issuedByDiscordId: "9" },
+      {
+        staticId: "100",
+        characterName: "Test",
+        reason: "theft",
+        termText: "10 лет",
+        forumLink: "https://forum.example/wanted/1",
+        issuedByDiscordId: "9",
+      },
       ctx,
     );
     await enqueueWantedPublish(wanted.id);
@@ -85,6 +101,7 @@ describe("stage 3 delivery + job enqueue", () => {
         reason: "speeding",
         issuedByDiscordId: "9",
         factionCode: "LSPD",
+        paymentDeadlineText: "24h",
       },
       ctx,
     );

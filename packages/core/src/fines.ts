@@ -2,26 +2,51 @@
  * Fines module: /штраф and /штраф-оплачено.
  *
  * Fine numbers: F-001, F-002, … (global sequential).
- * Due date is calculated from the "fines.dueDays" system setting.
- * Overdue detection happens at query time (dueAt < now && status ACTIVE).
+ * Due date is parsed from legacy-style срок_оплаты (1m / 24h / 14d).
+ *
+ * Legacy fields: фракция, фио, паспорт, статья, сумма, срок_оплаты.
  */
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { type Db } from "./db.js";
-import { getSetting } from "./settings.js";
+
+// ──────────────────────────────────────────────────────────────
+// Duration helper (legacy utils.parse_duration + days)
+// ──────────────────────────────────────────────────────────────
+
+const DURATION_RE = /^(\d+)([mhd])$/i;
+
+/** Parse «1m», «24h», «14d» into milliseconds. */
+export function parsePaymentDeadline(value: string): { ms: number; text: string } {
+  const trimmed = value.trim();
+  const match = DURATION_RE.exec(trimmed);
+  if (!match) {
+    throw new Error("Формат срока оплаты: 1m, 24h или 14d");
+  }
+  const amount = Number(match[1]);
+  const unit = match[2]!.toLowerCase();
+  const ms =
+    unit === "m" ? amount * 60_000 : unit === "h" ? amount * 3_600_000 : amount * 86_400_000;
+  return { ms, text: `${amount}${unit}` };
+}
 
 // ──────────────────────────────────────────────────────────────
 // Input schemas
 // ──────────────────────────────────────────────────────────────
 
 export const createFineSchema = z.object({
+  /** Паспорт / статик */
   staticId: z.string().min(1).max(32),
+  /** ФИО */
   characterName: z.string().min(1).max(128),
   amount: z.number().int().positive(),
+  /** Статья */
   reason: z.string().min(1).max(2000),
   issuedByDiscordId: z.string().min(1),
   factionCode: z.string().min(1).max(32),
+  /** Срок оплаты as entered (1m / 24h / 14d) */
+  paymentDeadlineText: z.string().min(1).max(32),
 });
 export type CreateFineInput = z.infer<typeof createFineSchema>;
 
@@ -54,8 +79,8 @@ async function nextFineNumber(db: Db): Promise<string> {
 
 export async function createFine(input: CreateFineInput, context: AuditContext) {
   const data = createFineSchema.parse(input);
-  const dueDays = await getSetting("fines.dueDays");
-  const dueAt = new Date(Date.now() + dueDays * 86_400_000);
+  const deadline = parsePaymentDeadline(data.paymentDeadlineText);
+  const dueAt = new Date(Date.now() + deadline.ms);
 
   return auditedMutation(context, "fine.created", "fine", async (tx) => {
     const number = await nextFineNumber(tx);
@@ -68,7 +93,9 @@ export async function createFine(input: CreateFineInput, context: AuditContext) 
         reason: data.reason,
         issuedByDiscordId: data.issuedByDiscordId,
         factionCode: data.factionCode,
+        paymentDeadlineText: deadline.text,
         dueAt,
+        overdueNotified: false,
         status: RecordStatus.ACTIVE,
       },
     });
