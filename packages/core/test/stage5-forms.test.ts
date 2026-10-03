@@ -2,9 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { AuditActorType, RecordStatus } from "@mirror/db";
 import {
   FormError,
-  FormRateLimitError,
   MODULE_JOB_TYPES,
-  banFormIp,
   clearFormDraft,
   createDiscordForm,
   discordFormSteps,
@@ -19,7 +17,6 @@ import {
   saveFormDraft,
   submitDiscordForm,
   submitPublicForm,
-  unbanFormIp,
   updateForm,
   validateFormValues,
   type FormFieldInput,
@@ -182,59 +179,31 @@ describe("form definition", () => {
 });
 
 describe("form submissions", () => {
-  it("stores a public answer with source metadata and queues delivery", async () => {
+  it("stores a public answer, marks its source and queues delivery", async () => {
     await makeForm({ slug: "anketa", publicEnabled: true });
-    const submission = await submitPublicForm("ANKETA", VALID, { ipAddress: "203.0.113.7", userAgent: "UA" });
-    expect(submission).toMatchObject({ source: "web", ipAddress: "203.0.113.7", authorDiscordId: null });
+    const submission = await submitPublicForm("ANKETA", VALID);
+    expect(submission).toMatchObject({ source: "web", authorDiscordId: null });
     expect(submission.values).toMatchObject({ name: "Иван", age: 21, rules: true });
     expect(await prisma.job.count({ where: { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER } })).toBe(1);
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "form.submitted" } });
-    expect(audit).toMatchObject({ source: "web.form", ipAddress: "203.0.113.7" });
+    expect(audit).toMatchObject({ source: "web.form", actorType: AuditActorType.SYSTEM });
   });
 
   it("does not expose forms that are not public, disabled or expired", async () => {
     const hidden = await makeForm({ slug: "hidden" });
     expect(await getPublicForm("hidden")).toBeNull();
-    await expect(submitPublicForm("hidden", VALID, { ipAddress: "203.0.113.7" })).rejects.toThrow(/не найдена/);
+    await expect(submitPublicForm("hidden", VALID)).rejects.toThrow(/не найдена/);
     expect(await getDiscordForm(hidden.id)).not.toBeNull();
 
     await makeForm({ slug: "old", publicEnabled: true, expiresAt: new Date(Date.now() - 1000) });
-    await expect(submitPublicForm("old", VALID, { ipAddress: "203.0.113.7" })).rejects.toThrow(/истёк/);
+    await expect(submitPublicForm("old", VALID)).rejects.toThrow(/истёк/);
   });
 
-  it("limits answers per IP per hour, also under concurrency, without affecting other addresses", async () => {
-    await makeForm({ slug: "anketa", publicEnabled: true, ipLimitPerHour: 2 });
-    const results = await Promise.allSettled(
-      Array.from({ length: 6 }, () => submitPublicForm("anketa", VALID, { ipAddress: "203.0.113.7" })),
-    );
+  it("honours the response limit for public answers too", async () => {
+    await makeForm({ slug: "anketa", publicEnabled: true, responseLimit: 2 });
+    const results = await Promise.allSettled(Array.from({ length: 5 }, () => submitPublicForm("anketa", VALID)));
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
-    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
-    expect(rejected.reason).toBeInstanceOf(FormRateLimitError);
-
-    await expect(submitPublicForm("anketa", VALID, { ipAddress: "203.0.113.8" })).resolves.toBeTruthy();
-
-    // Answers older than an hour no longer count.
-    await prisma.formSubmission.updateMany({
-      where: { ipAddress: "203.0.113.7" },
-      data: { createdAt: new Date(Date.now() - 3_700_000) },
-    });
-    await expect(submitPublicForm("anketa", VALID, { ipAddress: "203.0.113.7" })).resolves.toBeTruthy();
-  });
-
-  it("blocks banned addresses until the ban is revoked", async () => {
-    await makeForm({ slug: "anketa", publicEnabled: true });
-    const ban = await banFormIp({ ipAddress: "203.0.113.7", reason: "спам", createdByDiscordId: ADMIN }, context);
-    await expect(
-      banFormIp({ ipAddress: "203.0.113.7", reason: "ещё раз", createdByDiscordId: ADMIN }, context),
-    ).rejects.toBeInstanceOf(FormError);
-    await expect(submitPublicForm("anketa", VALID, { ipAddress: "203.0.113.7" })).rejects.toThrow(/заблокирована/);
-
-    await unbanFormIp(ban.id, context);
-    await expect(submitPublicForm("anketa", VALID, { ipAddress: "203.0.113.7" })).resolves.toBeTruthy();
-    // A revoked ban does not prevent banning the same address again.
-    await expect(
-      banFormIp({ ipAddress: "203.0.113.7", reason: "снова спам", createdByDiscordId: ADMIN }, context),
-    ).resolves.toBeTruthy();
+    await expect(submitPublicForm("anketa", VALID)).rejects.toThrow(/Лимит ответов/);
   });
 
   it("keeps multi-step drafts per user and clears them on submit", async () => {
@@ -253,9 +222,7 @@ describe("form submissions", () => {
 
   it("exports answers as CSV that spreadsheets cannot execute", async () => {
     const form = await makeForm({ slug: "anketa", publicEnabled: true });
-    await submitPublicForm("anketa", { ...VALID, name: '=HYPERLINK("x")', about: 'кавычки "тут"; и точка с запятой' }, {
-      ipAddress: "203.0.113.7",
-    });
+    await submitPublicForm("anketa", { ...VALID, name: '=HYPERLINK("x")', about: 'кавычки "тут"; и точка с запятой' });
     const csv = await formSubmissionsCsv(form.id);
     const [header, row] = csv.replace(String.fromCharCode(0xfeff), "").trim().split("\r\n");
     expect(csv.charCodeAt(0)).toBe(0xfeff);

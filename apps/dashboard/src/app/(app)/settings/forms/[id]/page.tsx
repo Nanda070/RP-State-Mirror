@@ -1,10 +1,10 @@
-import { getFormForEdit, getSetting } from "@mirror/core";
+import { getFormForEdit } from "@mirror/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FormBuilder } from "@/components/form-builder";
+import { getDashboardEnv } from "@/env";
 import { getActiveChannelOptions } from "@/lib/catalog";
 import { toFormBuilderValue } from "@/lib/forms";
-import { turnstileSiteKey } from "@/lib/public-request";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export const metadata = { title: "Редактирование формы" };
@@ -12,11 +12,7 @@ export const metadata = { title: "Редактирование формы" };
 export default async function EditFormPage({ params }: { params: Promise<{ id: string }> }) {
   await requireSystemSettingsPage();
   const { id } = await params;
-  const [form, channels, publicBaseUrl] = await Promise.all([
-    getFormForEdit(id),
-    getActiveChannelOptions(),
-    getSetting("app.publicBaseUrl"),
-  ]);
+  const [form, channels] = await Promise.all([getFormForEdit(id), getActiveChannelOptions()]);
   if (!form) notFound();
 
   return (
@@ -31,8 +27,7 @@ export default async function EditFormPage({ params }: { params: Promise<{ id: s
       </div>
       <FormBuilder
         initial={toFormBuilderValue(form)}
-        captchaConfigured={turnstileSiteKey() !== null}
-        publicBaseUrl={publicBaseUrl}
+        publicBaseUrl={getDashboardEnv().PUBLIC_BASE_URL}
         channels={channels.map((channel) => ({
           discordId: channel.discordId,
           name: channel.name,

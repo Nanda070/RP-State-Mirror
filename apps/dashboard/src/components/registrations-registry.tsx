@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatMoscow } from "@/lib/moscow";
 import { ShareButton } from "./share-button";
@@ -110,12 +109,6 @@ export function RegistrationsRegistry({
           </div>
         )}
       </div>
-
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Решения принимаются в Discord. Настройки каналов — в{" "}
-        <Link href="/settings/stage4?tab=registrations">конфигурации модулей</Link> (главный
-        администратор).
-      </p>
     </div>
   );
 }

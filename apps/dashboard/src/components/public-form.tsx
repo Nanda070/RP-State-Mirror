@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 export type PublicFormField = {
   key: string;
@@ -17,29 +17,6 @@ export type PublicFormField = {
 
 type Value = string | boolean | string[];
 
-type Turnstile = {
-  render: (
-    element: HTMLElement,
-    options: {
-      sitekey: string;
-      theme?: "dark" | "light" | "auto";
-      callback: (token: string) => void;
-      "expired-callback"?: () => void;
-      "error-callback"?: () => void;
-    },
-  ) => string;
-  reset: (widgetId?: string) => void;
-  remove: (widgetId?: string) => void;
-};
-
-declare global {
-  interface Window {
-    turnstile?: Turnstile;
-  }
-}
-
-const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-
 function initialValue(field: PublicFormField): Value {
   if (field.type === "checkbox") return false;
   if (field.type === "multiselect") return [];
@@ -49,86 +26,36 @@ function initialValue(field: PublicFormField): Value {
 export function PublicForm({
   slug,
   fields,
-  captchaSiteKey,
   successMessage,
 }: {
   slug: string;
   fields: PublicFormField[];
-  /** Null when the form does not require a captcha or the keys are not configured. */
-  captchaSiteKey: string | null;
   successMessage: string | null;
 }) {
   const [values, setValues] = useState<Record<string, Value>>(() =>
     Object.fromEntries(fields.map((field) => [field.key, initialValue(field)])),
   );
   const [website, setWebsite] = useState("");
-  const [token, setToken] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const captchaRef = useRef<HTMLDivElement>(null);
-  const widgetRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!captchaSiteKey) return;
-    let cancelled = false;
-
-    const render = () => {
-      if (cancelled || !captchaRef.current || !window.turnstile || widgetRef.current) return;
-      widgetRef.current = window.turnstile.render(captchaRef.current, {
-        sitekey: captchaSiteKey,
-        theme: "dark",
-        callback: (value) => setToken(value),
-        "expired-callback": () => setToken(null),
-        "error-callback": () => setToken(null),
-      });
-    };
-
-    if (window.turnstile) {
-      render();
-    } else {
-      let script = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SRC}"]`);
-      if (!script) {
-        script = document.createElement("script");
-        script.src = TURNSTILE_SRC;
-        script.async = true;
-        script.defer = true;
-        document.head.appendChild(script);
-      }
-      script.addEventListener("load", render);
-    }
-
-    return () => {
-      cancelled = true;
-      if (widgetRef.current && window.turnstile) window.turnstile.remove(widgetRef.current);
-      widgetRef.current = null;
-    };
-  }, [captchaSiteKey]);
-
   const set = (key: string, value: Value) => setValues((current) => ({ ...current, [key]: value }));
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (captchaSiteKey && !token) {
-      setError("Дождитесь проверки «я не робот» и отправьте ещё раз.");
-      return;
-    }
     setPending(true);
     setError(null);
     try {
       const res = await fetch(`/api/public/forms/${encodeURIComponent(slug)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values, captchaToken: token, website }),
+        body: JSON.stringify({ values, website }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string | null };
       if (!res.ok) throw new Error(data.error ?? "Не удалось отправить ответ. Попробуйте позже.");
       setDone(data.message?.trim() || successMessage?.trim() || "Спасибо! Ваш ответ принят.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отправить ответ. Попробуйте позже.");
-      // A Turnstile token is single-use: ask for a fresh one before the next attempt.
-      if (widgetRef.current && window.turnstile) window.turnstile.reset(widgetRef.current);
-      setToken(null);
     } finally {
       setPending(false);
     }
@@ -283,8 +210,6 @@ export function PublicForm({
         />
       </div>
 
-      {captchaSiteKey ? <div ref={captchaRef} className="public-form-captcha" /> : null}
-
       {error ? (
         <p className="form-error" role="alert">
           {error}
@@ -295,7 +220,7 @@ export function PublicForm({
         {pending ? "Отправка…" : "Отправить"}
       </button>
       <p className="muted public-form-note">
-        Поля со звёздочкой обязательны. Вместе с ответом сохраняется ваш IP-адрес — для защиты от спама.
+        Поля со звёздочкой обязательны.
       </p>
     </form>
   );

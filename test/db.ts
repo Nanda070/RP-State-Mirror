@@ -4,7 +4,6 @@ const TABLES = [
   "share_links",
   "faq_items",
   "faq_sections",
-  "form_ip_bans",
   "form_drafts",
   "form_submissions",
   "form_fields",

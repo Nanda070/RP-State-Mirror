@@ -14,8 +14,6 @@ export const formPayloadSchema = z.object({
   responseLimit: z.number().int().nullish(),
   publicEnabled: z.boolean().default(false),
   slug: z.string().nullish(),
-  captchaRequired: z.boolean().default(true),
-  ipLimitPerHour: z.number().int().default(3),
   successMessage: z.string().nullish(),
   fields: z
     .array(
@@ -53,8 +51,6 @@ export function normalizeFormPayload(payload: FormPayload) {
     responseLimit: payload.responseLimit ?? null,
     publicEnabled: payload.publicEnabled,
     slug: blank(payload.slug),
-    captchaRequired: payload.captchaRequired,
-    ipLimitPerHour: payload.ipLimitPerHour,
     successMessage: blank(payload.successMessage),
     fields: payload.fields.map((field) => ({
       key: field.key.trim(),

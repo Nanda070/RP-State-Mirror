@@ -48,6 +48,7 @@ const NAV: NavItem[] = [
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "vehicle" },
   { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам", match: "prefix", icon: "calculator" },
   { href: "/faq", label: "FAQ", group: "Игрокам", match: "prefix", icon: "faq" },
+  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Игрокам", match: "prefix", icon: "blacklist" },
   { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs", requiresStaff: true },
   { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted", requiresStaff: true },
   { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines", requiresStaff: true },
@@ -68,7 +69,6 @@ const NAV: NavItem[] = [
     icon: "uniform",
     requiresStaff: true,
   },
-  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist", requiresStaff: true },
   {
     href: "/feedback",
     label: "Обратная связь",

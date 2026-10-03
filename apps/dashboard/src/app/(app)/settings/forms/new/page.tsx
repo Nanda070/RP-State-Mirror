@@ -1,9 +1,8 @@
-import { getSetting } from "@mirror/core";
 import { prisma } from "@mirror/db";
 import { FormBuilder } from "@/components/form-builder";
+import { getDashboardEnv } from "@/env";
 import { getActiveChannelOptions } from "@/lib/catalog";
 import { emptyFormBuilderValue } from "@/lib/forms";
-import { turnstileSiteKey } from "@/lib/public-request";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export const metadata = { title: "Новая форма" };
@@ -17,9 +16,8 @@ export default async function NewFormPage({
   const { request } = await searchParams;
   // A form requested through /создать-вебхук starts with that webhook. The URL is a secret, so it is
   // looked up here by request id instead of travelling in the address bar.
-  const [channels, publicBaseUrl, webhookRequest] = await Promise.all([
+  const [channels, webhookRequest] = await Promise.all([
     getActiveChannelOptions(),
-    getSetting("app.publicBaseUrl"),
     typeof request === "string" && request
       ? prisma.webhookRequest.findUnique({ where: { id: request }, select: { webhookUrl: true, description: true } })
       : null,
@@ -41,8 +39,7 @@ export default async function NewFormPage({
       </div>
       <FormBuilder
         initial={emptyFormBuilderValue(webhookRequest?.webhookUrl ?? "")}
-        captchaConfigured={turnstileSiteKey() !== null}
-        publicBaseUrl={publicBaseUrl}
+        publicBaseUrl={getDashboardEnv().PUBLIC_BASE_URL}
         channels={channels.map((channel) => ({
           discordId: channel.discordId,
           name: channel.name,

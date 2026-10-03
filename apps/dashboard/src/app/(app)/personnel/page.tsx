@@ -1,6 +1,5 @@
 import { canViewModules, listPersonnelEvents, PERSONNEL_EVENT_LABELS_RU } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { formatMoscow } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
@@ -73,11 +72,6 @@ export default async function PersonnelRegistryPage() {
           </div>
         )}
       </div>
-
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Каналы доставки — в{" "}
-        <Link href="/settings/factions">настройках фракций</Link> (главный администратор).
-      </p>
     </div>
   );
 }

@@ -99,6 +99,7 @@ client.on(Events.InteractionCreate, (interaction) => {
       handleButtonInteraction(interaction, {
         client,
         superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+        publicBaseUrl: env.PUBLIC_BASE_URL,
         log: log.child({ component: "buttons" }),
       }),
     );
@@ -109,6 +110,7 @@ client.on(Events.InteractionCreate, (interaction) => {
       handleSelectInteraction(interaction, {
         client,
         superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+        publicBaseUrl: env.PUBLIC_BASE_URL,
         log: log.child({ component: "selects" }),
       }),
     );
@@ -119,6 +121,7 @@ client.on(Events.InteractionCreate, (interaction) => {
       handleModalSubmit(interaction, {
         client,
         superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+        publicBaseUrl: env.PUBLIC_BASE_URL,
         log: log.child({ component: "modals" }),
       }),
     );

@@ -46,8 +46,6 @@ export type FormBuilderValue = {
   responseLimit: string;
   publicEnabled: boolean;
   slug: string;
-  captchaRequired: boolean;
-  ipLimitPerHour: string;
   successMessage: string;
   fields: FormBuilderField[];
 };
@@ -100,13 +98,12 @@ function localToIso(value: string): string | null {
 export function FormBuilder({
   initial,
   channels,
-  captchaConfigured,
   publicBaseUrl,
 }: {
   initial: FormBuilderValue;
   channels: ChannelOption[];
-  captchaConfigured: boolean;
-  publicBaseUrl: string | null;
+  /** `PUBLIC_BASE_URL` from the environment. */
+  publicBaseUrl: string;
 }) {
   const router = useRouter();
   // `initial.expiresAt` is an ISO instant; the input needs the viewer's local time, which only the
@@ -141,8 +138,7 @@ export function FormBuilder({
 
   const discordReady = rows.every((row) => FIELD_TYPES.find((type) => type.value === row.type)?.discord);
   const steps = Math.ceil(rows.length / MODAL_FIELDS);
-  const origin = publicBaseUrl ?? (typeof window !== "undefined" ? window.location.origin : "");
-  const publicUrl = form.slug ? `${origin}/f/${form.slug}` : null;
+  const publicUrl = form.slug ? `${publicBaseUrl}/f/${form.slug}` : null;
 
   const problems = useMemo(() => {
     const list: string[] = [];
@@ -182,8 +178,6 @@ export function FormBuilder({
         responseLimit: numberOrUndefined(form.responseLimit) ?? null,
         publicEnabled: form.publicEnabled,
         slug: form.slug,
-        captchaRequired: form.captchaRequired,
-        ipLimitPerHour: numberOrUndefined(form.ipLimitPerHour) ?? 3,
         successMessage: form.successMessage,
         fields: rows.map((row) => {
           const text = row.type === "short" || row.type === "paragraph";
@@ -508,31 +502,7 @@ export function FormBuilder({
             />
             {publicUrl ? <span className="field-hint">{publicUrl}</span> : null}
           </div>
-          <div className="field">
-            <label htmlFor="formIpLimit">Ответов с одного IP в час</label>
-            <input
-              id="formIpLimit"
-              type="number"
-              min={1}
-              max={100}
-              value={form.ipLimitPerHour}
-              onChange={(event) => set("ipLimitPerHour", event.target.value)}
-            />
-          </div>
         </div>
-        <ToggleRow
-          id="formCaptcha"
-          checked={form.captchaRequired}
-          onChange={(checked) => set("captchaRequired", checked)}
-          label="Проверка «я не робот» (Cloudflare Turnstile)"
-        />
-        {form.captchaRequired && !captchaConfigured ? (
-          <p className="form-error">
-            Ключи Turnstile не заданы в <code>.env</code> (<code>TURNSTILE_SITE_KEY</code>,{" "}
-            <code>TURNSTILE_SECRET_KEY</code>) — капча сейчас не показывается. Остальная защита (лимит с IP,
-            блокировки, срок и лимит ответов) работает.
-          </p>
-        ) : null}
         <div className="field">
           <label htmlFor="formSuccess">Сообщение после отправки</label>
           <input

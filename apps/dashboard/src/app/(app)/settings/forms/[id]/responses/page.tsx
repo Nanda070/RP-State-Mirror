@@ -1,14 +1,7 @@
-import {
-  formatFormValue,
-  getFormForEdit,
-  listFormColumns,
-  listFormIpBans,
-  listFormSubmissions,
-} from "@mirror/core";
+import { formatFormValue, getFormForEdit, listFormColumns, listFormSubmissions } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FormIpBans } from "@/components/form-ip-bans";
 import { formatMoscow } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
 
@@ -29,13 +22,11 @@ export default async function FormResponsesPage({
 
   const form = await getFormForEdit(id);
   if (!form) notFound();
-  const [columns, { total, items }, bans] = await Promise.all([
+  const [columns, { total, items }] = await Promise.all([
     listFormColumns(id),
     listFormSubmissions(id, { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
-    listFormIpBans(),
   ]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const bannedIps = new Set(bans.map((ban) => ban.ipAddress));
   // Archived columns appear only when some answer on this page still has a value for them.
   const visibleColumns = columns.filter(
     (column) =>
@@ -89,10 +80,7 @@ export default async function FormResponsesPage({
                       <td>{formatMoscow(item.createdAt)}</td>
                       <td>
                         {item.source === "web" ? (
-                          <>
-                            сайт <span className="muted registry-mono">{item.ipAddress ?? "—"}</span>
-                            {item.ipAddress && bannedIps.has(item.ipAddress) ? " · заблокирован" : ""}
-                          </>
+                          "сайт"
                         ) : (
                           <>
                             Discord <span className="muted registry-mono">{item.authorDiscordId ?? "—"}</span>
@@ -129,18 +117,6 @@ export default async function FormResponsesPage({
           </div>
         ) : null}
       </div>
-
-      <FormIpBans
-        bans={bans.map((ban) => ({
-          id: ban.id,
-          ipAddress: ban.ipAddress,
-          reason: ban.reason,
-          createdAt: formatMoscow(ban.createdAt),
-        }))}
-        recentIps={[
-          ...new Set(items.map((item) => item.ipAddress).filter((ip): ip is string => Boolean(ip) && ip !== "unknown")),
-        ].filter((ip) => !bannedIps.has(ip))}
-      />
     </div>
   );
 }

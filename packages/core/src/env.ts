@@ -25,6 +25,15 @@ export const baseEnvSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   DATABASE_URL: z.string().url(),
   SUPER_ADMIN_USER_IDS: snowflakeListSchema,
+  /**
+   * Address of the dashboard as visitors open it: the bot builds links to web forms from it.
+   * Local default; set the real domain here once there is one.
+   */
+  PUBLIC_BASE_URL: z
+    .string()
+    .url()
+    .default("http://localhost:3000")
+    .transform((url) => url.replace(/\/+$/, "")),
 });
 
 export const botEnvSchema = baseEnvSchema.extend({
@@ -42,9 +51,6 @@ export const dashboardEnvSchema = baseEnvSchema.extend({
     .refine((url) => url.includes("/api/auth/callback/discord"), {
       message: "must be the Auth.js Discord callback URL (.../api/auth/callback/discord)",
     }),
-  // Cloudflare Turnstile for public forms. Both empty = captcha off; one without the other is a mistake.
-  TURNSTILE_SITE_KEY: z.string().trim().optional().transform((value) => value || undefined),
-  TURNSTILE_SECRET_KEY: z.string().trim().optional().transform((value) => value || undefined),
 });
 
 export const storageEnvSchema = z.object({

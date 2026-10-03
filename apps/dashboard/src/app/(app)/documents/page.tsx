@@ -5,7 +5,6 @@ import {
   listDocuments,
 } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ShareButton } from "@/components/share-button";
 import { formatMoscow } from "@/lib/moscow";
@@ -94,11 +93,6 @@ export default async function DocumentsRegistryPage() {
           </div>
         )}
       </div>
-
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Настройки модуля — в{" "}
-        <Link href="/settings/documents">разделе настроек</Link> (главный администратор).
-      </p>
     </div>
   );
 }

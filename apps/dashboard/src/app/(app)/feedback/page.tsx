@@ -4,7 +4,6 @@ import {
   getSetting,
   listFeedbackTickets,
 } from "@mirror/core";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FeedbackInbox } from "@/components/feedback-inbox";
 import { FeedbackPublish } from "@/components/feedback-publish";
@@ -34,9 +33,7 @@ export default async function FeedbackPage() {
         <h1>Обратная связь</h1>
         <p className="muted">
           Тикеты из Discord. Всего: {tickets.length.toLocaleString("ru-RU")}.
-          {canReply
-            ? " Ответ уходит игроку в ЛС."
-            : " Ответы доступны главному администратору."}
+          {canReply ? " Ответ уходит игроку в ЛС." : null}
         </p>
       </div>
 
@@ -66,12 +63,6 @@ export default async function FeedbackPage() {
           })),
         }))}
       />
-
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Канал уведомлений о новых тикетах настраивается в{" "}
-        <Link href="/settings/stage4?tab=feedback">конфигурации модулей</Link> (главный
-        администратор). Без него бот не сможет прислать уведомление в канал.
-      </p>
     </div>
   );
 }

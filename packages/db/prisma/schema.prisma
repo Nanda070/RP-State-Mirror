@@ -749,10 +749,6 @@ model DiscordForm {
   /// Public page address `/f/<slug>`; null until the form is published on the web.
   slug                 String?      @unique
   publicEnabled        Boolean      @default(false) @map("public_enabled")
-  /// Turnstile is enforced only when keys are configured in the environment.
-  captchaRequired      Boolean      @default(true) @map("captcha_required")
-  /// Public submissions allowed per IP per hour.
-  ipLimitPerHour       Int          @default(3) @map("ip_limit_per_hour")
   successMessage       String?      @map("success_message")
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
@@ -796,12 +792,9 @@ model FormSubmission {
   /// discord | web
   source          String      @default("discord")
   values          Json
-  ipAddress       String?     @map("ip_address")
-  userAgent       String?     @map("user_agent")
   createdAt       DateTime    @default(now()) @map("created_at")
 
   @@index([formId, createdAt])
-  @@index([formId, ipAddress, createdAt])
   @@map("form_submissions")
 }
 
@@ -818,20 +811,6 @@ model FormDraft {
 
   @@unique([formId, authorDiscordId])
   @@map("form_drafts")
-}
-
-/// IPs blocked from public forms. One ACTIVE row per IP (partial index in SQL).
-model FormIpBan {
-  id                 String       @id @default(cuid())
-  ipAddress          String       @map("ip_address")
-  reason             String
-  status             RecordStatus @default(ACTIVE)
-  createdByDiscordId String       @map("created_by_discord_id")
-  createdAt          DateTime     @default(now()) @map("created_at")
-  updatedAt          DateTime     @updatedAt @map("updated_at")
-
-  @@index([ipAddress, status])
-  @@map("form_ip_bans")
 }
 
 model FaqSection {

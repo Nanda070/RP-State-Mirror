@@ -53,6 +53,8 @@ import {
 export interface InteractionContext {
   client: Client;
   superAdminUserIds: readonly string[];
+  /** Dashboard address for links to web forms (`PUBLIC_BASE_URL`). */
+  publicBaseUrl: string;
   log: Logger;
 }
 
@@ -406,24 +408,27 @@ function formStepModal(form: LoadedForm, steps: LoadedField[][], step: number, p
 }
 
 /** Forms with choice / checkbox fields cannot be shown in a Discord modal — point to the web page. */
-async function replyWebOnlyForm(interaction: ButtonInteraction, form: LoadedForm) {
-  const baseUrl = form.publicEnabled && form.slug ? await getSetting("app.publicBaseUrl") : null;
+async function replyWebOnlyForm(interaction: ButtonInteraction, form: LoadedForm, publicBaseUrl: string) {
   await respondEphemeral(
     interaction,
-    baseUrl
-      ? `Эта форма заполняется на сайте: ${baseUrl}/f/${form.slug}`
+    form.publicEnabled && form.slug
+      ? `Эта форма заполняется на сайте: ${publicBaseUrl}/f/${form.slug}`
       : "В этой форме есть поля выбора, которые нельзя заполнить в Discord. Попросите администрацию открыть её веб-страницу.",
   );
 }
 
-async function handleFormOpen(interaction: ButtonInteraction, params: Record<string, unknown>) {
+async function handleFormOpen(
+  interaction: ButtonInteraction,
+  params: Record<string, unknown>,
+  publicBaseUrl: string,
+) {
   const form = await getDiscordForm(String(params.formId ?? ""));
   if (!form || form.fields.length === 0) {
     await respondEphemeral(interaction, "Форма недоступна.");
     return;
   }
   if (!isDiscordCompatible(form.fields)) {
-    await replyWebOnlyForm(interaction, form);
+    await replyWebOnlyForm(interaction, form, publicBaseUrl);
     return;
   }
   const steps = discordFormSteps(form.fields);
@@ -771,7 +776,7 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
   if (action === "role.toggle") {
     await handleRoleToggle(interaction, params, ctx.log);
   } else if (action === "form.open") {
-    await handleFormOpen(interaction, params);
+    await handleFormOpen(interaction, params, ctx.publicBaseUrl);
   } else if (action === "registration.approve") {
     await handleRegistrationDecision(interaction, params, DecisionStatus.APPROVED, parsed.id, ctx);
   } else if (action === "registration.reject") {

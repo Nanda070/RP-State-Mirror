@@ -465,11 +465,6 @@ a.metric-card .metric-value {
   overflow: hidden;
 }
 
-.public-form-captcha {
-  min-height: 65px;
-  margin-bottom: 1rem;
-}
-
 .public-form .btn {
   align-self: flex-start;
 }
@@ -565,4 +560,9 @@ a.metric-card .metric-value {
 
 .player-section span {
   font-size: 0.88rem;
+}
+
+/* ——— Role panels ——— */
+.panel-option {
+  margin-top: 1.25rem;
 }

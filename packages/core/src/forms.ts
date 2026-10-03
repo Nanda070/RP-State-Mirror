@@ -5,8 +5,7 @@
  * - Discord modals only have text inputs, so a form is «Discord-compatible» when every field is
  *   short / paragraph / number / date (the last two are typed as text and validated here).
  *   Forms longer than 5 fields are filled in several modal steps; partial answers live in `form_drafts`.
- * - Public page `/f/<slug>`: per-IP hourly limit, IP bans, expiry and response limit are enforced here;
- *   the captcha is verified by the dashboard before calling `submitPublicForm`.
+ * - Public page `/f/<slug>`: expiry and response limit are enforced here.
  */
 import { AuditActorType, RecordStatus, prisma, type FormField, type Prisma } from "@mirror/db";
 import { z } from "zod";
@@ -39,11 +38,6 @@ const PARAGRAPH_MAX = 4000;
 
 export class FormError extends UserError {
   override name = "FormError";
-}
-
-/** Too many submissions from one address; the dashboard answers 429. */
-export class FormRateLimitError extends FormError {
-  override name = "FormRateLimitError";
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -118,8 +112,6 @@ const formBaseSchema = z.object({
   fields: z.array(formFieldInputSchema).min(1, "Добавьте хотя бы одно поле").max(MAX_FORM_FIELDS),
   publicEnabled: z.boolean().default(false),
   slug: slugSchema.nullish(),
-  captchaRequired: z.boolean().default(true),
-  ipLimitPerHour: z.number().int().min(1).max(100).default(3),
   successMessage: z.string().trim().max(500).nullish(),
 });
 
@@ -242,8 +234,6 @@ export async function createDiscordForm(input: CreateDiscordFormInput, context: 
         createdByDiscordId: data.createdByDiscordId,
         slug: data.slug ?? null,
         publicEnabled: data.publicEnabled,
-        captchaRequired: data.captchaRequired,
-        ipLimitPerHour: data.ipLimitPerHour,
         successMessage: data.successMessage ?? null,
         fields: { create: data.fields.map(fieldRow) },
       },
@@ -297,8 +287,6 @@ export async function updateForm(id: string, input: UpdateFormInput, context: Au
         responseLimit: data.responseLimit ?? null,
         slug: data.slug ?? null,
         publicEnabled: data.publicEnabled,
-        captchaRequired: data.captchaRequired,
-        ipLimitPerHour: data.ipLimitPerHour,
         successMessage: data.successMessage ?? null,
       },
       include: { fields: ACTIVE_FIELDS },
@@ -424,10 +412,6 @@ export function formatFormValue(value: unknown): string {
 export interface SubmitFormMeta {
   authorDiscordId?: string | null;
   source: "discord" | "web";
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  /** When set, at most this many submissions per hour are accepted from `ipAddress`. */
-  ipLimitPerHour?: number | null;
 }
 
 type LoadedForm = NonNullable<Awaited<ReturnType<typeof getDiscordForm>>>;
@@ -439,7 +423,6 @@ async function storeSubmission(form: LoadedForm, raw: Record<string, unknown>, m
   const context: AuditContext = {
     actorType: author ? AuditActorType.USER : AuditActorType.SYSTEM,
     source: meta.source === "web" ? "web.form" : "discord.form",
-    ...(meta.ipAddress ? { ipAddress: meta.ipAddress } : {}),
     metadata: { authorDiscordId: author, formId: form.id },
   };
   return auditedMutation(context, "form.submitted", "form_submission", async (tx) => {
@@ -449,22 +432,12 @@ async function storeSubmission(form: LoadedForm, raw: Record<string, unknown>, m
       const count = await tx.formSubmission.count({ where: { formId: form.id } });
       if (count >= form.responseLimit) throw new FormError("Лимит ответов формы исчерпан.");
     }
-    if (meta.ipLimitPerHour && meta.ipAddress) {
-      const recent = await tx.formSubmission.count({
-        where: { formId: form.id, ipAddress: meta.ipAddress, createdAt: { gte: new Date(Date.now() - 3_600_000) } },
-      });
-      if (recent >= meta.ipLimitPerHour) {
-        throw new FormRateLimitError("Слишком много ответов с вашего адреса. Попробуйте позже.");
-      }
-    }
     const submission = await tx.formSubmission.create({
       data: {
         formId: form.id,
         values: toJsonValue(values),
         authorDiscordId: author,
         source: meta.source,
-        ipAddress: meta.ipAddress ?? null,
-        userAgent: meta.userAgent?.slice(0, 300) ?? null,
       },
     });
     if (form.webhookUrl || form.deliveryChannelId) {
@@ -486,29 +459,11 @@ export async function submitDiscordForm(
   return storeSubmission(form, values, { authorDiscordId, source: "discord" });
 }
 
-export async function isFormIpBanned(ipAddress: string): Promise<boolean> {
-  const ban = await prisma.formIpBan.findFirst({
-    where: { ipAddress, status: RecordStatus.ACTIVE },
-    select: { id: true },
-  });
-  return Boolean(ban);
-}
-
-/** Submission from the public page. The caller verifies the captcha first. */
-export async function submitPublicForm(
-  slug: string,
-  values: Record<string, unknown>,
-  meta: { ipAddress: string; userAgent?: string | null },
-) {
+/** Submission from the public page (no sign-in). */
+export async function submitPublicForm(slug: string, values: Record<string, unknown>) {
   const form = await getPublicForm(slug);
   if (!form) throw new FormError("Форма не найдена или закрыта.");
-  if (await isFormIpBanned(meta.ipAddress)) throw new FormError("Отправка форм с вашего адреса заблокирована.");
-  return storeSubmission(form, values, {
-    source: "web",
-    ipAddress: meta.ipAddress,
-    userAgent: meta.userAgent ?? null,
-    ipLimitPerHour: form.ipLimitPerHour,
-  });
+  return storeSubmission(form, values, { source: "web" });
 }
 
 export async function listFormSubmissions(formId: string, options: { limit?: number; offset?: number } = {}) {
@@ -548,57 +503,17 @@ export async function formSubmissionsCsv(formId: string): Promise<string> {
     listFormColumns(formId),
     listFormSubmissions(formId, { limit: 5000 }),
   ]);
-  const header = ["Дата (UTC)", "Источник", "Discord ID", "IP", ...columns.map((column) => column.label)];
+  const header = ["Дата (UTC)", "Источник", "Discord ID", ...columns.map((column) => column.label)];
   const rows = items.map((item) => {
     const values = (item.values ?? {}) as Record<string, unknown>;
     return [
       item.createdAt.toISOString(),
       item.source,
       item.authorDiscordId ?? "",
-      item.ipAddress ?? "",
       ...columns.map((column) => (column.key in values ? formatFormValue(values[column.key]) : "")),
     ];
   });
   return `${UTF8_BOM}${[header, ...rows].map((row) => row.map(csvCell).join(";")).join("\r\n")}\r\n`;
-}
-
-// ──────────────────────────────────────────────────────────────
-// IP bans
-// ──────────────────────────────────────────────────────────────
-
-const ipSchema = z.string().trim().min(2).max(64);
-
-export async function listFormIpBans() {
-  return prisma.formIpBan.findMany({
-    where: { status: RecordStatus.ACTIVE },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-}
-
-export async function banFormIp(
-  input: { ipAddress: string; reason: string; createdByDiscordId: string },
-  context: AuditContext,
-) {
-  const ipAddress = ipSchema.parse(input.ipAddress);
-  const reason = z.string().trim().min(1, "Укажите причину блокировки").max(300).parse(input.reason);
-  return auditedMutation(context, "form_ip_ban.created", "form_ip_ban", async (tx) => {
-    const existing = await tx.formIpBan.findFirst({ where: { ipAddress, status: RecordStatus.ACTIVE } });
-    if (existing) throw new FormError("Этот адрес уже заблокирован.");
-    const ban = await tx.formIpBan.create({
-      data: { ipAddress, reason, createdByDiscordId: input.createdByDiscordId },
-    });
-    return { entityId: ban.id, after: ban, result: ban };
-  });
-}
-
-export async function unbanFormIp(id: string, context: AuditContext) {
-  return auditedMutation(context, "form_ip_ban.revoked", "form_ip_ban", async (tx) => {
-    const current = await tx.formIpBan.findFirst({ where: { id, status: RecordStatus.ACTIVE } });
-    if (!current) throw new FormError("Блокировка не найдена.");
-    const ban = await tx.formIpBan.update({ where: { id }, data: { status: RecordStatus.REVOKED } });
-    return { entityId: id, before: current, after: ban, result: ban };
-  });
 }
 
 // ──────────────────────────────────────────────────────────────

@@ -40,7 +40,8 @@ export function DiscordFormsManager({
   initialForms: FormRow[];
   channels: ChannelOption[];
   guilds: GuildOption[];
-  publicBaseUrl: string | null;
+  /** `PUBLIC_BASE_URL` from the environment. */
+  publicBaseUrl: string;
 }) {
   const router = useRouter();
   const [forms, setForms] = useState(initialForms);
@@ -49,16 +50,10 @@ export function DiscordFormsManager({
   const [publishFormId, setPublishFormId] = useState<string | null>(null);
   const [publishGuildId, setPublishGuildId] = useState(guilds[0]?.discordId ?? "");
   const [publishChannelId, setPublishChannelId] = useState("");
-  const [origin, setOrigin] = useState(publicBaseUrl ?? "");
 
   useEffect(() => {
     setForms(initialForms);
   }, [initialForms]);
-
-  // Without a configured public address, links use the address the admin is browsing from.
-  useEffect(() => {
-    if (!publicBaseUrl) setOrigin(window.location.origin);
-  }, [publicBaseUrl]);
 
   async function publishFormOpen(formId: string) {
     if (!publishGuildId || !publishChannelId) {
@@ -171,7 +166,7 @@ export function DiscordFormsManager({
             const link = formMessageUrl(form);
             const publishing = publishFormId === form.id;
             const disabled = form.status === "CLOSED";
-            const publicUrl = form.publicEnabled && form.slug && origin ? `${origin}/f/${form.slug}` : null;
+            const publicUrl = form.publicEnabled && form.slug ? `${publicBaseUrl}/f/${form.slug}` : null;
             return (
               <div key={form.id} className="builder-field">
                 <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -254,7 +249,7 @@ export function DiscordFormsManager({
                     {!form.discordCompatible ? (
                       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                         В Discord эта форма не открывается окном: кнопка пришлёт ссылку на публичную страницу.
-                        Для этого включите страницу и укажите публичный адрес сайта ниже.
+                        Для этого включите публичную страницу в настройках формы.
                       </p>
                     ) : null}
                     <div className="form-grid-3">

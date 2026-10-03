@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
 import { PublicForm, type PublicFormField } from "@/components/public-form";
 import { SiteFooter } from "@/components/site-footer";
-import { turnstileSiteKey } from "@/lib/public-request";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -75,7 +74,6 @@ export default async function PublicFormPage({ params }: PageProps) {
           <PublicForm
             slug={form.slug ?? slug}
             fields={fields}
-            captchaSiteKey={form.captchaRequired ? turnstileSiteKey() : null}
             successMessage={form.successMessage}
           />
         )}

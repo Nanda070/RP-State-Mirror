@@ -29,8 +29,6 @@ export function emptyFormBuilderValue(webhookUrl = ""): FormBuilderValue {
     responseLimit: "",
     publicEnabled: false,
     slug: "",
-    captchaRequired: true,
-    ipLimitPerHour: "3",
     successMessage: "",
     fields: [
       {
@@ -60,8 +58,6 @@ export function toFormBuilderValue(form: EditableForm): FormBuilderValue {
     responseLimit: form.responseLimit ? String(form.responseLimit) : "",
     publicEnabled: form.publicEnabled,
     slug: form.slug ?? "",
-    captchaRequired: form.captchaRequired,
-    ipLimitPerHour: String(form.ipLimitPerHour),
     successMessage: form.successMessage ?? "",
     fields: form.fields.map((field): FormBuilderField => {
       const validation =

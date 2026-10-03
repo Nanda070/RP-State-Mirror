@@ -332,12 +332,14 @@ export function RolePanelsManager({
               ))}
             </div>
 
-            <ToggleRow
-              id="panelExclusive"
-              checked={exclusive}
-              onChange={setExclusive}
-              label="Только одна роль из панели одновременно"
-            />
+            <div className="panel-option">
+              <ToggleRow
+                id="panelExclusive"
+                checked={exclusive}
+                onChange={setExclusive}
+                label="Только одна роль из панели одновременно"
+              />
+            </div>
 
             <div className="field">
               <span className="field-label">Кто может пользоваться панелью (пусто — все участники)</span>
@@ -360,11 +362,6 @@ export function RolePanelsManager({
                 ))}
               </div>
             </div>
-
-            <p className="field-hint">
-              Роль бота на сервере должна стоять выше выдаваемых ролей, и у бота должно быть право «Управлять
-              ролями» — иначе Discord не даст изменить роль.
-            </p>
 
             {problems.length > 0 ? (
               <ul className="builder-problems muted">

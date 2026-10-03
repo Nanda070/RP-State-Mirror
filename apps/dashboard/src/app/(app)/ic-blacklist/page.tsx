@@ -1,7 +1,5 @@
-import { canManageModules, canViewModules, listIcBlacklistEntries, listShareLinksFor } from "@mirror/core";
+import { canManageModules, listIcBlacklistEntries, listShareLinksFor } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { ShareButton } from "@/components/share-button";
 import { formatMoscow } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
@@ -17,7 +15,6 @@ const STATUS_RU: Record<string, string> = {
 export default async function IcBlacklistRegistryPage() {
   const session = await requireSignedIn();
   const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canViewModules(identity)) redirect("/overview");
 
   const items = await listIcBlacklistEntries({ limit: 100 });
 
@@ -93,12 +90,6 @@ export default async function IcBlacklistRegistryPage() {
           </div>
         )}
       </div>
-
-      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Настройки модуля — в{" "}
-        <Link href="/settings/stage4?tab=icBlacklist">конфигурации модулей</Link> (главный
-        администратор).
-      </p>
     </div>
   );
 }

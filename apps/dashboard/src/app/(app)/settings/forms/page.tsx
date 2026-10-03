@@ -1,7 +1,7 @@
-import { getSetting, isDiscordCompatible, listForms } from "@mirror/core";
+import { isDiscordCompatible, listForms } from "@mirror/core";
 import Link from "next/link";
 import { DiscordFormsManager } from "@/components/discord-forms-manager";
-import { PublicBaseUrlForm } from "@/components/public-base-url-form";
+import { getDashboardEnv } from "@/env";
 import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
 import { requireSystemSettingsPage } from "@/lib/session";
 
@@ -10,11 +10,10 @@ export const metadata = { title: "Формы" };
 export default async function SettingsFormsPage() {
   await requireSystemSettingsPage();
 
-  const [forms, channels, guilds, publicBaseUrl] = await Promise.all([
+  const [forms, channels, guilds] = await Promise.all([
     listForms(),
     getActiveChannelOptions(),
     getActiveGuildOptions(),
-    getSetting("app.publicBaseUrl"),
   ]);
 
   return (
@@ -26,14 +25,14 @@ export default async function SettingsFormsPage() {
           формы — в несколько шагов) и на публичной странице без входа. Ответы приходят в канал и/или webhook
           и сохраняются здесь.
         </p>
-        <div className="status-link-row">
-          <Link href="/settings/webhooks" className="stub-link">
-            Запросы форм от сотрудников
-          </Link>
-        </div>
+      </div>
+      <div className="row">
+        <Link href="/settings/webhooks" className="btn btn-secondary">
+          Запросы форм от игроков
+        </Link>
       </div>
       <DiscordFormsManager
-        publicBaseUrl={publicBaseUrl}
+        publicBaseUrl={getDashboardEnv().PUBLIC_BASE_URL}
         initialForms={forms.map((form) => ({
           id: form.id,
           name: form.name,
@@ -57,7 +56,6 @@ export default async function SettingsFormsPage() {
           guildName: c.guild.name,
         }))}
       />
-      <PublicBaseUrlForm initial={publicBaseUrl} />
     </div>
   );
 }
