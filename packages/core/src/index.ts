@@ -19,6 +19,7 @@ export * from "./media.js";
 export * from "./message-designs.js";
 export * from "./module-jobs.js";
 export * from "./personnel.js";
+export * from "./profile.js";
 export * from "./role-mappings.js";
 export * from "./stage4.js";
 export * from "./stage4-embeds.js";

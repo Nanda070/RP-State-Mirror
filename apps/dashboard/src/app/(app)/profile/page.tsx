@@ -1,14 +1,331 @@
-import { buildStatusBadge } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
+import { buildStatusBadge, formatMoney, getPlayerProfile, type PlayerProfile } from "@mirror/core";
+import { RecordStatus, RegistrationKind, prisma } from "@mirror/db";
 import Image from "next/image";
+import Link from "next/link";
 import type { CSSProperties } from "react";
 import { formatMoscow } from "@/lib/moscow";
+import {
+  REGISTRATION_DISPLAY_STATUS_RU,
+  registrationDisplayStatus,
+  registrationStatusTone,
+} from "@/lib/registrations";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
-export default async function ProfilePage() {
-  const session = await requireSignedIn();
+const TABS = [
+  { key: "overview", label: "Обзор" },
+  { key: "characters", label: "Персонажи и нашивки" },
+  { key: "registrations", label: "Регистрации и переводы" },
+  { key: "records", label: "Штрафы и розыск" },
+  { key: "servers", label: "Фракции и серверы" },
+] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
-  const [identity, memberships] = await Promise.all([
+const RECORD_STATUS_RU: Record<RecordStatus, string> = {
+  ACTIVE: "Активен",
+  CLOSED: "Закрыт",
+  EXPIRED: "Истёк",
+  REVOKED: "Отозван",
+  ARCHIVED: "В архиве",
+};
+
+const TRANSFER_STATUS_RU: Record<string, string> = {
+  PENDING: "На рассмотрении",
+  APPROVED: "Одобрен",
+  REJECTED: "Отказано",
+  CLOSED: "Закрыт",
+};
+
+function payloadText(payload: unknown, key: string): string {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "—";
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : "—";
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="muted" style={{ margin: 0 }}>
+      {children}
+    </p>
+  );
+}
+
+function CharactersTab({ profile }: { profile: PlayerProfile }) {
+  if (profile.characters.length === 0) {
+    return (
+      <div className="panel">
+        <h2 className="panel-title">Персонажи</h2>
+        <Empty>
+          Персонажей пока нет. Персонаж создаётся автоматически, когда вы получаете нашивку командой{" "}
+          <code>/нашивка получить</code> в Discord. На аккаунт — до трёх персонажей.
+        </Empty>
+      </div>
+    );
+  }
+  return (
+    <div className="profile-card-grid">
+      {profile.characters.map((character) => (
+        <div className="panel profile-card" key={character.id}>
+          <div className="row profile-card-head">
+            <h2 className="panel-title">{character.name}</h2>
+            <span className="badge">Слот {character.slot}</span>
+          </div>
+          <dl className="profile-facts">
+            <div>
+              <dt>Статик</dt>
+              <dd className="registry-mono">{character.staticId}</dd>
+            </div>
+            <div>
+              <dt>Фракция</dt>
+              <dd>
+                {[character.factionCode, character.department, character.rank ? `ранг ${character.rank}` : null]
+                  .filter(Boolean)
+                  .join(" · ") || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt>Нашивка</dt>
+              <dd>
+                {character.activeToken ? (
+                  <>
+                    <span className="registry-mono">{character.activeToken.number}</span>
+                    <span className="muted"> · с {formatMoscow(character.activeToken.issuedAt)}</span>
+                  </>
+                ) : (
+                  <span className="muted">нет активной</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+          {character.blacklist ? (
+            <p className="form-error">
+              В IC чёрном списке: запись <strong>{character.blacklist.number}</strong>. Причина:{" "}
+              {character.blacklist.reason}
+            </p>
+          ) : null}
+          {character.tokens.some((token) => token.status !== RecordStatus.ACTIVE) ? (
+            <p className="muted profile-card-note">
+              Прежние нашивки:{" "}
+              {character.tokens
+                .filter((token) => token.status !== RecordStatus.ACTIVE)
+                .map((token) => token.number)
+                .join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RegistrationsTab({ profile }: { profile: PlayerProfile }) {
+  return (
+    <>
+      <div className="panel">
+        <h2 className="panel-title">Регистрации ТС и униформы</h2>
+        {profile.registrations.length === 0 ? (
+          <Empty>
+            Заявок нет. Подать: <code>/регистрация-тс</code> или <code>/регистрация-формы</code> в Discord.
+          </Empty>
+        ) : (
+          <div className="registry-table-wrap">
+            <table className="registry-table">
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Статик</th>
+                  <th>Модель / описание</th>
+                  <th>Госномер</th>
+                  <th>Статус</th>
+                  <th>Подана (МСК)</th>
+                  <th>Действует до</th>
+                  <th>Причина отказа</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.registrations.map((row) => {
+                  const display = registrationDisplayStatus(row.decision, row.status);
+                  const vehicle = row.kind === RegistrationKind.VEHICLE;
+                  return (
+                    <tr key={row.id}>
+                      <td>{vehicle ? "ТС" : "Униформа"}</td>
+                      <td className="registry-mono">{row.staticId}</td>
+                      <td>{payloadText(row.payload, vehicle ? "model" : "description")}</td>
+                      <td className="registry-mono">{row.plate ?? "—"}</td>
+                      <td>
+                        <span className="registry-status" data-status={registrationStatusTone(display)}>
+                          {REGISTRATION_DISPLAY_STATUS_RU[display]}
+                        </span>
+                      </td>
+                      <td>{formatMoscow(row.createdAt)}</td>
+                      <td>{formatMoscow(row.expiresAt)}</td>
+                      <td>{row.rejectionReason?.trim() || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <h2 className="panel-title">Переводы между фракциями</h2>
+        {profile.transfers.length === 0 ? (
+          <Empty>
+            Заявок на перевод нет. Ранг после перевода можно узнать в{" "}
+            <Link href="/calculator">калькуляторе</Link>.
+          </Empty>
+        ) : (
+          <div className="registry-table-wrap">
+            <table className="registry-table">
+              <thead>
+                <tr>
+                  <th>Персонаж</th>
+                  <th>Перевод</th>
+                  <th>Ранг</th>
+                  <th>Статус</th>
+                  <th>Подана (МСК)</th>
+                  <th>Причина отказа</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.transfers.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      {row.character.name} <span className="muted registry-mono">{row.character.staticId}</span>
+                    </td>
+                    <td>
+                      {row.fromFactionCode} → {row.toFactionCode}
+                    </td>
+                    <td>
+                      {row.fromRank} → {row.toRank}
+                    </td>
+                    <td>
+                      <span
+                        className="registry-status"
+                        data-status={row.status === "APPROVED" ? "ok" : row.status === "PENDING" ? "warn" : "muted"}
+                      >
+                        {TRANSFER_STATUS_RU[row.status] ?? row.status}
+                      </span>
+                    </td>
+                    <td>{formatMoscow(row.createdAt)}</td>
+                    <td>{row.rejectionReason?.trim() || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function RecordsTab({ profile }: { profile: PlayerProfile }) {
+  const noCharacters = profile.characters.length === 0;
+  return (
+    <>
+      <div className="panel">
+        <h2 className="panel-title">Штрафы</h2>
+        {profile.fines.length === 0 ? (
+          <Empty>
+            {noCharacters
+              ? "Штрафы ищутся по статикам ваших персонажей, а персонажей пока нет."
+              : "Штрафов по вашим статикам нет."}
+          </Empty>
+        ) : (
+          <div className="registry-table-wrap">
+            <table className="registry-table">
+              <thead>
+                <tr>
+                  <th>Номер</th>
+                  <th>Статик</th>
+                  <th>Сумма</th>
+                  <th>Основание</th>
+                  <th>Статус</th>
+                  <th>Оплатить до (МСК)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.fines.map((row) => (
+                  <tr key={row.id}>
+                    <td className="registry-mono">{row.number}</td>
+                    <td className="registry-mono">{row.staticId}</td>
+                    <td>{formatMoney(row.amount)}</td>
+                    <td>{row.reason}</td>
+                    <td>
+                      <span className="registry-status" data-status={row.status === RecordStatus.ACTIVE ? "warn" : "ok"}>
+                        {row.status === RecordStatus.ACTIVE
+                          ? "Не оплачен"
+                          : row.paidAt
+                            ? "Оплачен"
+                            : RECORD_STATUS_RU[row.status]}
+                      </span>
+                    </td>
+                    <td>{formatMoscow(row.dueAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <h2 className="panel-title">Федеральный розыск</h2>
+        {profile.wanted.length === 0 ? (
+          <Empty>
+            {noCharacters
+              ? "Розыск ищется по статикам ваших персонажей, а персонажей пока нет."
+              : "Розысков по вашим статикам нет."}
+          </Empty>
+        ) : (
+          <div className="registry-table-wrap">
+            <table className="registry-table">
+              <thead>
+                <tr>
+                  <th>Номер</th>
+                  <th>Статик</th>
+                  <th>Обвинение</th>
+                  <th>Срок</th>
+                  <th>Статус</th>
+                  <th>Объявлен (МСК)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.wanted.map((row) => (
+                  <tr key={row.id}>
+                    <td className="registry-mono">{row.number}</td>
+                    <td className="registry-mono">{row.staticId}</td>
+                    <td>{row.reason}</td>
+                    <td>{row.termText}</td>
+                    <td>
+                      <span className="registry-status" data-status={row.status === RecordStatus.ACTIVE ? "warn" : "ok"}>
+                        {row.status === RecordStatus.ACTIVE
+                          ? "В розыске"
+                          : row.status === RecordStatus.CLOSED
+                            ? "Исполнен"
+                            : RECORD_STATUS_RU[row.status]}
+                      </span>
+                    </td>
+                    <td>{formatMoscow(row.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const session = await requireSignedIn();
+  const requested = (await searchParams).tab;
+  const tab: TabKey = TABS.some((entry) => entry.key === requested) ? (requested as TabKey) : "overview";
+
+  const [identity, memberships, profile] = await Promise.all([
     resolveFreshIdentity(session.user.discordId),
     prisma.guildMember.findMany({
       where: {
@@ -19,6 +336,7 @@ export default async function ProfilePage() {
       include: { guild: true },
       orderBy: { guild: { name: "asc" } },
     }),
+    getPlayerProfile(session.user.discordId),
   ]);
   const badge = buildStatusBadge(identity);
 
@@ -31,6 +349,13 @@ export default async function ProfilePage() {
   const bannerUrl = session.user.bannerUrl ?? null;
   const accent = session.user.accentColor ?? badge.accentColor ?? null;
   const displayName = session.user.name ?? session.user.username ?? "Discord";
+
+  const unpaidFines = profile.fines.filter((fine) => fine.status === RecordStatus.ACTIVE);
+  const activeWanted = profile.wanted.filter((row) => row.status === RecordStatus.ACTIVE);
+  const blacklisted = profile.characters.filter((character) => character.blacklist);
+  const pendingRegistrations = profile.registrations.filter(
+    (row) => registrationDisplayStatus(row.decision, row.status) === "PENDING",
+  );
 
   return (
     <div className="stack">
@@ -76,45 +401,147 @@ export default async function ProfilePage() {
         </div>
       </div>
 
-      <div className="panel">
-        <h2 className="panel-title">Серверы</h2>
-        <p className="muted" style={{ marginTop: 0, marginBottom: "1rem" }}>
-          Активные членства по снимку Discord. Роли считаются на момент последней синхронизации.
-        </p>
-        {memberships.length === 0 ? (
-          <p className="muted">Нет данных снимка. Запустите бота на серверах, где вы состоите.</p>
-        ) : (
-          <div className="server-grid">
-            {memberships.map((member) => {
-              const nick = member.nickname ?? member.globalName ?? member.username;
-              return (
-                <div className="server-card" key={member.id}>
-                  <div className="min-w-0">
-                    <span className="label">Сервер</span>
-                    <strong className="truncate" title={member.guild.name}>
-                      {member.guild.name}
-                    </strong>
-                  </div>
-                  <div className="min-w-0">
-                    <span className="label">Ник</span>
-                    <span className="truncate" title={nick}>
-                      {nick}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="label">Вход</span>
-                    <span>{formatMoscow(member.joinedAt)}</span>
-                  </div>
-                  <div>
-                    <span className="label">Ролей</span>
-                    <strong>{member.roleIds.length}</strong>
-                  </div>
-                </div>
-              );
-            })}
+      <nav className="settings-tabs" aria-label="Разделы профиля">
+        {TABS.map((entry) => (
+          <Link
+            key={entry.key}
+            href={entry.key === "overview" ? "/profile" : `/profile?tab=${entry.key}`}
+            className="settings-tab"
+            data-active={entry.key === tab ? "" : undefined}
+            aria-current={entry.key === tab ? "page" : undefined}
+          >
+            {entry.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "overview" ? (
+        <>
+          <div className="metric-grid">
+            <Link href="/profile?tab=characters" className="metric-card">
+              <span className="metric-label">Персонажи</span>
+              <span className="metric-value">{profile.characters.length} / 3</span>
+              <span className="metric-hint">
+                Нашивок: {profile.characters.filter((character) => character.activeToken).length}
+              </span>
+            </Link>
+            <Link href="/profile?tab=registrations" className="metric-card">
+              <span className="metric-label">Заявки</span>
+              <span className="metric-value">{pendingRegistrations.length}</span>
+              <span className="metric-hint">на рассмотрении</span>
+            </Link>
+            <Link href="/profile?tab=records" className="metric-card">
+              <span className="metric-label">Неоплаченные штрафы</span>
+              <span className="metric-value">{unpaidFines.length}</span>
+              <span className="metric-hint">
+                {unpaidFines.length > 0
+                  ? `на ${formatMoney(unpaidFines.reduce((sum, fine) => sum + fine.amount, 0))}`
+                  : "задолженности нет"}
+              </span>
+            </Link>
+            <Link href="/profile?tab=records" className="metric-card">
+              <span className="metric-label">Розыск</span>
+              <span className="metric-value">{activeWanted.length}</span>
+              <span className="metric-hint">{activeWanted.length > 0 ? "активных ордеров" : "не в розыске"}</span>
+            </Link>
           </div>
-        )}
-      </div>
+          {blacklisted.length > 0 ? (
+            <p className="form-error">
+              Персонаж{blacklisted.length > 1 ? "и" : ""} {blacklisted.map((character) => character.name).join(", ")}{" "}
+              в IC чёрном списке. Подробности — на вкладке{" "}
+              <Link href="/profile?tab=characters">«Персонажи и нашивки»</Link>.
+            </p>
+          ) : null}
+          <div className="panel">
+            <h2 className="panel-title">Полезное</h2>
+            <div className="row">
+              <Link href="/catalog" className="btn btn-outline">
+                Каталог ТС
+              </Link>
+              <Link href="/calculator" className="btn btn-outline">
+                Калькулятор переводов
+              </Link>
+              <Link href="/faq" className="btn btn-outline">
+                FAQ
+              </Link>
+              <Link href="/recovery" className="btn btn-outline">
+                Восстановление аккаунта
+              </Link>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {tab === "characters" ? <CharactersTab profile={profile} /> : null}
+      {tab === "registrations" ? <RegistrationsTab profile={profile} /> : null}
+      {tab === "records" ? <RecordsTab profile={profile} /> : null}
+
+      {tab === "servers" ? (
+        <>
+          {identity.factions.length > 0 ? (
+            <div className="panel">
+              <h2 className="panel-title">Фракции</h2>
+              <div className="row">
+                {identity.factions.map((faction) => (
+                  <span
+                    key={faction.code}
+                    className="badge"
+                    style={faction.color ? { borderColor: faction.color } : undefined}
+                  >
+                    {[
+                      faction.code,
+                      faction.isLeader ? "лидер" : faction.isDeputy ? "заместитель" : null,
+                      faction.departments[0],
+                      faction.rank !== null ? `ранг ${faction.rank}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="panel">
+            <h2 className="panel-title">Серверы</h2>
+            <p className="muted" style={{ marginTop: 0, marginBottom: "1rem" }}>
+              Активные членства по снимку Discord. Роли считаются на момент последней синхронизации.
+            </p>
+            {memberships.length === 0 ? (
+              <p className="muted">Нет данных снимка. Запустите бота на серверах, где вы состоите.</p>
+            ) : (
+              <div className="server-grid">
+                {memberships.map((member) => {
+                  const nick = member.nickname ?? member.globalName ?? member.username;
+                  return (
+                    <div className="server-card" key={member.id}>
+                      <div className="min-w-0">
+                        <span className="label">Сервер</span>
+                        <strong className="truncate" title={member.guild.name}>
+                          {member.guild.name}
+                        </strong>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="label">Ник</span>
+                        <span className="truncate" title={nick}>
+                          {nick}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="label">Вход</span>
+                        <span>{formatMoscow(member.joinedAt)}</span>
+                      </div>
+                      <div>
+                        <span className="label">Ролей</span>
+                        <strong>{member.roleIds.length}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
