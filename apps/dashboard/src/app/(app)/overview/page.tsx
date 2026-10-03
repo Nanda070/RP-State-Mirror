@@ -134,10 +134,10 @@ export default async function OverviewPage() {
           <div className="module-chip-row">
             {(
               [
-                { label: "Документы", href: "/settings/documents", ready: true },
-                { label: "Розыск", href: "/settings/wanted", ready: true },
-                { label: "Штрафы", href: "/settings/fines", ready: true },
-                { label: "Эмбеды", href: "/settings/embeds", ready: true },
+                { label: "Документы", href: "/documents", ready: true },
+                { label: "Розыск", href: "/wanted", ready: true },
+                { label: "Штрафы", href: "/fines", ready: true },
+                { label: "Настройки модулей", href: "/settings", ready: true },
                 { label: "Токены", href: "/settings/tokens", ready: false },
               ] as const
             ).map((item) => (

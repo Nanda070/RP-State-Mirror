@@ -133,6 +133,17 @@ export default async function SettingsIndexPage() {
         <h2 className="panel-title" style={{ margin: 0 }}>
           Модули бота
         </h2>
+        <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+          <Link href="/documents" className="btn btn-secondary">
+            Реестр документов
+          </Link>
+          <Link href="/wanted" className="btn btn-secondary">
+            Реестр розыска
+          </Link>
+          <Link href="/fines" className="btn btn-secondary">
+            Реестр штрафов
+          </Link>
+        </div>
         <div className="settings-hub-grid">
           {modules.map((card) => (
             <Link key={card.href} href={card.href} className="settings-hub-card">
