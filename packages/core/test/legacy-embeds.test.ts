@@ -63,7 +63,7 @@ describe("legacy embed helpers", () => {
 });
 
 describe("legacy embed builders", () => {
-  it("makeDocumentEmbed uses non-inline fields for width", () => {
+  it("makeDocumentEmbed uses description + forum field (legacy)", () => {
     const embed = makeDocumentEmbed({
       actor,
       faction: "LSPD",
@@ -77,12 +77,18 @@ describe("legacy embed builders", () => {
     });
     expect(embed.color).toBe(COLOR_DEFAULT);
     expect(embed.title).toBe("Новый документ от Иван");
-    expect(embed.description).toBeUndefined();
-    expect(embed.fields?.every((f) => f.inline === false)).toBe(true);
-    expect(embed.fields?.find((f) => f.name === "Краткое описание")?.value).toBe("обыск");
-    expect(embed.fields?.find((f) => f.name === "Ссылка на форум")?.value).toBe(
-      "||https://forum.example/d||",
+    expect(embed.description).toBe(
+      [
+        "**Уведомляемая фракция:** LSPD",
+        "**Уведомляемое лицо:** Капитан",
+        "**Номер документа:** D-1",
+        "**Краткое описание:** обыск",
+        "**Ответственные:** Лидер, Зам, Капитан.",
+      ].join("\n"),
     );
+    expect(embed.fields).toEqual([
+      { name: "Ссылка на форум", value: "||https://forum.example/d||", inline: false },
+    ]);
     expect(embed.author).toEqual({
       name: "Автор: ivan",
       iconUrl: "https://cdn.example/a.png",
@@ -94,7 +100,7 @@ describe("legacy embed builders", () => {
     expect(embed.timestamp).toBeUndefined();
   });
 
-  it("makeResponseEmbed uses non-inline fields", () => {
+  it("makeResponseEmbed uses description lines", () => {
     const embed = makeResponseEmbed({
       docNumber: "D-1",
       actor,
@@ -105,16 +111,18 @@ describe("legacy embed builders", () => {
     });
     expect(embed.color).toBe(COLOR_RESPONSE);
     expect(embed.title).toBe("Ответ на Документ D-1");
-    expect(embed.description).toBeUndefined();
-    expect(embed.fields).toEqual([
-      { name: "Личное дело", value: "[Открыть](https://file.example/1)", inline: false },
-      { name: "Видеофиксация", value: "нет", inline: false },
-      { name: "Комментарий", value: "ок", inline: false },
-    ]);
+    expect(embed.description).toBe(
+      [
+        "**Личное дело:** [Открыть](https://file.example/1)",
+        "**Видеофиксация:** нет",
+        "**Комментарий:** ок",
+      ].join("\n"),
+    );
+    expect(embed.fields).toBeUndefined();
     expect(embed.author?.name).toBe("Автор ответа: ivan");
   });
 
-  it("makeWantedEmbed active + closed (fields, no forum when closed)", () => {
+  it("makeWantedEmbed active + closed (description, forum field only when open)", () => {
     const active = makeWantedEmbed({
       actorName: "Иван",
       actorUsername: "ivan",
@@ -129,8 +137,8 @@ describe("legacy embed builders", () => {
     });
     expect(active.color).toBe(COLOR_WANTED);
     expect(active.title).toBe("Новый ордер от правительства штата");
-    expect(active.description).toBeUndefined();
-    expect(active.fields?.find((f) => f.name === "Издал ордер")?.value).toBe("Иван");
+    expect(active.description).toContain("Издал ордер: Иван");
+    expect(active.description).toContain("Разыскиваемый: **Петров**");
     expect(active.fields?.find((f) => f.name === "Ссылка на форум")?.value).toBe(
       "||https://forum.example/w||",
     );
@@ -152,9 +160,9 @@ describe("legacy embed builders", () => {
     });
     expect(closed.color).toBe(COLOR_WANTED_DONE);
     expect(closed.title).toBe("Исполненный ордер правительства штата");
-    expect(closed.fields?.find((f) => f.name === "Издал ордер")?.value).toBe("~~Иван~~");
-    expect(closed.fields?.find((f) => f.name === "Статус")?.value).toBe("Исполнено");
-    expect(closed.fields?.some((f) => f.name === "Ссылка на форум")).toBe(false);
+    expect(closed.description).toContain("~~Издал ордер: Иван~~");
+    expect(closed.description).toContain("**Статус:** Исполнено");
+    expect(closed.fields).toBeUndefined();
   });
 
   it("makeWantedDoneEmbed / fine embeds / overdue / audit / sync", () => {
@@ -165,7 +173,8 @@ describe("legacy embed builders", () => {
       now: NOW,
     });
     expect(done.color).toBe(COLOR_WANTED_DONE);
-    expect(done.fields?.some((f) => f.value.includes("Иван (ivan)"))).toBe(true);
+    expect(done.description).toContain("Иван (ivan)");
+    expect(done.description).toContain("Номер ордера: **W-1**");
 
     const fine = makeFineEmbed({
       actor,
@@ -180,9 +189,9 @@ describe("legacy embed builders", () => {
     });
     expect(fine.color).toBe(COLOR_FINE);
     expect(fine.title).toBe("Новый штраф от Иван");
-    expect(fine.description).toBeUndefined();
-    expect(fine.fields?.every((f) => f.inline === false)).toBe(true);
-    expect(fine.fields?.find((f) => f.name === "Уведомляемая фракция")?.value).toBe("LSPD");
+    expect(fine.description).toContain("**Уведомляемая фракция:** LSPD");
+    expect(fine.description).toContain("**Сумма штрафа:** 5000");
+    expect(fine.fields).toBeUndefined();
 
     const paid = makeFinePaidEmbed({
       fineNumber: "F-1",
@@ -194,7 +203,7 @@ describe("legacy embed builders", () => {
     });
     expect(paid.color).toBe(COLOR_FINE_PAID);
     expect(paid.title).toBe("Штраф оплачен");
-    expect(paid.fields?.find((f) => f.name === "Сумма")?.value).toBe("5000");
+    expect(paid.description).toContain("**Сумма:** 5000");
 
     const overdue = makeFineOverdueEmbed({
       fine: {
@@ -213,7 +222,7 @@ describe("legacy embed builders", () => {
     expect(overdue.color).toBe(COLOR_FINE_OVERDUE);
     expect(overdue.title).toBe("Неоплаченный штраф");
     expect(overdue.author).toBeUndefined();
-    expect(overdue.fields?.find((f) => f.name === "Фракция")?.value).toBe("LSPD");
+    expect(overdue.description).toContain("**Фракция:** LSPD");
 
     const audit = makeCompactAuditEmbed({
       actionTitle: "повышения",
@@ -247,8 +256,9 @@ describe("legacy embed builders", () => {
     });
     expect(sync.title).toBe("Синхронизация доступов: UPDATE");
     expect(sync.timestamp).toBe(true);
-    expect(sync.description).toBeUndefined();
-    expect(sync.fields?.find((f) => f.name === "User ID")?.value).toBe("`9`");
+    expect(sync.description).toContain("**User ID:** `9`");
+    expect(sync.description).toContain("**Выданы роли:** <@&1>");
+    expect(sync.fields).toBeUndefined();
   });
 
   it("formats personnel details like legacy audit lines", () => {

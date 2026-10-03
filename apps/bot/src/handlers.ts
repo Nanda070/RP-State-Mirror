@@ -28,12 +28,14 @@ import {
   materializeEmbedSpecButtons,
   recordSentMessage,
   resolveDocumentResponseDelivery,
+  resolveDocumentResponseLocalDelivery,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFactionPingRoleId,
   resolveFineDelivery,
   resolveFinePaidDelivery,
   resolveWantedDelivery,
+  sameDeliveryChannel,
   type ClassicEmbed,
   type DeliveryTarget,
   type EmbedSpec,
@@ -236,32 +238,72 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
 
 const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   const responseId = String(payload.responseId ?? "");
+  const sourceGuildDiscordId =
+    typeof payload.sourceGuildDiscordId === "string" ? payload.sourceGuildDiscordId : null;
   const response = await prisma.documentResponse.findUnique({
     where: { id: responseId },
     include: { document: true },
   });
   if (!response) throw new Error(`Document response ${responseId} not found`);
 
-  // Legacy RESPONSE_WEBHOOK → GOV documents channel (not the target faction).
-  const target = await resolveDocumentResponseDelivery();
+  // Dual delivery (legacy): GOV documents + documents channel of the guild where /ответ ran.
+  const govTarget = await resolveDocumentResponseDelivery();
+  const localTarget = await resolveDocumentResponseLocalDelivery(sourceGuildDiscordId);
   const actor = await resolveAuthor(client, response.authorDiscordId);
   const authorId = response.document.authorDiscordId;
+  const responderId = response.authorDiscordId;
+  const docNumber = response.document.number;
 
   const classic = makeResponseEmbed({
-    docNumber: response.document.number,
+    docNumber,
     actor,
     personalFile: response.personalFile,
     video: response.video,
     comment: response.content,
   });
 
-  const result = await sendEmbed(client, target, classic, log, {
+  const govResult = await sendEmbed(client, govTarget, classic, log, {
     content: `<@${authorId}>`,
     mentionUserIds: [authorId],
   });
-  if (result.status === "deferred") return result;
-  await persistSend(result, { responseId: response.id, documentId: response.documentId });
-  return { status: "sent", documentNumber: response.document.number, messageId: result.messageId };
+  if (govResult.status === "deferred" && localTarget.kind === "unconfigured") {
+    return govResult;
+  }
+  if (govResult.status === "sent") {
+    await persistSend(govResult, { responseId: response.id, documentId: response.documentId });
+  }
+
+  let localMessageId: string | null = null;
+  const shouldSendLocal =
+    localTarget.kind !== "unconfigured" && !sameDeliveryChannel(govTarget, localTarget);
+  if (shouldSendLocal) {
+    const localContent = [
+      `Ответ на документ **${docNumber}**`,
+      `Автор документа: <@${authorId}>`,
+      `Ответил: <@${responderId}>`,
+    ].join(" · ");
+    const localResult = await sendEmbed(client, localTarget, classic, log, {
+      content: localContent,
+      mentionUserIds: [authorId, responderId],
+    });
+    if (localResult.status === "sent") {
+      await persistSend(localResult, { responseId: response.id, documentId: response.documentId });
+      localMessageId = localResult.messageId;
+    } else if (govResult.status === "deferred") {
+      return localResult;
+    }
+  }
+
+  if (govResult.status === "deferred" && !localMessageId) {
+    return govResult;
+  }
+  return {
+    status: "sent",
+    documentNumber: docNumber,
+    messageId: govResult.status === "sent" ? govResult.messageId : localMessageId,
+    localMessageId,
+    govDeferred: govResult.status === "deferred" ? govResult.reason : null,
+  };
 };
 
 const wantedPublish: JobHandler = async (payload, { client, log }) => {

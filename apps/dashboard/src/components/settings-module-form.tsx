@@ -78,6 +78,7 @@ export function SettingsWantedForm({
   initialEnabled,
   initialChannelId,
   initialPingRoleIds,
+  initialCoordinatorRoleIds,
   channels,
   incidentGuildId,
   roles,
@@ -85,6 +86,7 @@ export function SettingsWantedForm({
   initialEnabled: boolean;
   initialChannelId: string | null;
   initialPingRoleIds: string[];
+  initialCoordinatorRoleIds: string[];
   channels: ChannelOption[];
   incidentGuildId: string | null;
   roles: RoleOption[];
@@ -92,6 +94,7 @@ export function SettingsWantedForm({
   const [enabled, setEnabled] = useState(initialEnabled);
   const [channelId, setChannelId] = useState(initialChannelId ?? "");
   const [pingRoleIds, setPingRoleIds] = useState<string[]>(initialPingRoleIds);
+  const [coordinatorRoleIds, setCoordinatorRoleIds] = useState<string[]>(initialCoordinatorRoleIds);
   return (
     <ModuleSettingsForm
       module="wanted"
@@ -99,6 +102,7 @@ export function SettingsWantedForm({
         { key: "wanted.enabled", value: enabled },
         { key: "wanted.channelId", value: channelId.trim() || null },
         { key: "wanted.pingRoleIds", value: pingRoleIds },
+        { key: "wanted.coordinatorRoleIds", value: coordinatorRoleIds },
       ]}
     >
       <div className="field">
@@ -122,6 +126,31 @@ export function SettingsWantedForm({
           channels={channels}
           guildDiscordId={incidentGuildId}
           emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
+        />
+        <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+          Slash-команды розыска принимаются только в этом канале (или в канале с именем
+          «федеральный розыск»).
+        </p>
+      </div>
+      <div className="field">
+        <span className="field-label">Роли координаторов</span>
+        <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+          Только выбранные роли могут выполнять <code>/объявить-розыск</code> и{" "}
+          <code>/розыск-исполнено</code>.
+        </p>
+        <RolePingPicker
+          roles={roles}
+          selected={coordinatorRoleIds}
+          onToggle={(roleId) =>
+            setCoordinatorRoleIds((prev) =>
+              prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
+            )
+          }
+          emptyHint={
+            incidentGuildId
+              ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
+              : "Сначала задайте сервер ЧП"
+          }
         />
       </div>
       <div className="field">

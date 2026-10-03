@@ -173,6 +173,66 @@ export async function resolveDocumentResponseDelivery(): Promise<DeliveryTarget>
   return target;
 }
 
+/**
+ * Resolve the ACTIVE faction bound to a Discord guild (for `/ответ` local copy).
+ */
+export async function resolveFactionCodeByGuildDiscordId(
+  guildDiscordId: string,
+): Promise<string | null> {
+  const guild = await prisma.guild.findFirst({
+    where: { discordId: guildDiscordId, status: RecordStatus.ACTIVE },
+    select: { id: true },
+  });
+  if (!guild) return null;
+  const faction = await prisma.faction.findFirst({
+    where: { guildId: guild.id, status: RecordStatus.ACTIVE },
+    select: { code: true },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+  });
+  return faction?.code ?? null;
+}
+
+/**
+ * Local `/ответ` copy: documents channel of the faction guild where the command
+ * was used. Returns unconfigured when the guild is not bound to a faction.
+ */
+export async function resolveDocumentResponseLocalDelivery(
+  sourceGuildDiscordId: string | null | undefined,
+): Promise<DeliveryTarget> {
+  if (!sourceGuildDiscordId) {
+    return {
+      kind: "unconfigured",
+      reason: "Команда /ответ вызвана вне сервера фракции — локальная копия не отправлена",
+    };
+  }
+  const code = await resolveFactionCodeByGuildDiscordId(sourceGuildDiscordId);
+  if (!code) {
+    return {
+      kind: "unconfigured",
+      reason: "Сервер вызова /ответ не привязан к фракции — локальная копия не отправлена",
+    };
+  }
+  const target = await resolveFactionDocumentDelivery(code);
+  if (target.kind === "unconfigured") {
+    return {
+      kind: "unconfigured",
+      reason: `Канал документов фракции ${code} ещё не настроен (локальная копия /ответ)`,
+    };
+  }
+  return target;
+}
+
+/** True when both targets point at the same Discord channel (avoid duplicate send). */
+export function sameDeliveryChannel(a: DeliveryTarget, b: DeliveryTarget): boolean {
+  if (a.kind === "channel" && b.kind === "channel") {
+    return a.guildDiscordId === b.guildDiscordId && a.channelDiscordId === b.channelDiscordId;
+  }
+  if (a.kind === "webhook" && b.kind === "webhook") {
+    return a.webhookUrl === b.webhookUrl;
+  }
+  return false;
+}
+
 export async function resolveFactionPersonnelDelivery(factionCode: string): Promise<DeliveryTarget> {
   const faction = await factionWithGuild(factionCode);
   if (!faction) {

@@ -13,6 +13,7 @@ export default async function SettingsWantedPage() {
       "wanted.enabled",
       "wanted.channelId",
       "wanted.pingRoleIds",
+      "wanted.coordinatorRoleIds",
       "core.incidentGuildId",
     ] as const),
     prisma.wanted.count(),
@@ -77,6 +78,7 @@ export default async function SettingsWantedPage() {
         initialEnabled={settings["wanted.enabled"]}
         initialChannelId={settings["wanted.channelId"]}
         initialPingRoleIds={settings["wanted.pingRoleIds"]}
+        initialCoordinatorRoleIds={settings["wanted.coordinatorRoleIds"]}
         incidentGuildId={incidentGuildId}
         channels={channels.map((c) => ({
           discordId: c.discordId,

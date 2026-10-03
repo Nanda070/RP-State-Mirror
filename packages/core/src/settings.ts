@@ -50,6 +50,11 @@ export const settingDefinitions = {
     [],
     "Роли на сервере ЧП: пинг при объявлении федерального розыска",
   ),
+  "wanted.coordinatorRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли на сервере ЧП: право объявлять и закрывать розыск (Координатор)",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),

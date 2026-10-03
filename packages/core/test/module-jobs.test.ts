@@ -14,12 +14,15 @@ import {
   markFinePaid,
   MODULE_JOB_TYPES,
   resolveDocumentResponseDelivery,
+  resolveDocumentResponseLocalDelivery,
+  resolveFactionCodeByGuildDiscordId,
   resolveFactionDocumentDelivery,
   resolveFactionPingRoleId,
   resolveFactionSeniorRoleId,
   resolveFineDelivery,
   resolveFinePaidDelivery,
   resolveWantedDelivery,
+  sameDeliveryChannel,
   seedFoundation,
   setSetting,
   updateFactionDeliverySettings,
@@ -196,7 +199,7 @@ describe("stage 3 delivery + job enqueue", () => {
     });
   });
 
-  it("routes /ответ delivery to GOV documents channel, not the target faction", async () => {
+  it("routes /ответ to GOV documents and a local copy on the command guild", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     const govGuild = await prisma.guild.create({
       data: {
@@ -233,6 +236,14 @@ describe("stage 3 delivery + job enqueue", () => {
       guildDiscordId: "200000000000000020",
       channelDiscordId: "300000000000000020",
     });
+    expect(await resolveFactionCodeByGuildDiscordId("200000000000000021")).toBe("LSPD");
+    const localTarget = await resolveDocumentResponseLocalDelivery("200000000000000021");
+    expect(localTarget).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000021",
+      channelDiscordId: "300000000000000021",
+    });
+    expect(sameDeliveryChannel(replyTarget, localTarget)).toBe(false);
     expect(replyTarget).not.toEqual(await resolveFactionDocumentDelivery("LSPD"));
   });
 

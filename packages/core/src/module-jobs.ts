@@ -22,9 +22,22 @@ export function enqueueDocumentSend(documentId: string, db?: Db) {
   return enqueueJob({ type: MODULE_JOB_TYPES.DOCUMENT_SEND, payload: { documentId } }, db);
 }
 
-export function enqueueDocumentResponseSend(responseId: string, documentId: string, db?: Db) {
+export function enqueueDocumentResponseSend(
+  responseId: string,
+  documentId: string,
+  options?: { sourceGuildDiscordId?: string | null; db?: Db },
+) {
+  const db = options?.db;
+  const sourceGuildDiscordId = options?.sourceGuildDiscordId ?? null;
   return enqueueJob(
-    { type: MODULE_JOB_TYPES.DOCUMENT_RESPONSE_SEND, payload: { responseId, documentId } },
+    {
+      type: MODULE_JOB_TYPES.DOCUMENT_RESPONSE_SEND,
+      payload: {
+        responseId,
+        documentId,
+        ...(sourceGuildDiscordId ? { sourceGuildDiscordId } : {}),
+      },
+    },
     db,
   );
 }

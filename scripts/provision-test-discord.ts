@@ -33,6 +33,8 @@ const API = "https://discord.com/api/v10";
 const STANDARD_ROLES = ["Лидер", "Зам Лидера", "Старший Состав", "Фракция"] as const;
 const STANDARD_CHANNELS = ["Кадровый Аудит", "Логи", "Документы"] as const;
 const CP_CHANNELS = ["федеральный розыск", "Пост", "черный список", "перевод"] as const;
+/** Roles created only on the ЧП (incident) guild. */
+const CP_ROLES = ["Координатор"] as const;
 
 const ADMIN_ROLE_CANDIDATES: ReadonlyArray<{ names: string[]; value: string }> = [
   { names: ["главный админ", "главный администратор", "super admin", "супер админ"], value: "SUPER_ADMIN" },
@@ -412,7 +414,7 @@ async function main() {
 
   for (const guild of guilds) {
     const isCp = guild.id === INCIDENT_GUILD_ID;
-    const extraRoles = isCp ? [...factionCodes] : [];
+    const extraRoles = isCp ? [...CP_ROLES, ...factionCodes] : [];
     const extraChannels = isCp ? [...CP_CHANNELS] : [];
     // Faction guilds also get a role named by faction code (FIB → @FIB) for doc/fine pings.
     const factionCodeForGuild = !isCp
@@ -568,10 +570,16 @@ async function main() {
   const finesChannelId = cp?.channels["Пост"] ?? null;
   const logChannelId = cp?.channels["Логи"] ?? null;
   const pingRoleId = cp?.roles["Фракция"] ?? null;
+  const coordinatorRoleId = cp?.roles["Координатор"] ?? null;
 
   await setSetting("wanted.channelId", wantedChannelId, CTX);
   await setSetting("wanted.enabled", true, CTX);
   await setSetting("wanted.pingRoleIds", pingRoleId ? [pingRoleId] : [], CTX);
+  await setSetting(
+    "wanted.coordinatorRoleIds",
+    coordinatorRoleId ? [coordinatorRoleId] : [],
+    CTX,
+  );
   await setSetting("fines.channelId", finesChannelId, CTX);
   await setSetting("fines.pingRoleIds", pingRoleId ? [pingRoleId] : [], CTX);
   await setSetting("cp.syncEnabled", true, CTX);
@@ -602,6 +610,7 @@ async function main() {
       "core.incidentGuildId": INCIDENT_GUILD_ID,
       "wanted.channelId": wantedChannelId,
       "wanted.pingRoleIds": pingRoleId ? [pingRoleId] : [],
+      "wanted.coordinatorRoleIds": coordinatorRoleId ? [coordinatorRoleId] : [],
       "fines.channelId": finesChannelId,
       "fines.pingRoleIds": pingRoleId ? [pingRoleId] : [],
       "cp.syncEnabled": true,

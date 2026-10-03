@@ -33,12 +33,14 @@ import {
   PERSONNEL_EVENT_LABELS_RU,
   PERSONNEL_EVENT_TYPES,
   resolveDocumentResponseDelivery,
+  resolveDocumentResponseLocalDelivery,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFineDelivery,
   resolveFinePaidDelivery,
   resolveIdentity,
   resolveWantedDelivery,
+  sameDeliveryChannel,
   type Identity,
   type Logger,
   type PersonnelEventType,
@@ -93,6 +95,57 @@ function canPersonnel(identity: Identity, factionCode: string): boolean {
 
 function primaryFactionCode(identity: Identity): string | null {
   return identity.factions[0]?.code ?? null;
+}
+
+function memberRoleIds(interaction: ChatInputCommandInteraction): string[] {
+  const member = interaction.member;
+  if (!member || typeof member === "string") return [];
+  const roles = member.roles;
+  if (Array.isArray(roles)) return roles;
+  return [...roles.cache.keys()];
+}
+
+function memberHasAnyRole(interaction: ChatInputCommandInteraction, roleIds: readonly string[]): boolean {
+  if (roleIds.length === 0) return false;
+  const held = new Set(memberRoleIds(interaction));
+  return roleIds.some((id) => held.has(id));
+}
+
+function normalizeChannelName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function isWantedCommandChannel(interaction: ChatInputCommandInteraction, configuredChannelId: string | null): boolean {
+  if (configuredChannelId && interaction.channelId === configuredChannelId) return true;
+  const channel = interaction.channel;
+  if (channel && "name" in channel && typeof channel.name === "string") {
+    return normalizeChannelName(channel.name) === "федеральный розыск";
+  }
+  return false;
+}
+
+async function assertWantedCommandAllowed(
+  interaction: ChatInputCommandInteraction,
+  identity: Identity,
+): Promise<string | null> {
+  if (!(await getSetting("wanted.enabled"))) {
+    return "Модуль розыска отключён в настройках.";
+  }
+  const [channelId, coordinatorRoleIds] = await Promise.all([
+    getSetting("wanted.channelId"),
+    getSetting("wanted.coordinatorRoleIds"),
+  ]);
+  if (!isWantedCommandChannel(interaction, channelId)) {
+    return "Команды розыска можно использовать только в канале «федеральный розыск».";
+  }
+  if (memberHasAnyRole(interaction, coordinatorRoleIds) || canManageModules(identity)) {
+    return null;
+  }
+  return "Недостаточно прав: нужна роль «Координатор».";
 }
 
 function buildPersonnelDetails(
@@ -266,23 +319,29 @@ async function handleReply(interaction: ChatInputCommandInteraction, ctx: SlashH
     },
     auditFromInteraction(interaction),
   );
-  await enqueueDocumentResponseSend(result.response.id, result.document.id);
-  // Legacy: replies go to GOV documents channel (RESPONSE_WEBHOOK), not the target faction.
-  const target = await resolveDocumentResponseDelivery();
-  await interaction.editReply(
-    `Ответ на **${result.document.number}** сохранён.\n${deliveryDeferredMessage(target)}`,
-  );
+  const sourceGuildDiscordId = interaction.guildId;
+  await enqueueDocumentResponseSend(result.response.id, result.document.id, {
+    sourceGuildDiscordId,
+  });
+  // Legacy dual delivery: GOV documents + documents of the guild where /ответ was used.
+  const govTarget = await resolveDocumentResponseDelivery();
+  const localTarget = await resolveDocumentResponseLocalDelivery(sourceGuildDiscordId);
+  const lines = [`Ответ на **${result.document.number}** сохранён.`];
+  lines.push(`GOV: ${deliveryDeferredMessage(govTarget)}`);
+  if (localTarget.kind !== "unconfigured" && !sameDeliveryChannel(govTarget, localTarget)) {
+    lines.push(`Фракция (сервер команды): ${deliveryDeferredMessage(localTarget)}`);
+  } else if (localTarget.kind === "unconfigured" && sourceGuildDiscordId) {
+    lines.push(localTarget.reason);
+  }
+  await interaction.editReply(lines.join("\n"));
 }
 
 async function handleWantedCreate(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canManageModules(identity)) {
-    await interaction.editReply("Недостаточно прав: нужен уровень администратора.");
-    return;
-  }
-  if (!(await getSetting("wanted.enabled"))) {
-    await interaction.editReply("Модуль розыска отключён в настройках.");
+  const wantedDenied = await assertWantedCommandAllowed(interaction, identity);
+  if (wantedDenied) {
+    await interaction.editReply(wantedDenied);
     return;
   }
 
@@ -308,8 +367,9 @@ async function handleWantedCreate(interaction: ChatInputCommandInteraction, ctx:
 async function handleWantedClose(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canActOnModuleRecord(identity)) {
-    await interaction.editReply("Недостаточно прав: нужен уровень администратора.");
+  const wantedDenied = await assertWantedCommandAllowed(interaction, identity);
+  if (wantedDenied) {
+    await interaction.editReply(wantedDenied);
     return;
   }
 
