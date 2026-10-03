@@ -23,6 +23,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1145.0",
     "@mirror/db": "workspace:*",
+    "exceljs": "4.4.0",
     "pino": "^10.3.1",
     "zod": "^3.25.76"
   },

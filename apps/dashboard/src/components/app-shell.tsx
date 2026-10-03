@@ -48,7 +48,8 @@ type NavItem = {
     | "audit"
     | "transfer"
     | "catalog"
-    | "queue";
+    | "queue"
+    | "table";
   /** Key of the «needs attention» counter shown next to the item. */
   countKey?: string;
 };
@@ -59,6 +60,7 @@ const NAV: NavItem[] = [
   { href: "/support", label: "Мои обращения", group: "Главная", match: "prefix", icon: "feedback" },
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "catalog" },
   { href: "/calculator", label: "Калькулятор", group: "Игрокам", match: "prefix", icon: "calculator" },
+  { href: "/tables", label: "Таблицы", group: "Игрокам", match: "prefix", icon: "table" },
   { href: "/faq", label: "FAQ", group: "Игрокам", match: "prefix", icon: "faq" },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Игрокам", match: "prefix", icon: "blacklist" },
   { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs", requiresStaff: true },
@@ -433,6 +435,13 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
           <rect x="4" y="5" width="16" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           <rect x="4" y="13.5" width="7" height="5.5" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           <rect x="13" y="13.5" width="7" height="5.5" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "table":
+      return (
+        <svg {...common}>
+          <rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4 10h16M4 14.5h16M10 5v14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     case "queue":

@@ -6,3 +6,5 @@ allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   prisma: true
+  # Its install script only checks its own version scheme; nothing to build.
+  protobufjs: false

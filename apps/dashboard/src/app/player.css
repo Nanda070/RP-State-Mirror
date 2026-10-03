@@ -3636,3 +3636,265 @@ tr[data-faction] > td:first-child {
     box-shadow: inset 3px 0 0 var(--faction-color, transparent);
   }
 }
+
+/* ═══════════ Tables (PLAN §17) ═══════════ */
+/* The table takes the whole screen under the top bar: the page itself does not scroll. */
+.content:has(.tables-page) {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem;
+}
+
+.tables-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: calc(100dvh - var(--topbar-h) - 1.5rem);
+  min-height: 24rem;
+}
+
+.tables-public-main {
+  flex: 1;
+  padding: 0.75rem 1rem;
+}
+
+.tables-public .tables-page {
+  height: calc(100dvh - 6.25rem);
+}
+
+.tables-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.tables-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.tables-back {
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+a.tables-back:hover {
+  color: var(--ink);
+}
+
+.tables-back[aria-disabled] {
+  opacity: 0.45;
+}
+
+.tables-title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-hud);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.tables-index-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tables-index-head h1 {
+  margin: 0;
+}
+
+.tables-public-main .tables-index {
+  width: min(60rem, 100%);
+  margin: 1.25rem auto 0;
+}
+
+.tables-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tables-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tables-list-link {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.tables-list-link:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-2));
+}
+
+.tables-list-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tables-list-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.tables-list-meta {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.tables-list-order {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.tables-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.tables-actions .more-menu > summary {
+  width: var(--control-h);
+  height: var(--control-h);
+  border-radius: var(--r-control);
+}
+
+.tables-save {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.tables-save[data-state="saved"] { color: var(--ok); }
+.tables-save[data-state="dirty"] { color: var(--warn); }
+.tables-save[data-state="error"] { color: var(--danger-ink); }
+
+.tables-notice {
+  margin: 0;
+}
+
+.tables-stage {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--bg-2);
+}
+
+.tables-stage > .panel {
+  height: 100%;
+  border: 0;
+  display: grid;
+  place-items: center;
+}
+
+.sheet-host {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* The grid is a sheet of paper, as in Google Sheets: cells keep the colours they were given, and
+   an untouched cell is white with dark text. Only the editor's own panels follow the dark site. */
+.sheet-host canvas[id^="univer-sheet-main-canvas"] {
+  /* Univer sets its own transparent background with !important. */
+  background: #fff !important;
+}
+
+.sheet-loading {
+  margin: 0;
+  padding: 2rem;
+  text-align: center;
+}
+
+.tables-dialog {
+  width: min(30rem, calc(100vw - 2rem));
+}
+
+.tables-dialog h2 {
+  margin: 0 0 1rem;
+}
+
+.revision-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 22rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.revision-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.revision-list li > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
+.revision-list .btn {
+  height: var(--control-h-sm);
+  padding: 0 0.7rem;
+  font-size: var(--fs-xs);
+}
+
+@media (max-width: 900px) {
+  .tables-bar {
+    flex-wrap: wrap;
+  }
+
+  .tables-list-meta {
+    display: none;
+  }
+
+  .tables-page {
+    height: calc(100dvh - var(--topbar-h) - 1rem);
+  }
+}

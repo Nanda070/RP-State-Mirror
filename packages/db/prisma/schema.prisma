@@ -958,3 +958,58 @@ model LegalConsent {
   @@unique([discordId, version])
   @@map("legal_consents")
 }
+
+// ──────────────────────────────────────────────────────────────
+// Public spreadsheets (PLAN §17)
+// ──────────────────────────────────────────────────────────────
+
+model SheetDocument {
+  id                 String          @id @default(cuid())
+  /// Unique among ACTIVE tables only (partial index `sheet_documents_slug_active_key` in SQL).
+  slug               String
+  title              String
+  sortOrder          Int             @default(0) @map("sort_order")
+  status             RecordStatus    @default(ACTIVE)
+  /// The workbook in the editor's own format.
+  snapshot           Json
+  version            Int             @default(1)
+  /// Who is editing right now; the lease runs out at `lockExpiresAt`.
+  lockDiscordId      String?         @map("lock_discord_id")
+  lockExpiresAt      DateTime?       @map("lock_expires_at")
+  createdByDiscordId String          @map("created_by_discord_id")
+  updatedByDiscordId String          @map("updated_by_discord_id")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  revisions          SheetRevision[]
+  images             SheetImage[]
+
+  @@index([status, sortOrder])
+  @@index([slug])
+  @@map("sheet_documents")
+}
+
+model SheetRevision {
+  id                 String        @id @default(cuid())
+  documentId         String        @map("document_id")
+  document           SheetDocument @relation(fields: [documentId], references: [id])
+  version            Int
+  snapshot           Json
+  /// create | import | edit | restore
+  reason             String
+  createdByDiscordId String        @map("created_by_discord_id")
+  createdAt          DateTime      @default(now()) @map("created_at")
+
+  @@index([documentId, createdAt])
+  @@map("sheet_revisions")
+}
+
+model SheetImage {
+  id          String        @id @default(cuid())
+  documentId  String        @map("document_id")
+  document    SheetDocument @relation(fields: [documentId], references: [id])
+  mediaFileId String        @unique @map("media_file_id")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  @@index([documentId])
+  @@map("sheet_images")
+}

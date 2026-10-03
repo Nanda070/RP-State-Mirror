@@ -27,6 +27,7 @@ const ITEMS: PaletteItem[] = [
   { href: "/support", label: "Мои обращения", group: "Главная" },
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам" },
   { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам" },
+  { href: "/tables", label: "Таблицы", group: "Игрокам" },
   { href: "/faq", label: "FAQ и документация", group: "Игрокам" },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Игрокам" },
   { href: "/documents", label: "Документы", group: "Информация", requiresStaff: true },

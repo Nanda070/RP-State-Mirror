@@ -355,6 +355,7 @@ Next.js 15 (App Router), React 19, Auth.js v5. Серверные компоне
 |---|---|
 | Публичные | `/` (вход), `/terms`, `/privacy`, `/cookies`, `/f/<адрес>` (форма), `/s/<токен>` (запись по ссылке), `/denied`, `/maintenance`, 404, ошибка |
 | Игрокам | `/overview`, `/profile`, `/catalog`, `/calculator`, `/faq`, `/ic-blacklist` |
+| Всем, без входа | `/tables` — список таблиц, `/tables/<адрес>` — таблица. Редактор — открытая часть Univer (`components/sheets/sheet-editor.tsx`, только в браузере); книга хранится снимком JSON в `sheet_documents.snapshot`. Правка — «Админ» и выше: блокировка, версия-основание и история в `packages/core/src/sheets.ts`, импорт `.xlsx` — `sheets-xlsx.ts`. API: `/api/tables` (создание), `/api/tables/import`, `/api/tables/order`, `/api/tables/<id>` (переименование, архив), `…/snapshot` (чтение всем, запись администратору), `…/lock`, `…/revisions`, `…/images`, `/api/tables/media/<id>` (картинки таблиц — всем) |
 | Игроку | `/support` — свои обращения: создание, переписка (API `/api/feedback`); `/profile?tab=notifications` — какие личные сообщения присылать (API `/api/profile/notifications`, список видов — `DM_KINDS` в `packages/core/src/notifications.ts`, выключенные хранятся в `users.dm_muted`; бот спрашивает `wantsDm` перед отправкой) |
 | Реестры (хелпер и выше) | `/documents`, `/wanted`, `/fines`, `/personnel`, `/registrations/vehicles`, `/registrations/uniforms`, `/transfers`, `/tokens`, `/feedback` |
 | Администраторам | `/bans` |
