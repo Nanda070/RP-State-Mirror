@@ -1,10 +1,13 @@
 import {
+  canManageModules,
   canViewModules,
+  listShareLinksFor,
   listDocuments,
 } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ShareButton } from "@/components/share-button";
 import { formatMoscow } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
@@ -22,6 +25,11 @@ export default async function DocumentsRegistryPage() {
   if (!canViewModules(identity)) redirect("/overview");
 
   const { total, items } = await listDocuments({ limit: 100 });
+
+  // Public links are created and revoked by «Админ» and above; helpers only read the registry.
+  const shareLinks = canManageModules(identity)
+    ? await listShareLinksFor("document", items.map((item) => item.id))
+    : null;
 
   return (
     <div className="stack">
@@ -48,6 +56,7 @@ export default async function DocumentsRegistryPage() {
                   <th>Тема</th>
                   <th>Статус</th>
                   <th>Создан (МСК)</th>
+                  {shareLinks ? <th>Ссылка</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -73,6 +82,11 @@ export default async function DocumentsRegistryPage() {
                       </span>
                     </td>
                     <td>{formatMoscow(doc.createdAt)}</td>
+                    {shareLinks ? (
+                      <td>
+                        <ShareButton entityType="document" entityId={doc.id} initialLink={shareLinks.get(doc.id) ?? null} />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

@@ -1,4 +1,4 @@
-import { canViewModules } from "@mirror/core";
+import { canManageModules, canViewModules, listShareLinksFor } from "@mirror/core";
 import { RegistrationKind } from "@mirror/db";
 import { redirect } from "next/navigation";
 import { RegistrationsRegistry } from "@/components/registrations-registry";
@@ -15,6 +15,11 @@ export default async function UniformRegistrationsPage() {
     limit: 100,
   });
 
+  // Public links are created and revoked by «Админ» and above; helpers only read the registry.
+  const shareLinks = canManageModules(identity)
+    ? await listShareLinksFor("registration", items.map((item) => item.id))
+    : null;
+
   return (
     <RegistrationsRegistry
       title="Регистрации форм"
@@ -26,6 +31,7 @@ export default async function UniformRegistrationsPage() {
       }
       detailLabel="Описание"
       total={total}
+      shareLinks={shareLinks}
       items={items}
     />
   );

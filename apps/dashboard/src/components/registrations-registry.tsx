@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatMoscow } from "@/lib/moscow";
+import { ShareButton } from "./share-button";
 import {
   REGISTRATION_DISPLAY_STATUS_RU,
   registrationStatusTone,
@@ -15,6 +16,8 @@ type Props = {
   detailLabel: string;
   total: number;
   items: RegistrationListItem[];
+  /** ACTIVE public links by registration id; null hides the column (viewer cannot share). */
+  shareLinks?: Map<string, { id: string; token: string }> | null;
 };
 
 function shortId(id: string): string {
@@ -29,6 +32,7 @@ export function RegistrationsRegistry({
   detailLabel,
   total,
   items,
+  shareLinks = null,
 }: Props) {
   return (
     <div className="stack">
@@ -58,6 +62,7 @@ export function RegistrationsRegistry({
                   <th>Подана (МСК)</th>
                   <th>Решение / до (МСК)</th>
                   <th>Причина отказа</th>
+                  {shareLinks ? <th>Ссылка</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -93,6 +98,11 @@ export function RegistrationsRegistry({
                         : formatMoscow(row.decidedAt)}
                     </td>
                     <td>{row.rejectionReason?.trim() || "—"}</td>
+                    {shareLinks ? (
+                      <td>
+                        <ShareButton entityType="registration" entityId={row.id} initialLink={shareLinks.get(row.id) ?? null} />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

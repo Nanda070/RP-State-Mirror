@@ -26,6 +26,7 @@ export * from "./stage4.js";
 export * from "./stage4-embeds.js";
 export * from "./seed.js";
 export * from "./settings.js";
+export * from "./share-links.js";
 export * from "./status-badge.js";
 export * from "./text.js";
 export * from "./transfer-rules.js";

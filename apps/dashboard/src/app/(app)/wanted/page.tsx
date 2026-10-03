@@ -1,7 +1,8 @@
-import { canViewModules, listWanted } from "@mirror/core";
+import { canManageModules, canViewModules, listShareLinksFor, listWanted } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ShareButton } from "@/components/share-button";
 import { formatMoscow } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
@@ -19,6 +20,11 @@ export default async function WantedRegistryPage() {
   if (!canViewModules(identity)) redirect("/overview");
 
   const { total, items } = await listWanted({ limit: 100 });
+
+  // Public links are created and revoked by «Админ» and above; helpers only read the registry.
+  const shareLinks = canManageModules(identity)
+    ? await listShareLinksFor("wanted", items.map((item) => item.id))
+    : null;
 
   return (
     <div className="stack">
@@ -45,6 +51,7 @@ export default async function WantedRegistryPage() {
                   <th>ФИО</th>
                   <th>Статус</th>
                   <th>Создан (МСК)</th>
+                  {shareLinks ? <th>Ссылка</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -64,6 +71,11 @@ export default async function WantedRegistryPage() {
                       </span>
                     </td>
                     <td>{formatMoscow(row.createdAt)}</td>
+                    {shareLinks ? (
+                      <td>
+                        <ShareButton entityType="wanted" entityId={row.id} initialLink={shareLinks.get(row.id) ?? null} />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

@@ -478,3 +478,64 @@ a.metric-card .metric-value {
   margin: 0.9rem 0 0;
   font-size: 0.82rem;
 }
+
+/* ——— Share links ——— */
+.share-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 9rem;
+}
+
+.share-actions {
+  gap: 0.25rem;
+  flex-wrap: nowrap;
+}
+
+.share-actions .btn {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.share-note {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.share-kind {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.share-title {
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.share-title h1 {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.share-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.share-photo {
+  display: block;
+  width: 100%;
+  max-height: 28rem;
+  object-fit: contain;
+  margin-top: 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.share-note-public {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}

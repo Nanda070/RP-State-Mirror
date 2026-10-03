@@ -1,7 +1,8 @@
-import { canViewModules, listIcBlacklistEntries } from "@mirror/core";
+import { canManageModules, canViewModules, listIcBlacklistEntries, listShareLinksFor } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ShareButton } from "@/components/share-button";
 import { formatMoscow } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
@@ -19,6 +20,11 @@ export default async function IcBlacklistRegistryPage() {
   if (!canViewModules(identity)) redirect("/overview");
 
   const items = await listIcBlacklistEntries({ limit: 100 });
+
+  // Public links are created and revoked by «Админ» and above; helpers only read the registry.
+  const shareLinks = canManageModules(identity)
+    ? await listShareLinksFor("ic_blacklist", items.map((item) => item.id))
+    : null;
 
   return (
     <div className="stack">
@@ -46,6 +52,7 @@ export default async function IcBlacklistRegistryPage() {
                   <th>Паспорт</th>
                   <th>Причина</th>
                   <th>Создан (МСК)</th>
+                  {shareLinks ? <th>Ссылка</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -74,6 +81,11 @@ export default async function IcBlacklistRegistryPage() {
                     </td>
                     <td>{entry.reason}</td>
                     <td>{formatMoscow(entry.createdAt)}</td>
+                    {shareLinks ? (
+                      <td>
+                        <ShareButton entityType="ic_blacklist" entityId={entry.id} initialLink={shareLinks.get(entry.id) ?? null} />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
