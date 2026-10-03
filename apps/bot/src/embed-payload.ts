@@ -25,7 +25,7 @@ const STYLE_MAP: Record<string, ButtonStyle> = {
   link: ButtonStyle.Link,
 };
 
-function classicToEmbed(spec: ClassicEmbed): EmbedBuilder {
+export function classicToEmbed(spec: ClassicEmbed): EmbedBuilder {
   const embed = new EmbedBuilder();
   if (spec.title) embed.setTitle(spec.title);
   if (spec.description) embed.setDescription(spec.description);

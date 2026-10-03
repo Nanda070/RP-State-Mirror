@@ -4,24 +4,29 @@
  * Unconfigured targets succeed as deferred (no infinite retries).
  */
 import {
-  EmbedBuilder,
   MessageFlags,
   type Client,
-  type ColorResolvable,
   type TextChannel,
 } from "discord.js";
 import { prisma, RecordStatus } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
-  PERSONNEL_EVENT_LABELS_RU,
+  PERSONNEL_AUDIT_META,
   checkDiscordLimits,
   deliveryConfigured,
+  discordIdentity,
   embedSpecSchema,
+  formatPersonnelDetailsText,
   formatRoleMentions,
   getSetting,
+  makeCompactAuditEmbed,
+  makeDocumentEmbed,
+  makeFineEmbed,
+  makeFinePaidEmbed,
+  makeResponseEmbed,
+  makeWantedDoneEmbed,
+  makeWantedEmbed,
   materializeEmbedSpecButtons,
-  normalizeLinkOrText,
-  spoilerLink,
   recordSentMessage,
   resolveDocumentResponseDelivery,
   resolveFactionDocumentDelivery,
@@ -29,22 +34,14 @@ import {
   resolveFactionSeniorRoleId,
   resolveFineDelivery,
   resolveWantedDelivery,
+  type ClassicEmbed,
   type DeliveryTarget,
   type EmbedSpec,
   type Logger,
   type PersonnelEventType,
 } from "@mirror/core";
-import { embedSpecToMessageOptions } from "./embed-payload.js";
+import { classicToEmbed, embedSpecToMessageOptions } from "./embed-payload.js";
 import type { JobHandler } from "./worker.js";
-
-/** Legacy embeds.py COLOR_DEFAULT / COLOR_RESPONSE */
-const COLOR_DOC = 0x89_89_a8;
-const COLOR_DOC_RESPONSE = 0x8b_6f_47;
-const COLOR_WANTED = 0xef_44_44;
-const COLOR_WANTED_CLOSED = 0x22_c5_5e;
-const COLOR_FINE = 0xf5_9e_0b;
-const COLOR_FINE_PAID = 0x22_c5_5e;
-const COLOR_PERSONNEL = 0xa8_55_f7;
 
 type EmbedSendResult =
   | { status: "sent"; messageId: string; channelId: string; guildId: string; spec: EmbedSpec }
@@ -58,10 +55,15 @@ type SendEmbedOptions = {
   mentionUserIds?: readonly string[];
 };
 
+/** Wrap a single classic embed as an EmbedSpec for sent-message persistence. */
+function classicEmbedToSpec(embed: ClassicEmbed): EmbedSpec {
+  return { version: 1, embeds: [embed] };
+}
+
 async function sendEmbed(
   client: Client,
   target: DeliveryTarget,
-  embed: EmbedBuilder,
+  classic: ClassicEmbed,
   log: Logger,
   options: SendEmbedOptions = {},
 ): Promise<EmbedSendResult> {
@@ -77,24 +79,8 @@ async function sendEmbed(
     /^\d{17,20}$/.test(id),
   );
 
-  const embedJson = embed.toJSON();
-  const spec: EmbedSpec = {
-    version: 1,
-    embeds: [
-      {
-        type: "embed",
-        title: embedJson.title ?? undefined,
-        description: embedJson.description ?? undefined,
-        color: typeof embedJson.color === "number" ? embedJson.color : undefined,
-        fields: embedJson.fields?.map((f) => ({
-          name: f.name,
-          value: f.value,
-          inline: f.inline,
-        })),
-        timestamp: Boolean(embedJson.timestamp),
-      },
-    ],
-  };
+  const embed = classicToEmbed(classic);
+  const spec = classicEmbedToSpec(classic);
 
   if (target.kind === "channel") {
     const guild = await client.guilds.fetch(target.guildDiscordId);
@@ -198,15 +184,19 @@ async function findLinkedFineMessage(fineId: string) {
   });
 }
 
-async function resolveAuthorNames(
+async function resolveAuthor(
   client: Client,
   discordId: string,
-): Promise<{ displayName: string; username: string }> {
+): Promise<{ displayName: string; username: string; avatarUrl: string }> {
   try {
     const user = await client.users.fetch(discordId);
-    return { displayName: user.displayName || user.username, username: user.username };
+    return {
+      displayName: user.displayName || user.username,
+      username: user.username,
+      avatarUrl: user.displayAvatarURL({ size: 256 }),
+    };
   } catch {
-    return { displayName: discordId, username: discordId };
+    return { displayName: discordId, username: discordId, avatarUrl: "" };
   }
 }
 
@@ -216,28 +206,18 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
   if (!doc) throw new Error(`Document ${documentId} not found`);
 
   const target = await resolveFactionDocumentDelivery(doc.factionCode);
-  const { displayName, username } = await resolveAuthorNames(client, doc.authorDiscordId);
+  const actor = await resolveAuthor(client, doc.authorDiscordId);
 
-  // Match legacy make_document_embed (описание → content; subject is truncated for registry).
-  const description = [
-    `**Уведомляемая фракция:** ${doc.factionCode}`,
-    `**Уведомляемое лицо:** ${doc.notifiedPerson}`,
-    `**Номер документа:** ${doc.number}`,
-    `**Краткое описание:** ${doc.content}`,
-    `**Ответственные:** ${doc.leaderText}, ${doc.deputyText}, ${doc.notifiedPerson}.`,
-  ].join("\n");
-
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_DOC as ColorResolvable)
-    .setTitle(`Новый документ от ${displayName}`.slice(0, 256))
-    .setDescription(description.slice(0, 4096))
-    .addFields({
-      name: "Ссылка на форум",
-      value: spoilerLink(doc.forumLink.slice(0, 1000)),
-      inline: false,
-    })
-    .setAuthor({ name: `Автор: ${username}`.slice(0, 256) })
-    .setTimestamp(doc.createdAt);
+  const classic = makeDocumentEmbed({
+    actor,
+    faction: doc.factionCode,
+    docNumber: doc.number,
+    description: doc.content,
+    notifiedPerson: doc.notifiedPerson,
+    forumLink: doc.forumLink,
+    leaderText: doc.leaderText,
+    deputyText: doc.deputyText,
+  });
 
   const seniorRoleId = await resolveFactionSeniorRoleId(doc.factionCode);
   const mention = seniorRoleId ? formatRoleMentions([seniorRoleId]) : "";
@@ -245,7 +225,7 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
     ? `Новый документ из правительства. ${mention} незамедлительно исполнить.`
     : "Новый документ из правительства.";
 
-  const result = await sendEmbed(client, target, embed, log, {
+  const result = await sendEmbed(client, target, classic, log, {
     content,
     mentionRoleIds: seniorRoleId ? [seniorRoleId] : [],
   });
@@ -264,24 +244,18 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
 
   // Legacy RESPONSE_WEBHOOK → GOV documents channel (not the target faction).
   const target = await resolveDocumentResponseDelivery();
-  const { username } = await resolveAuthorNames(client, response.authorDiscordId);
+  const actor = await resolveAuthor(client, response.authorDiscordId);
   const authorId = response.document.authorDiscordId;
 
-  // Match legacy make_response_embed; content pings original /пост author.
-  const description = [
-    `**Личное дело:** ${normalizeLinkOrText(response.personalFile)}`,
-    `**Видеофиксация:** ${normalizeLinkOrText(response.video)}`,
-    `**Комментарий:** ${normalizeLinkOrText(response.content)}`,
-  ].join("\n");
+  const classic = makeResponseEmbed({
+    docNumber: response.document.number,
+    actor,
+    personalFile: response.personalFile,
+    video: response.video,
+    comment: response.content,
+  });
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_DOC_RESPONSE as ColorResolvable)
-    .setTitle(`Ответ на Документ ${response.document.number}`)
-    .setDescription(description.slice(0, 4096))
-    .setAuthor({ name: `Автор ответа: ${username}`.slice(0, 256) })
-    .setTimestamp(response.createdAt);
-
-  const result = await sendEmbed(client, target, embed, log, {
+  const result = await sendEmbed(client, target, classic, log, {
     content: `<@${authorId}>`,
     mentionUserIds: [authorId],
   });
@@ -289,24 +263,6 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   await persistSend(result, { responseId: response.id, documentId: response.documentId });
   return { status: "sent", documentNumber: response.document.number, messageId: result.messageId };
 };
-
-function wantedDescriptionLines(wanted: {
-  issuedByDiscordId: string;
-  characterName: string;
-  staticId: string;
-  number: string;
-  reason: string;
-  termText: string;
-}): string[] {
-  return [
-    `Издал ордер: <@${wanted.issuedByDiscordId}>`,
-    `Разыскиваемый: **${wanted.characterName}**`,
-    `Номер паспорта: **${wanted.staticId}**`,
-    `Номер ордера: **${wanted.number}**`,
-    `Обвинения: **${wanted.reason}**`,
-    `Срок заключения: **${wanted.termText}**`,
-  ];
-}
 
 const wantedPublish: JobHandler = async (payload, { client, log }) => {
   const wantedId = String(payload.wantedId ?? "");
@@ -316,19 +272,21 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
   const target = await resolveWantedDelivery();
   const pingRoleIds = await getSetting("wanted.pingRoleIds");
   const content = formatRoleMentions(pingRoleIds);
+  const actor = await resolveAuthor(client, wanted.issuedByDiscordId);
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_WANTED as ColorResolvable)
-    .setTitle("Новый ордер от правительства штата")
-    .setDescription(wantedDescriptionLines(wanted).join("\n").slice(0, 4096))
-    .addFields({
-      name: "Ссылка на форум",
-      value: `||${wanted.forumLink.slice(0, 1000)}||`,
-      inline: false,
-    })
-    .setTimestamp(wanted.createdAt);
+  const classic = makeWantedEmbed({
+    actorName: actor.displayName,
+    actorUsername: actor.username,
+    actorAvatarUrl: actor.avatarUrl,
+    fio: wanted.characterName,
+    passport: wanted.staticId,
+    orderNumber: wanted.number,
+    article: wanted.reason,
+    termText: wanted.termText,
+    forumLink: wanted.forumLink,
+  });
 
-  const result = await sendEmbed(client, target, embed, log, {
+  const result = await sendEmbed(client, target, classic, log, {
     ...(content ? { content } : {}),
     mentionRoleIds: pingRoleIds,
   });
@@ -343,23 +301,35 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
   if (!wanted) throw new Error(`Wanted ${wantedId} not found`);
 
   const link = await findLinkedMessage(wanted.id);
-  const struck = wantedDescriptionLines(wanted)
-    .map((line) => `~~${line}~~`)
-    .join("\n");
-  const statusBlock = [
-    "",
-    "**Статус:** Исполнено",
-    `**Исполнение зарегистрировал:** ${
-      wanted.closedByDiscordId ? `<@${wanted.closedByDiscordId}>` : "—"
-    }`,
-    `**Доказательства:** ${normalizeLinkOrText(wanted.evidence ?? "")}`,
-  ].join("\n");
+  const issuer = await resolveAuthor(client, wanted.issuedByDiscordId);
+  let closedBy = "—";
+  let closer = issuer;
+  if (wanted.closedByDiscordId) {
+    closer = await resolveAuthor(client, wanted.closedByDiscordId);
+    closedBy = discordIdentity(closer.displayName, closer.username);
+  }
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_WANTED_CLOSED as ColorResolvable)
-    .setTitle("Исполненный ордер правительства штата")
-    .setDescription((struck + statusBlock).slice(0, 4096))
-    .setTimestamp(new Date());
+  const classic = makeWantedEmbed({
+    actorName: issuer.displayName,
+    actorUsername: issuer.username,
+    actorAvatarUrl: issuer.avatarUrl,
+    fio: wanted.characterName,
+    passport: wanted.staticId,
+    orderNumber: wanted.number,
+    article: wanted.reason,
+    termText: wanted.termText,
+    forumLink: wanted.forumLink,
+    closed: true,
+    closedBy,
+    evidenceLink: wanted.evidence ?? "",
+  });
+  const embed = classicToEmbed(classic);
+
+  const doneEmbed = makeWantedDoneEmbed({
+    actor: closer,
+    wantedNumber: wanted.number,
+    evidenceLink: wanted.evidence ?? "",
+  });
 
   if (link?.sentMessage && link.sentMessage.status === RecordStatus.ACTIVE) {
     try {
@@ -367,7 +337,21 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
       const channel = (await guild.channels.fetch(link.sentMessage.channelDiscordId)) as TextChannel | null;
       if (channel?.isTextBased()) {
         const message = await channel.messages.fetch(link.sentMessage.messageDiscordId);
-        await message.edit({ embeds: [embed] });
+        await message.edit({ content: "~~Федеральный розыск~~", embeds: [embed] });
+        // Legacy also posts make_wanted_done_embed as a follow-up.
+        const doneResult = await sendEmbed(
+          client,
+          {
+            kind: "channel",
+            guildDiscordId: guild.id,
+            channelDiscordId: channel.id,
+          },
+          doneEmbed,
+          log,
+        );
+        if (doneResult.status === "sent") {
+          await persistSend(doneResult, { wantedId: wanted.id });
+        }
         return {
           status: "edited",
           wantedNumber: wanted.number,
@@ -380,9 +364,13 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
   }
 
   const target = await resolveWantedDelivery();
-  const result = await sendEmbed(client, target, embed, log);
+  const result = await sendEmbed(client, target, classic, log);
   if (result.status === "deferred") return result;
   await persistSend(result, { wantedId: wanted.id });
+  const doneResult = await sendEmbed(client, target, doneEmbed, log);
+  if (doneResult.status === "sent") {
+    await persistSend(doneResult, { wantedId: wanted.id });
+  }
   return { status: "sent", wantedNumber: wanted.number, messageId: result.messageId };
 };
 
@@ -393,25 +381,21 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
 
   const target = await resolveFineDelivery();
   const pingRoleIds = await getSetting("fines.pingRoleIds");
-  const description = [
-    `**Уведомляемая фракция:** ${fine.factionCode}`,
-    `**Номер штрафа:** ${fine.number}`,
-    `**ФИО:** ${fine.characterName}`,
-    `**Паспорт:** ${fine.staticId}`,
-    `**Статья:** ${fine.reason}`,
-    `**Сумма штрафа:** ${fine.amount.toLocaleString("ru-RU")} ₽`,
-    `**Срок оплаты:** ${fine.paymentDeadlineText}`,
-  ].join("\n");
+  const actor = await resolveAuthor(client, fine.issuedByDiscordId);
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_FINE as ColorResolvable)
-    .setTitle("Новый штраф")
-    .setDescription(description.slice(0, 4096))
-    .setAuthor({ name: `Автор: <@${fine.issuedByDiscordId}>`.slice(0, 256) })
-    .setTimestamp(fine.createdAt);
+  const classic = makeFineEmbed({
+    actor,
+    faction: fine.factionCode,
+    fineNumber: fine.number,
+    fio: fine.characterName,
+    passport: fine.staticId,
+    article: fine.reason,
+    amount: fine.amount,
+    paymentDeadlineText: fine.paymentDeadlineText,
+  });
 
   const chpContent = formatRoleMentions(pingRoleIds);
-  const result = await sendEmbed(client, target, embed, log, {
+  const result = await sendEmbed(client, target, classic, log, {
     ...(chpContent ? { content: chpContent } : {}),
     mentionRoleIds: pingRoleIds,
   });
@@ -427,7 +411,7 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
     const mention = formatRoleMentions([seniorRoleId]);
     const factionContent = `Новый штраф из правительства. ${mention} требуется исполнение и контроль оплаты.`;
     try {
-      const factionResult = await sendEmbed(client, factionTarget, embed, log, {
+      const factionResult = await sendEmbed(client, factionTarget, classic, log, {
         content: factionContent,
         mentionRoleIds: [seniorRoleId],
       });
@@ -448,21 +432,18 @@ const fineEditPaid: JobHandler = async (payload, { client, log }) => {
   if (!fine) throw new Error(`Fine ${fineId} not found`);
 
   const link = await findLinkedFineMessage(fine.id);
-  const description = [
-    `**Номер штрафа:** ${fine.number}`,
-    `**ФИО:** ${fine.characterName}`,
-    `**Паспорт:** ${fine.staticId}`,
-    `**Сумма:** ${fine.amount.toLocaleString("ru-RU")} ₽`,
-    `**Оплату зарегистрировал:** ${
-      fine.paidByDiscordId ? `<@${fine.paidByDiscordId}>` : "—"
-    }`,
-  ].join("\n");
+  const actor = fine.paidByDiscordId
+    ? await resolveAuthor(client, fine.paidByDiscordId)
+    : { displayName: "—", username: "—", avatarUrl: "" };
 
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_FINE_PAID as ColorResolvable)
-    .setTitle("Штраф оплачен")
-    .setDescription(description.slice(0, 4096))
-    .setTimestamp(fine.paidAt ?? new Date());
+  const classic = makeFinePaidEmbed({
+    fineNumber: fine.number,
+    fio: fine.characterName,
+    passport: fine.staticId,
+    amount: fine.amount,
+    actor,
+  });
+  const embed = classicToEmbed(classic);
 
   if (link?.sentMessage && link.sentMessage.status === RecordStatus.ACTIVE) {
     try {
@@ -479,7 +460,7 @@ const fineEditPaid: JobHandler = async (payload, { client, log }) => {
   }
 
   const target = await resolveFineDelivery();
-  const result = await sendEmbed(client, target, embed, log);
+  const result = await sendEmbed(client, target, classic, log);
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
@@ -491,25 +472,32 @@ const personnelPublish: JobHandler = async (payload, { client, log }) => {
   if (!event) throw new Error(`Personnel event ${personnelEventId} not found`);
 
   const type = event.type as PersonnelEventType;
-  const label = PERSONNEL_EVENT_LABELS_RU[type] ?? event.type;
-  const detailsText =
-    typeof event.details === "object" && event.details !== null
-      ? JSON.stringify(event.details, null, 2).slice(0, 1024)
-      : String(event.details ?? "—");
+  const meta = PERSONNEL_AUDIT_META[type as keyof typeof PERSONNEL_AUDIT_META];
+  if (!meta) {
+    throw new Error(`Unknown personnel event type: ${event.type}`);
+  }
+
+  const actor = await resolveAuthor(client, event.actorDiscordId);
+  const targetUser = await resolveAuthor(client, event.subjectDiscordId);
+  const detailsText = formatPersonnelDetailsText(
+    type as keyof typeof PERSONNEL_AUDIT_META,
+    event.details,
+  );
+
+  const classic = makeCompactAuditEmbed({
+    actionTitle: meta.actionTitle,
+    actorDisplayName: actor.displayName,
+    actorId: event.actorDiscordId,
+    targetDisplayName: event.subjectName || targetUser.displayName,
+    targetId: event.subjectDiscordId,
+    actorLabel: meta.actorLabel,
+    targetLabel: meta.targetLabel,
+    detailsText,
+    targetAvatarUrl: targetUser.avatarUrl,
+  });
 
   const target = await resolveFactionPersonnelDelivery(event.factionCode);
-  const embed = new EmbedBuilder()
-    .setColor(COLOR_PERSONNEL as ColorResolvable)
-    .setTitle(`Кадровый аудит — ${label}`)
-    .addFields(
-      { name: "Сотрудник", value: `${event.subjectName} (<@${event.subjectDiscordId}>)` },
-      { name: "Фракция", value: event.factionCode, inline: true },
-      { name: "Оформил", value: `<@${event.actorDiscordId}>`, inline: true },
-      { name: "Детали", value: detailsText || "—" },
-    )
-    .setTimestamp(event.createdAt);
-
-  const result = await sendEmbed(client, target, embed, log);
+  const result = await sendEmbed(client, target, classic, log);
   if (result.status === "deferred") return result;
   await persistSend(result, { personnelId: event.id });
   return { status: "sent", personnelEventId: event.id, messageId: result.messageId };

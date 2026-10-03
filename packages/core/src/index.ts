@@ -5,6 +5,7 @@ export * from "./db.js";
 export * from "./delivery.js";
 export * from "./documents.js";
 export * from "./embeds.js";
+export * from "./legacy-embeds.js";
 export * from "./env.js";
 export * from "./factions.js";
 export * from "./fines.js";

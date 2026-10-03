@@ -2,23 +2,23 @@
  * Apply ЧП role sync for a Discord user (legacy evaluate_member_access).
  */
 import {
-  EmbedBuilder,
   type Client,
   type Guild,
   type GuildMember,
   type TextChannel,
 } from "discord.js";
 import {
+  COLOR_ERROR,
+  COLOR_SUCCESS,
   getCpSyncConfig,
   loadCpFactionLinks,
+  makeSyncLogEmbed,
   planCpSync,
   writeAuditEvent,
   type Logger,
 } from "@mirror/core";
 import { AuditActorType, prisma, RecordStatus } from "@mirror/db";
-
-const COLOR_OK = 0x5a_8f_63;
-const COLOR_ERR = 0xa6_4b_4b;
+import { classicToEmbed } from "./embed-payload.js";
 
 async function safeFetchMember(guild: Guild, userId: string): Promise<GuildMember | null> {
   try {
@@ -42,14 +42,17 @@ async function sendCpLog(
     const guild = await client.guilds.fetch(incidentGuildId);
     const channel = (await guild.channels.fetch(logChannelId)) as TextChannel | null;
     if (!channel?.isTextBased()) return;
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setTitle(`Синхронизация ЧП — ${action}`)
-      .setDescription(
-        `**Участник:** ${member} (\`${member.user.username}\`)\n${details}`,
-      )
-      .setTimestamp();
-    await channel.send({ embeds: [embed] });
+    const classic = makeSyncLogEmbed({
+      memberMention: member.toString(),
+      displayName: member.displayName,
+      username: member.user.username,
+      userId: member.id,
+      action,
+      details,
+      color,
+      avatarUrl: member.displayAvatarURL({ size: 256 }),
+    });
+    await channel.send({ embeds: [classicToEmbed(classic)] });
   } catch {
     // Logging must never break sync.
   }
@@ -128,8 +131,8 @@ export async function evaluateMemberCpAccess(
         config.logChannelId,
         member,
         "KICK",
-        "**Причина:** потеряны все фракционные роли.",
-        COLOR_ERR,
+        "**Причина:** Потеряны все фракционные роли.\nУчастник исключен из ЧП.",
+        COLOR_ERROR,
       );
       log.info({ userId: userDiscordId }, "cp sync kick");
     } catch (error) {
@@ -172,7 +175,7 @@ export async function evaluateMemberCpAccess(
       member,
       "UPDATE",
       lines.join("\n"),
-      COLOR_OK,
+      COLOR_SUCCESS,
     );
     log.info(
       { userId: userDiscordId, added: toAdd.length, removed: toRemove.length },
