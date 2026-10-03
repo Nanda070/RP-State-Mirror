@@ -1,5 +1,6 @@
 import { AdminLevel, RecordStatus, RoleMappingKind, prisma } from "@mirror/db";
 import { getSetting } from "./settings.js";
+import { cachedRead, isReadCacheEnabled } from "./read-cache.js";
 
 export const ADMIN_LEVEL_ORDER: readonly AdminLevel[] = [
   AdminLevel.SUPER_ADMIN,
@@ -57,28 +58,38 @@ export async function resolveIdentity(discordUserId: string, options: ResolveIde
       include: { guild: true },
     }),
     getSetting("core.mainGuildId"),
-    prisma.faction.findMany({
-      where: { status: RecordStatus.ACTIVE, guildId: { not: null } },
-      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    }),
+    cachedRead("identity.factions", () =>
+      prisma.faction.findMany({
+        where: { status: RecordStatus.ACTIVE, guildId: { not: null } },
+        orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      }),
+    ),
   ]);
 
   const heldRoles = new Set(memberships.flatMap((m) => m.roleIds.map((roleId) => `${m.guildId}:${roleId}`)));
   const allRoleIds = [...new Set(memberships.flatMap((m) => m.roleIds))];
 
-  const mappings =
+  // With the cache on (the bot) all active mappings are remembered and filtered in memory;
+  // without it (the dashboard) only this user's roles are queried.
+  const candidates =
     allRoleIds.length === 0
       ? []
-      : (
-          await prisma.roleMapping.findMany({
+      : isReadCacheEnabled()
+        ? await cachedRead("identity.roleMappings", () =>
+            prisma.roleMapping.findMany({
+              where: { status: RecordStatus.ACTIVE, guild: { status: RecordStatus.ACTIVE } },
+              include: { guild: true },
+            }),
+          )
+        : await prisma.roleMapping.findMany({
             where: {
               status: RecordStatus.ACTIVE,
               roleDiscordId: { in: allRoleIds },
               guild: { status: RecordStatus.ACTIVE },
             },
             include: { guild: true },
-          })
-        ).filter((m) => heldRoles.has(`${m.guildId}:${m.roleDiscordId}`));
+          });
+  const mappings = candidates.filter((m) => heldRoles.has(`${m.guildId}:${m.roleDiscordId}`));
 
   const mappedLevels = mappings
     .filter((m) => m.kind === RoleMappingKind.ADMIN_LEVEL && m.guild.discordId === mainGuildId)

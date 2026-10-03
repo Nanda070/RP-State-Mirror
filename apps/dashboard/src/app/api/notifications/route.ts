@@ -72,7 +72,7 @@ export async function GET() {
       });
       const heartbeat = await getBotHeartbeat();
       if (heartbeat && !isHeartbeatFresh(heartbeat.at)) {
-        notices.unshift({ key: "bot", text: "бот не отвечает", href: "/status", count: 1, tone: "bad" });
+        notices.unshift({ key: "bot", text: "бот не отвечает", href: "/jobs", count: 1, tone: "bad" });
       }
     }
 

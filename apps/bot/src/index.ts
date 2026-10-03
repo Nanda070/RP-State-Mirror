@@ -6,6 +6,8 @@ import {
   HEARTBEAT_INTERVAL_MS,
   archiveOldAuditLog,
   claimOverdueFines,
+  enableReadCache,
+  onJobEnqueued,
   enableSettingsCache,
   botEnvSchema,
   createLogger,
@@ -39,6 +41,7 @@ const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 const env = parseEnv(botEnvSchema);
 // Commands read the same settings on every interaction: remember them for a few seconds.
 enableSettingsCache();
+enableReadCache();
 const log = createLogger("bot", env.LOG_LEVEL);
 
 const client = new Client({
@@ -98,6 +101,9 @@ client.once(Events.ClientReady, (ready) => {
     await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
     log.info({ commands: ALL_COMMANDS.length }, "slash commands registered");
     worker.start();
+    // A command or a button of this bot queued a job: run it now, not at the next poll.
+    // The short delay lets the transaction that created the job commit.
+    onJobEnqueued(() => void setTimeout(() => worker.wake(), 200));
     beat();
     heartbeatTimer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     reconcileTimer = setInterval(

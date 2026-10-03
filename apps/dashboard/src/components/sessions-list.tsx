@@ -92,9 +92,9 @@ export function SessionsList({
             {sessions.map((session) => (
               <tr key={session.id}>
                 {showOwner ? <td>{session.owner ?? "—"}</td> : null}
-                <td>
+                <td className="nowrap">
                   {session.device}
-                  {session.current ? <span className="badge session-current">эта сессия</span> : null}
+                  {session.current ? <span className="mini-tag">эта сессия</span> : null}
                 </td>
                 <td className="registry-mono">{session.ipAddress ?? "—"}</td>
                 <td className="nowrap">{session.createdAt}</td>

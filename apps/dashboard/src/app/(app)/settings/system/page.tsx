@@ -75,8 +75,11 @@ export default async function SettingsSystemPage() {
           <Link href="/settings/sessions" className="btn btn-secondary">
             Сессии
           </Link>
-          <Link href="/status" className="btn btn-secondary">
-            Статус системы
+          <Link href="/audit" className="btn btn-secondary">
+            Журнал аудита
+          </Link>
+          <Link href="/jobs" className="btn btn-secondary">
+            Очередь задач
           </Link>
         </div>
       </div>

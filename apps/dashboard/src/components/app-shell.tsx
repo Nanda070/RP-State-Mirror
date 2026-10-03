@@ -43,8 +43,6 @@ type NavItem = {
     | "calculator"
     | "faq"
     | "ban"
-    | "stats"
-    | "status"
     | "sessions"
     | "audit"
     | "transfer";
@@ -88,16 +86,6 @@ const NAV: NavItem[] = [
     requiresStaff: true,
   },
   { href: "/bans", label: "Тех. баны", group: "Администрирование", match: "prefix", icon: "ban", requiresAdmin: true },
-  { href: "/stats", label: "Статистика", group: "Администрирование", match: "prefix", icon: "stats", requiresAdmin: true },
-  { href: "/status", label: "Статус", group: "Администрирование", match: "prefix", icon: "status", requiresStaff: true },
-  {
-    href: "/audit",
-    label: "Журнал аудита",
-    group: "Администрирование",
-    match: "prefix",
-    icon: "audit",
-    requiresSystemSettings: true,
-  },
   {
     href: "/jobs",
     label: "Очередь задач",
@@ -184,6 +172,14 @@ const NAV: NavItem[] = [
     group: "Настройка фракций",
     match: "prefix",
     icon: "sessions",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/audit",
+    label: "Журнал аудита",
+    group: "Настройка фракций",
+    match: "prefix",
+    icon: "audit",
     requiresSystemSettings: true,
   },
   {
@@ -435,24 +431,6 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
         <svg {...common}>
           <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
           <path d="m6.5 6.5 11 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      );
-    case "stats":
-      return (
-        <svg {...common}>
-          <path d="M5 19.5V11M12 19.5V5M19 19.5v-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        </svg>
-      );
-    case "status":
-      return (
-        <svg {...common}>
-          <path
-            d="M3.5 12h4l2.5-6 4 12 2.5-6h4"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
         </svg>
       );
     case "sessions":

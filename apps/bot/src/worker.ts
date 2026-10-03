@@ -2,6 +2,7 @@ import type { Client } from "discord.js";
 import type { Job } from "@mirror/db";
 import {
   claimNextJob,
+  clearReadCache,
   clearSettingsCache,
   completeJob,
   deferJob,
@@ -32,12 +33,27 @@ export interface JobWorkerOptions {
   pollIntervalMs?: number;
   staleAfterMs?: number;
   maxJobsPerTick?: number;
+  /** How many jobs may run at the same time. */
+  concurrency?: number;
+}
+
+/** Jobs about the same record must keep their order: «publish» before «edit». */
+function entityKey(job: Job): string | null {
+  const payload = job.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  for (const [name, value] of Object.entries(payload)) {
+    if (name.endsWith("Id") && typeof value === "string" && value) return `${name}:${value}`;
+  }
+  return null;
 }
 
 export class JobWorker {
   private readonly pollIntervalMs: number;
   private readonly staleAfterMs: number;
   private readonly maxJobsPerTick: number;
+  private readonly concurrency: number;
+  /** Last job of each record that is still running: the next one for that record waits for it. */
+  private readonly chains = new Map<string, Promise<void>>();
   private readonly onPermanentFailure: ((job: Job, error: unknown) => void) | undefined;
   private pollTimer: NodeJS.Timeout | undefined;
   private staleTimer: NodeJS.Timeout | undefined;
@@ -54,6 +70,7 @@ export class JobWorker {
     this.pollIntervalMs = options.pollIntervalMs ?? 2_000;
     this.staleAfterMs = options.staleAfterMs ?? 5 * 60_000;
     this.maxJobsPerTick = options.maxJobsPerTick ?? 20;
+    this.concurrency = Math.max(1, options.concurrency ?? 3);
     this.onPermanentFailure = options.onPermanentFailure;
   }
 
@@ -64,6 +81,14 @@ export class JobWorker {
     void this.requeueStale();
     void this.tick();
     this.log.info({ workerId: this.workerId, handlers: [...this.handlers.keys()] }, "job worker started");
+  }
+
+  /**
+   * Looks at the queue now instead of at the next poll. Called right after the bot itself queued
+   * work (a command, a button), so the reply in Discord does not wait for the poll interval.
+   */
+  wake() {
+    if (!this.stopping) void this.tick();
   }
 
   async stop() {
@@ -82,18 +107,36 @@ export class JobWorker {
   }
 
   private async drain() {
-    for (let processed = 0; processed < this.maxJobsPerTick && !this.stopping; processed += 1) {
-      let job: Job | null;
-      try {
-        job = await claimNextJob(this.workerId);
-      } catch (error) {
-        this.log.error({ err: error }, "failed to claim job");
-        // Back off on DB/transaction pressure (P2028) so we do not hammer the pool every tick.
-        await new Promise((resolve) => setTimeout(resolve, 10_000));
-        return;
+    let processed = 0;
+    // Each lane claims and runs jobs one after another; the lanes run side by side.
+    const lane = async () => {
+      while (processed < this.maxJobsPerTick && !this.stopping) {
+        let job: Job | null;
+        try {
+          job = await claimNextJob(this.workerId);
+        } catch (error) {
+          this.log.error({ err: error }, "failed to claim job");
+          return;
+        }
+        if (!job) return;
+        processed += 1;
+        await this.runInOrder(job);
       }
-      if (!job) return;
-      await this.run(job);
+    };
+    await Promise.all(Array.from({ length: this.concurrency }, lane));
+  }
+
+  /** Runs the job after the previous job of the same record has finished. */
+  private async runInOrder(job: Job) {
+    const key = entityKey(job);
+    if (!key) return this.run(job);
+    const previous = this.chains.get(key) ?? Promise.resolve();
+    const current = previous.then(() => this.run(job));
+    this.chains.set(key, current);
+    try {
+      await current;
+    } finally {
+      if (this.chains.get(key) === current) this.chains.delete(key);
     }
   }
 
@@ -109,6 +152,7 @@ export class JobWorker {
       // A job often runs right after its channel or roles were configured in the dashboard:
       // it must see the settings as they are now, not as the bot remembered them.
       clearSettingsCache();
+      clearReadCache();
       const payload = (job.payload ?? {}) as Record<string, unknown>;
       const result = await handler(payload, { client: this.client, job, log });
       const reason = deferredReason(result);

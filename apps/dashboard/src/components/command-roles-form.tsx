@@ -63,7 +63,7 @@ function GuildRolePicker({
           <details key={guild.discordId} className="admin-roles-guild" open={chosen > 0}>
             <summary>
               {guild.name}
-              {chosen > 0 ? <span className="badge session-current">выбрано: {chosen}</span> : null}
+              {chosen > 0 ? <span className="mini-tag">выбрано: {chosen}</span> : null}
             </summary>
             <div className="chip-row">
               {guild.roles.map((role) => (

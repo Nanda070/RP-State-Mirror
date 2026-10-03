@@ -59,6 +59,22 @@ function memberData(snapshot: MemberSnapshot) {
   };
 }
 
+/** True when the stored row already says what the snapshot says: nothing to write. */
+function sameMember(current: GuildMember, snapshot: MemberSnapshot): boolean {
+  const next = memberData(snapshot);
+  return (
+    current.isPresent &&
+    current.leftAt === null &&
+    current.username === next.username &&
+    current.globalName === next.globalName &&
+    current.nickname === next.nickname &&
+    current.avatarUrl === next.avatarUrl &&
+    current.guildAvatarUrl === next.guildAvatarUrl &&
+    (current.joinedAt?.getTime() ?? null) === (next.joinedAt?.getTime() ?? null) &&
+    sameRoles(current.roleIds, next.roleIds)
+  );
+}
+
 async function requireGuild(guildDiscordId: string) {
   const guild = await prisma.guild.findUnique({ where: { discordId: guildDiscordId } });
   if (!guild) throw new Error(`Guild ${guildDiscordId} is not registered; call upsertGuild first`);
@@ -263,7 +279,8 @@ export async function reconcileGuildMembers(
         const current = byUser.get(snapshot.userDiscordId);
         if (!current) {
           toCreate.push(snapshot);
-        } else {
+        } else if (!sameMember(current, snapshot)) {
+          // Most members do not change between two snapshots: only real differences are written.
           await tx.guildMember.update({ where: { id: current.id }, data: memberData(snapshot) });
           updated += 1;
         }

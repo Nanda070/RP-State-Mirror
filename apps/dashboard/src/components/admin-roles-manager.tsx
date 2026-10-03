@@ -169,7 +169,7 @@ export function AdminRolesManager({
       }
       if (attempt >= 45) {
         setApplyPending(false);
-        setApplyError("Бот не ответил за полторы минуты. Проверьте страницу «Статус»: операция выполнится, когда бот вернётся.");
+        setApplyError("Бот не ответил за полторы минуты. Операция выполнится, когда бот вернётся.");
         return;
       }
       poll(id, attempt + 1);

@@ -11,6 +11,7 @@ import {
   type FactionDeliverySettings,
 } from "./delivery.js";
 import { UserError } from "./errors.js";
+import { cachedRead } from "./read-cache.js";
 import { discordWebhookUrlSchema } from "./text.js";
 
 export interface FactionChoice {
@@ -26,11 +27,13 @@ export interface FactionChoice {
  * Non-empty query → case-insensitive filter on code/name, still capped at 25.
  */
 export async function listActiveFactionsForAutocomplete(query = ""): Promise<FactionChoice[]> {
-  const factions = await prisma.faction.findMany({
-    where: { status: RecordStatus.ACTIVE },
-    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    select: { code: true, name: true },
-  });
+  const factions = await cachedRead("factions.autocomplete", () =>
+    prisma.faction.findMany({
+      where: { status: RecordStatus.ACTIVE },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: { code: true, name: true },
+    }),
+  );
 
   const q = query.trim().toLowerCase();
   const filtered = q

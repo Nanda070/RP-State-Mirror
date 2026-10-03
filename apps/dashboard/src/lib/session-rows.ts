@@ -1,6 +1,6 @@
 import { SESSION_MAX_AGE_MS } from "@mirror/core";
 import type { SessionRow } from "@/components/sessions-list";
-import { formatMoscow } from "./moscow";
+import { formatMoscowShort } from "./moscow";
 
 type StoredSession = {
   id: string;
@@ -54,8 +54,8 @@ export function toSessionRows(
     owner: owners ? (owners.get(session.discordId) ?? session.discordId) : null,
     device: describeDevice(session.userAgent),
     ipAddress: session.ipAddress,
-    createdAt: formatMoscow(session.createdAt),
-    lastSeenAt: formatMoscow(session.lastSeenAt),
+    createdAt: formatMoscowShort(session.createdAt),
+    lastSeenAt: formatMoscowShort(session.lastSeenAt),
     active: !session.revokedAt && now - session.createdAt.getTime() <= SESSION_MAX_AGE_MS,
     current: session.id === currentSessionId,
   }));

@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { AdminLevel, AuditActorType, DecisionStatus, RecordStatus, RegistrationKind } from "@mirror/db";
+import { AdminLevel, AuditActorType, RecordStatus, RegistrationKind } from "@mirror/db";
 import {
   BACKUP_STALE_MS,
   BOT_SERVICE,
@@ -15,7 +15,6 @@ import {
   botDownAlertDue,
   clearLockdownCache,
   completeAdminRoleOperation,
-  createFine,
   createRegistration,
   createTechBan,
   createUserSession,
@@ -25,7 +24,6 @@ import {
   exportRegistryCsv,
   findActiveTechBan,
   getAdminRoleOperation,
-  getAdminStats,
   getLockdown,
   getLockdownCached,
   getSetting,
@@ -35,7 +33,6 @@ import {
   listSessionsForUser,
   listTechBans,
   lockdownText,
-  markFinePaid,
   planAdminRoles,
   recordHeartbeat,
   requestAdminRolesApply,
@@ -351,77 +348,6 @@ describe("monitoring", () => {
     });
     expect(await runBotDownAlert(send, Date.now() + HEARTBEAT_STALE_MS + 120_000)).toBe("sent");
     expect(sent).toHaveLength(2);
-  });
-});
-
-describe("admin statistics", () => {
-  it("attributes decisions, replies and registry work to the people who did them", async () => {
-    const now = Date.now();
-    await prisma.registration.create({
-      data: {
-        kind: RegistrationKind.VEHICLE,
-        staticId: "1",
-        applicantDiscordId: PLAYER,
-        payload: {},
-        decision: DecisionStatus.APPROVED,
-        decidedByDiscordId: ADMIN,
-        createdAt: new Date(now - 3 * 3_600_000),
-        decidedAt: new Date(now - 2 * 3_600_000),
-      },
-    });
-    await prisma.registration.create({
-      data: {
-        kind: RegistrationKind.UNIFORM,
-        staticId: "2",
-        applicantDiscordId: PLAYER,
-        payload: {},
-        decision: DecisionStatus.REJECTED,
-        decidedByDiscordId: ADMIN,
-        status: RecordStatus.CLOSED,
-        createdAt: new Date(now - 5 * 3_600_000),
-        decidedAt: new Date(now - 2 * 3_600_000),
-      },
-    });
-    // Outside the period: not counted.
-    await prisma.registration.create({
-      data: {
-        kind: RegistrationKind.UNIFORM,
-        staticId: "3",
-        applicantDiscordId: PLAYER,
-        payload: {},
-        decision: DecisionStatus.APPROVED,
-        decidedByDiscordId: ADMIN,
-        status: RecordStatus.CLOSED,
-        createdAt: new Date(now - 40 * DAY),
-        decidedAt: new Date(now - 40 * DAY),
-      },
-    });
-    await createWanted(
-      { number: "W-1", characterName: "Ivan Petrov", staticId: "111", reason: "ст. 10", termText: "5 лет", forumLink: "https://forum.example/t", issuedByDiscordId: SUPER },
-      context,
-    );
-    await createFine(
-      { number: "F-1", characterName: "Ivan Petrov", staticId: "111", amount: 5000, reason: "ст. 1", factionCode: "LSPD", paymentDeadlineText: "3d", issuedByDiscordId: SUPER },
-      context,
-    );
-    await markFinePaid({ fineNumber: "F-1", paidByDiscordId: ADMIN }, context);
-
-    const stats = await getAdminStats({ from: new Date(now - 30 * DAY), to: new Date(now + 60_000) });
-    const admin = stats.rows.find((row) => row.discordId === ADMIN);
-    const superAdmin = stats.rows.find((row) => row.discordId === SUPER);
-
-    expect(admin).toMatchObject({
-      registrationsApproved: 1,
-      registrationsRejected: 1,
-      // (1 h + 3 h) / 2
-      avgReactionMinutes: 120,
-      finesPaid: 1,
-      total: 3,
-    });
-    expect(superAdmin).toMatchObject({ wantedIssued: 1, finesIssued: 1, avgReactionMinutes: null, total: 2 });
-    expect(stats.rows[0]?.discordId).toBe(ADMIN);
-    expect(stats.rows.some((row) => row.discordId === PLAYER)).toBe(false);
-    expect(stats.byDay.reduce((sum, day) => sum + day.count, 0)).toBe(5);
   });
 });
 

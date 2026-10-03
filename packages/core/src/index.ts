@@ -1,6 +1,5 @@
 export * from "./access.js";
 export * from "./admin-roles.js";
-export * from "./admin-stats.js";
 export * from "./audit.js";
 export * from "./audit-archive.js";
 export * from "./cp-sync.js";
@@ -45,3 +44,4 @@ export * from "./utilities.js";
 export * from "./vehicles.js";
 export * from "./wanted.js";
 export * from "./registry-actions.js";
+export * from "./read-cache.js";

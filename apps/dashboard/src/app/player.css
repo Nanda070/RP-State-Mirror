@@ -620,10 +620,19 @@ a.metric-card .metric-value {
   margin-top: 0.75rem;
 }
 
-.session-current {
+/* Small inline marker next to a value: «эта сессия», «выбрано: 2». */
+.mini-tag {
+  display: inline-block;
   margin-left: 0.5rem;
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
   color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .lockdown-panel[data-active] {
@@ -633,78 +642,6 @@ a.metric-card .metric-value {
 
 .lockdown-state {
   margin: 0 0 0.9rem;
-}
-
-.status-summary[data-state="down"] {
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-}
-
-.status-summary[data-state="ok"] {
-  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: 0.9rem;
-}
-
-.status-card-head {
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.status-card-head .panel-title {
-  margin: 0;
-}
-
-.status-card p {
-  margin: 0.6rem 0 0;
-}
-
-.status-card[data-state="down"] {
-  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
-}
-
-.stats-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 9rem;
-  overflow-x: auto;
-  padding-bottom: 1.3rem;
-}
-
-.stats-bar {
-  position: relative;
-  flex: 1 0 0.6rem;
-  min-width: 0.6rem;
-  max-width: 2.2rem;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-}
-
-.stats-bar-fill {
-  width: 100%;
-  border-radius: 4px 4px 0 0;
-  background: var(--accent);
-  opacity: 0.85;
-}
-
-.stats-bar:hover .stats-bar-fill {
-  opacity: 1;
-}
-
-.stats-bar-label {
-  position: absolute;
-  bottom: -1.2rem;
-  left: 50%;
-  translate: -50% 0;
-  font-size: 0.66rem;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
 }
 
 .admin-roles-guild {

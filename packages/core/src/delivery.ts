@@ -419,11 +419,24 @@ export async function resolveWantedPingRoleIds(): Promise<string[]> {
     WANTED_PING_EXCLUDED_FACTION_CODES.map((code) => code.toUpperCase()),
   );
 
-  const factions = await prisma.faction.findMany({
-    where: { status: RecordStatus.ACTIVE },
-    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-    select: { id: true, code: true },
-  });
+  const [factions, mappings, roles] = await Promise.all([
+    prisma.faction.findMany({
+      where: { status: RecordStatus.ACTIVE },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: { id: true, code: true },
+    }),
+    prisma.roleMapping.findMany({
+      where: { status: RecordStatus.ACTIVE, kind: RoleMappingKind.FACTION_MEMBER, guildId: incidentGuild.id },
+      select: { roleDiscordId: true, factionId: true },
+    }),
+    // Every role of the incident guild: needed both for mapped roles and for the «role named as the code» fallback.
+    prisma.discordRole.findMany({
+      where: { guildId: incidentGuild.id, status: RecordStatus.ACTIVE },
+      select: { discordId: true, name: true },
+    }),
+  ]);
+  const roleById = new Map(roles.map((role) => [role.discordId, role]));
+  const roleByName = new Map(roles.map((role) => [role.name.trim().toLowerCase(), role]));
 
   const roleIds: string[] = [];
   const seen = new Set<string>();
@@ -432,47 +445,20 @@ export async function resolveWantedPingRoleIds(): Promise<string[]> {
     const code = faction.code.toUpperCase();
     if (excluded.has(code)) continue;
 
-    const mappings = await prisma.roleMapping.findMany({
-      where: {
-        status: RecordStatus.ACTIVE,
-        kind: RoleMappingKind.FACTION_MEMBER,
-        factionId: faction.id,
-        guildId: incidentGuild.id,
-      },
-      select: { roleDiscordId: true },
-    });
-
     let addedFromMapping = false;
-    if (mappings.length > 0) {
-      const mappedRoles = await prisma.discordRole.findMany({
-        where: {
-          discordId: { in: mappings.map((m) => m.roleDiscordId) },
-          status: RecordStatus.ACTIVE,
-        },
-        select: { discordId: true, name: true },
-      });
-      const byId = new Map(mappedRoles.map((r) => [r.discordId, r]));
-      for (const mapping of mappings) {
-        const role = byId.get(mapping.roleDiscordId);
-        if (!role) continue;
-        if (role.name.trim().toLowerCase() === SHARED_FACTION_ROLE_NAME) continue;
-        if (seen.has(role.discordId)) continue;
-        seen.add(role.discordId);
-        roleIds.push(role.discordId);
-        addedFromMapping = true;
-      }
+    for (const mapping of mappings) {
+      if (mapping.factionId !== faction.id) continue;
+      const role = roleById.get(mapping.roleDiscordId);
+      if (!role) continue;
+      if (role.name.trim().toLowerCase() === SHARED_FACTION_ROLE_NAME) continue;
+      if (seen.has(role.discordId)) continue;
+      seen.add(role.discordId);
+      roleIds.push(role.discordId);
+      addedFromMapping = true;
     }
-
     if (addedFromMapping) continue;
 
-    const byCodeName = await prisma.discordRole.findFirst({
-      where: {
-        guildId: incidentGuild.id,
-        status: RecordStatus.ACTIVE,
-        name: { equals: code, mode: "insensitive" },
-      },
-      select: { discordId: true },
-    });
+    const byCodeName = roleByName.get(code.toLowerCase());
     if (byCodeName && !seen.has(byCodeName.discordId)) {
       seen.add(byCodeName.discordId);
       roleIds.push(byCodeName.discordId);

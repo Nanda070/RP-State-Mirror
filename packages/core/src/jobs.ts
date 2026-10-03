@@ -20,8 +20,20 @@ export function retryDelayMs(attempt: number): number {
   return Math.min(BASE_RETRY_DELAY_MS * 2 ** Math.max(attempt - 1, 0), MAX_RETRY_DELAY_MS);
 }
 
+let enqueueListener: (() => void) | null = null;
+
+/**
+ * Lets the process that runs the worker hear about jobs it queued itself, so it can look at the
+ * queue at once instead of at the next poll. The job may still be inside an open transaction when
+ * the listener fires — the listener should wait a moment before looking.
+ */
+export function onJobEnqueued(listener: (() => void) | null) {
+  enqueueListener = listener;
+}
+
 export function enqueueJob(job: EnqueueJob, db: Db = prisma) {
   const data = jobSchema.parse(job);
+  enqueueListener?.();
   return db.job.create({
     data: {
       type: data.type,

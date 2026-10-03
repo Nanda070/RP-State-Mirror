@@ -72,7 +72,7 @@ export function SettingsCpForm({
         });
         return;
       }
-      throw new Error("Бот не ответил за две минуты. Проверьте страницу «Статус».");
+      throw new Error("Бот не ответил за две минуты. Сверка выполнится, когда бот вернётся.");
     } catch (e) {
       setRun({ state: "failed", text: e instanceof Error ? e.message : "Ошибка" });
     }
