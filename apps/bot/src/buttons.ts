@@ -18,6 +18,7 @@ import {
   canManageModules,
   ensureUserByDiscordId,
   formatTokenDisplay,
+  formatUserError,
   getSetting,
   getDiscordForm,
   getButtonAction,
@@ -67,7 +68,7 @@ function ephemeral(content: string) {
 
 /** Replies with an ephemeral error whether or not the interaction was already acknowledged. */
 export async function replyInteractionError(interaction: AnyInteraction, error: unknown) {
-  const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+  const message = formatUserError(error);
   const payload = ephemeral(`Ошибка: ${message}`);
   if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
   else await interaction.reply(payload);

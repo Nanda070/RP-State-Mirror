@@ -58,6 +58,7 @@ import {
   findFactionOverlaps,
   markFinePaid,
   ensureUserByDiscordId,
+  formatUserError,
   receiveTokenForStatic,
   listCharacters,
   PERSONNEL_EVENT_LABELS_RU,
@@ -335,7 +336,7 @@ export async function handleSlashCommand(
         await interaction.reply(ephemeral("Неизвестная команда."));
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+    const message = formatUserError(error);
     ctx.log.warn({ err: error, command: name }, "slash command failed");
     if (/Unknown interaction|already been acknowledged/i.test(message)) return;
     try {
@@ -1062,7 +1063,7 @@ async function handlePersonnel(interaction: ChatInputCommandInteraction, ctx: Sl
   try {
     details = buildPersonnelDetails(type, detailsRaw, { fromRank, toRank });
   } catch (error) {
-    await interaction.editReply(error instanceof Error ? error.message : "Некорректные детали");
+    await interaction.editReply(formatUserError(error, "Некорректные детали"));
     return;
   }
 

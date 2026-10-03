@@ -7,6 +7,7 @@ export * from "./documents.js";
 export * from "./embeds.js";
 export * from "./legacy-embeds.js";
 export * from "./env.js";
+export * from "./errors.js";
 export * from "./factions.js";
 export * from "./fines.js";
 export * from "./identity.js";
