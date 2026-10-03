@@ -68,8 +68,7 @@ export default async function FeedbackPage() {
       />
 
       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        Канал уведомлений о новых тикетах —{" "}
-        <code>feedback.notifyChannelId</code> в{" "}
+        Канал уведомлений о новых тикетах настраивается в{" "}
         <Link href="/settings/stage4?tab=feedback">конфигурации модулей</Link> (главный
         администратор). Без него бот не сможет прислать уведомление в канал.
       </p>

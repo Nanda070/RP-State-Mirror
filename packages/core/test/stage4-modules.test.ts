@@ -3,6 +3,7 @@ import { AuditActorType, DecisionStatus, RecordStatus, RegistrationKind, Transfe
 import {
   MODULE_JOB_TYPES,
   allocateTokenNumber,
+  archiveDiscordForm,
   createCharacter,
   createDiscordForm,
   createFeedbackTicket,
@@ -15,6 +16,10 @@ import {
   archiveRolePanel,
   decideRegistration,
   decideTransfer,
+  disableDiscordForm,
+  enableDiscordForm,
+  getDiscordForm,
+  getSetting,
   issueToken,
   publishDiscordFormOpen,
   publishFeedbackOpen,
@@ -248,6 +253,51 @@ describe("stage 4 modules", () => {
     expect(await prisma.auditLog.count({ where: { action: "form.submitted" } })).toBe(1);
   });
 
+  it("requires a delivery destination when creating a form", async () => {
+    await expect(
+      createDiscordForm(
+        {
+          name: "Без доставки",
+          fields: [{ key: "text", label: "Текст", type: "short", required: true }],
+          createdByDiscordId: "300000000000000099",
+        },
+        context,
+      ),
+    ).rejects.toThrow(/канал доставки|webhook/i);
+  });
+
+  it("disables and archives forms so form.open stops resolving", async () => {
+    const form = await createDiscordForm(
+      {
+        name: "Жизненный цикл",
+        deliveryChannelId: "300000000000000001",
+        fields: [{ key: "text", label: "Текст", type: "short", required: true }],
+        createdByDiscordId: "300000000000000099",
+      },
+      context,
+    );
+    expect(await getDiscordForm(form.id)).not.toBeNull();
+
+    await disableDiscordForm(form.id, context);
+    expect(await getDiscordForm(form.id)).toBeNull();
+    expect(await prisma.discordForm.findUniqueOrThrow({ where: { id: form.id } })).toMatchObject({
+      status: RecordStatus.CLOSED,
+    });
+
+    await enableDiscordForm(form.id, context);
+    expect(await getDiscordForm(form.id)).not.toBeNull();
+
+    await archiveDiscordForm(form.id, context);
+    expect(await getDiscordForm(form.id)).toBeNull();
+    expect(await prisma.discordForm.findUniqueOrThrow({ where: { id: form.id } })).toMatchObject({
+      status: RecordStatus.ARCHIVED,
+    });
+  });
+
+  it("exposes feedback.openMessage default without crashing", async () => {
+    expect(await getSetting("feedback.openMessage")).toBeNull();
+  });
+
   it("enforces the form response limit under concurrent submissions", async () => {
     const form = await prisma.discordForm.create({
       data: {
@@ -331,6 +381,7 @@ describe("stage 4 modules", () => {
     const form = await createDiscordForm(
       {
         name: "Заявка",
+        deliveryChannelId: "300000000000000001",
         fields: [{ key: "text", label: "Текст", type: "short", required: true }],
         createdByDiscordId: "300000000000000099",
       },

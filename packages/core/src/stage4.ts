@@ -1058,17 +1058,27 @@ const formFieldSchema = z.object({
   required: z.boolean().default(false),
 });
 
-export const createDiscordFormSchema = z.object({
-  name: z.string().trim().min(1).max(120),
-  description: z.string().trim().max(1000).nullable().optional(),
-  webhookUrl: z.string().url().nullable().optional(),
-  deliveryChannelId: snowflakeLike.nullable().optional(),
-  expiresAt: z.date().nullable().optional(),
-  responseLimit: z.number().int().positive().nullable().optional(),
-  /** Discord modals accept at most 5 fields per step; multi-step (>5) is Stage 5. */
-  fields: z.array(formFieldSchema).min(1).max(5),
-  createdByDiscordId: snowflakeLike,
-});
+export const createDiscordFormSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(1000).nullable().optional(),
+    webhookUrl: z.string().url().nullable().optional(),
+    deliveryChannelId: snowflakeStrict.nullable().optional(),
+    expiresAt: z.date().nullable().optional(),
+    responseLimit: z.number().int().positive().nullable().optional(),
+    /** Discord modals accept at most 5 fields per step; multi-step (>5) is Stage 5. */
+    fields: z.array(formFieldSchema).min(1).max(5),
+    createdByDiscordId: snowflakeLike,
+  })
+  .superRefine((data, ctx) => {
+    if (!data.webhookUrl && !data.deliveryChannelId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Укажите канал доставки и/или webhook URL для ответов формы.",
+        path: ["deliveryChannelId"],
+      });
+    }
+  });
 export type CreateDiscordFormInput = z.infer<typeof createDiscordFormSchema>;
 
 export async function createDiscordForm(input: CreateDiscordFormInput, context: AuditContext) {
@@ -1094,6 +1104,51 @@ export async function createDiscordForm(input: CreateDiscordFormInput, context: 
       include: { fields: { orderBy: { position: "asc" } } },
     });
     return { entityId: form.id, after: form, result: form };
+  });
+}
+
+/** Disable form.open without deleting history (status CLOSED). */
+export async function disableDiscordForm(id: string, context: AuditContext) {
+  return auditedMutation(context, "form.disabled", "form", async (tx) => {
+    const current = await tx.discordForm.findFirst({
+      where: { id, status: RecordStatus.ACTIVE },
+    });
+    if (!current) throw new Error("Форма не найдена или уже отключена.");
+    const form = await tx.discordForm.update({
+      where: { id },
+      data: { status: RecordStatus.CLOSED },
+    });
+    return { entityId: id, before: current, after: form, result: form };
+  });
+}
+
+/** Re-enable a previously disabled form. */
+export async function enableDiscordForm(id: string, context: AuditContext) {
+  return auditedMutation(context, "form.enabled", "form", async (tx) => {
+    const current = await tx.discordForm.findFirst({
+      where: { id, status: RecordStatus.CLOSED },
+    });
+    if (!current) throw new Error("Форма не найдена или не отключена.");
+    const form = await tx.discordForm.update({
+      where: { id },
+      data: { status: RecordStatus.ACTIVE },
+    });
+    return { entityId: id, before: current, after: form, result: form };
+  });
+}
+
+/** Soft-delete a form (status ARCHIVED). form.open stops working. */
+export async function archiveDiscordForm(id: string, context: AuditContext) {
+  return auditedMutation(context, "form.archived", "form", async (tx) => {
+    const current = await tx.discordForm.findFirst({
+      where: { id, status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } },
+    });
+    if (!current) throw new Error("Форма не найдена.");
+    const form = await tx.discordForm.update({
+      where: { id },
+      data: { status: RecordStatus.ARCHIVED },
+    });
+    return { entityId: id, before: current, after: form, result: form };
   });
 }
 

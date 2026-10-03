@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { ToggleRow } from "./toggle-row";
 
 type FormField = {
   /** Stable React list identity — never used as Discord field key / API payload. */
@@ -16,6 +17,7 @@ type FormField = {
 type FormRow = {
   id: string;
   name: string;
+  status?: "ACTIVE" | "CLOSED" | "ARCHIVED" | string;
   webhookUrl?: string | null;
   deliveryChannelId?: string | null;
   openGuildDiscordId?: string | null;
@@ -26,6 +28,8 @@ type FormRow = {
 };
 
 type GuildOption = { discordId: string; name: string };
+
+const SNOWFLAKE_RE = /^\d{17,20}$/;
 
 function createEmptyField(overrides?: Partial<Omit<FormField, "clientId">>): FormField {
   return {
@@ -61,6 +65,9 @@ export function DiscordFormsManager({
   const [formName, setFormName] = useState("");
   const [formWebhookUrl, setFormWebhookUrl] = useState(initialWebhookUrl);
   const [formDeliveryChannelId, setFormDeliveryChannelId] = useState("");
+  const [deliveryById, setDeliveryById] = useState(false);
+  const [deliveryGuildId, setDeliveryGuildId] = useState(guilds[0]?.discordId ?? "");
+  const [deliveryChannelIdManual, setDeliveryChannelIdManual] = useState("");
   const [formResponseLimit, setFormResponseLimit] = useState("");
   const [formFields, setFormFields] = useState<FormField[]>(() => [createEmptyField()]);
   const [message, setMessage] = useState<string | null>(null);
@@ -73,7 +80,30 @@ export function DiscordFormsManager({
     setForms(initialForms);
   }, [initialForms]);
 
+  const resolvedDeliveryChannelId = useMemo(() => {
+    if (deliveryById) return deliveryChannelIdManual.trim();
+    return formDeliveryChannelId.trim();
+  }, [deliveryById, deliveryChannelIdManual, formDeliveryChannelId]);
+
+  const hasDelivery = Boolean(formWebhookUrl.trim() || resolvedDeliveryChannelId);
+  const deliveryChannelValid =
+    !resolvedDeliveryChannelId || SNOWFLAKE_RE.test(resolvedDeliveryChannelId);
+  const canCreate =
+    Boolean(formName.trim()) && hasDelivery && deliveryChannelValid && !pending;
+
   async function createForm() {
+    if (!formName.trim()) {
+      setMessage("Укажите название формы.");
+      return;
+    }
+    if (!hasDelivery) {
+      setMessage("Укажите, куда отправлять ответы: канал и/или webhook URL.");
+      return;
+    }
+    if (resolvedDeliveryChannelId && !SNOWFLAKE_RE.test(resolvedDeliveryChannelId)) {
+      setMessage("ID канала должен быть snowflake Discord (17–20 цифр).");
+      return;
+    }
     setPending(true);
     setMessage(null);
     try {
@@ -90,7 +120,7 @@ export function DiscordFormsManager({
           form: {
             name: formName.trim(),
             webhookUrl: formWebhookUrl.trim() || null,
-            deliveryChannelId: formDeliveryChannelId.trim() || null,
+            deliveryChannelId: resolvedDeliveryChannelId || null,
             responseLimit: formResponseLimit.trim() ? Number(formResponseLimit) : null,
             fields: fieldsPayload,
           },
@@ -102,6 +132,7 @@ export function DiscordFormsManager({
         setForms((prev) => [
           {
             ...body.form!,
+            status: body.form!.status ?? "ACTIVE",
             fields: fieldsPayload.map((f) => ({ key: f.key, label: f.label })),
             _count: body.form!._count ?? { submissions: 0 },
           },
@@ -111,6 +142,8 @@ export function DiscordFormsManager({
       setFormName("");
       setFormWebhookUrl("");
       setFormDeliveryChannelId("");
+      setDeliveryChannelIdManual("");
+      setDeliveryById(false);
       setFormResponseLimit("");
       setFormFields([createEmptyField()]);
       setMessage("Форма создана. Опубликуйте кнопку формы, чтобы получить ссылку на сообщение.");
@@ -153,6 +186,48 @@ export function DiscordFormsManager({
     }
   }
 
+  async function setFormLifecycle(
+    formId: string,
+    action: "disable-form" | "enable-form" | "archive-form",
+  ) {
+    if (action === "archive-form") {
+      const ok = window.confirm(
+        "Удалить форму? Кнопка «Открыть форму» перестанет работать. Ответы сохранятся в архиве.",
+      );
+      if (!ok) return;
+    }
+    setPending(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/stage4", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, formId }),
+      });
+      const body = (await response.json()) as { error?: string; status?: string };
+      if (!response.ok) throw new Error(body.error ?? "Ошибка изменения формы");
+      if (action === "archive-form") {
+        setForms((prev) => prev.filter((f) => f.id !== formId));
+        setMessage("Форма удалена (архив).");
+      } else if (action === "disable-form") {
+        setForms((prev) =>
+          prev.map((f) => (f.id === formId ? { ...f, status: "CLOSED" } : f)),
+        );
+        setMessage("Форма отключена — кнопка в Discord больше не открывает её.");
+      } else {
+        setForms((prev) =>
+          prev.map((f) => (f.id === formId ? { ...f, status: "ACTIVE" } : f)),
+        );
+        setMessage("Форма снова включена.");
+      }
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка изменения формы");
+    } finally {
+      setPending(false);
+    }
+  }
+
   function updateField(index: number, patch: Partial<Omit<FormField, "clientId">>) {
     setFormFields((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
@@ -169,8 +244,9 @@ export function DiscordFormsManager({
       <section className="panel stack">
         <h2 className="panel-title">Новая Discord-форма</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          До 5 полей на форму (лимит Discord modal). Доставка ответа — в канал и/или webhook. Чтобы
-          игроки могли открыть форму, опубликуйте кнопку ниже в списке форм.
+          До 5 полей на форму (лимит Discord modal). Перед созданием обязательно укажите, куда
+          уходят ответы — канал и/или webhook. Чтобы игроки могли открыть форму, опубликуйте кнопку
+          ниже в списке форм.
         </p>
 
         <label className="field">
@@ -182,37 +258,86 @@ export function DiscordFormsManager({
           />
         </label>
 
-        <div className="form-grid-3">
+        <div className="stack" style={{ gap: "0.65rem" }}>
+          <span className="field-label">Куда отправлять ответы (обязательно)</span>
+          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+            Нужен хотя бы один вариант: канал Discord или webhook URL.
+          </p>
           <label className="field">
-            <span>Webhook URL (опционально)</span>
+            <span>Webhook URL</span>
             <input
               value={formWebhookUrl}
               onChange={(e) => setFormWebhookUrl(e.target.value)}
               placeholder="https://discord.com/api/webhooks/…"
             />
           </label>
-          <label className="field">
-            <span>Канал доставки</span>
-            <ChannelSelect
-              id="form-delivery-channel"
-              value={formDeliveryChannelId}
-              onChange={setFormDeliveryChannelId}
-              channels={channels}
-              emptyLabel="Не выбран"
-            />
-          </label>
-          <label className="field">
-            <span>Лимит ответов</span>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={formResponseLimit}
-              onChange={(e) => setFormResponseLimit(e.target.value)}
-              placeholder="Без лимита"
-            />
-          </label>
+
+          {!deliveryById ? (
+            <label className="field">
+              <span>Канал доставки</span>
+              <ChannelSelect
+                id="form-delivery-channel"
+                value={formDeliveryChannelId}
+                onChange={setFormDeliveryChannelId}
+                channels={channels}
+                emptyLabel="Не выбран"
+              />
+            </label>
+          ) : (
+            <div className="form-grid-3">
+              <label className="field">
+                <span>Сервер</span>
+                <select
+                  value={deliveryGuildId}
+                  onChange={(e) => setDeliveryGuildId(e.target.value)}
+                >
+                  {guilds.map((g) => (
+                    <option key={g.discordId} value={g.discordId}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>ID канала</span>
+                <input
+                  value={deliveryChannelIdManual}
+                  onChange={(e) => setDeliveryChannelIdManual(e.target.value.replace(/\D/g, ""))}
+                  placeholder="17–20 цифр"
+                  inputMode="numeric"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+          )}
+
+          <button
+            className="btn btn-ghost"
+            type="button"
+            onClick={() => {
+              setDeliveryById((v) => !v);
+              if (!deliveryById) {
+                setFormDeliveryChannelId("");
+              } else {
+                setDeliveryChannelIdManual("");
+              }
+            }}
+          >
+            {deliveryById ? "Выбрать канал из списка" : "Указать ID канала"}
+          </button>
         </div>
+
+        <label className="field">
+          <span>Лимит ответов</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={formResponseLimit}
+            onChange={(e) => setFormResponseLimit(e.target.value)}
+            placeholder="Без лимита"
+          />
+        </label>
 
         <div className="stack" style={{ gap: "0.65rem" }}>
           <span className="field-label">Поля формы</span>
@@ -244,14 +369,12 @@ export function DiscordFormsManager({
                   <option value="paragraph">Абзац</option>
                 </select>
               </label>
-              <label className="form-field-required">
-                <input
-                  type="checkbox"
-                  checked={field.required}
-                  onChange={(e) => updateField(index, { required: e.target.checked })}
-                />
-                Обязательное
-              </label>
+              <ToggleRow
+                id={`form-field-required-${field.clientId}`}
+                checked={field.required}
+                onChange={(checked) => updateField(index, { required: checked })}
+                label="Обязательное"
+              />
             </div>
           ))}
         </div>
@@ -278,7 +401,7 @@ export function DiscordFormsManager({
           <button
             className="btn btn-primary"
             type="button"
-            disabled={!formName.trim() || pending}
+            disabled={!canCreate}
             onClick={() => void createForm()}
           >
             {pending ? "Создание…" : "Создать форму"}
@@ -309,25 +432,62 @@ export function DiscordFormsManager({
             {forms.map((form) => {
               const link = formMessageUrl(form);
               const publishing = publishFormId === form.id;
+              const disabled = form.status === "CLOSED";
               return (
                 <div key={form.id} className="stack" style={{ gap: "0.45rem" }}>
                   <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
                     <div>
                       <strong>{form.name}</strong>
+                      {disabled ? (
+                        <span className="stub-badge" style={{ marginLeft: "0.4rem" }}>
+                          Отключена
+                        </span>
+                      ) : null}
                       <span className="muted">
                         {" "}
                         · {form.fields.map((f) => f.label).join(", ") || "без полей"} · ответов:{" "}
                         {form._count.submissions}
                       </span>
                     </div>
-                    <button
-                      className="btn btn-secondary"
-                      type="button"
-                      disabled={pending}
-                      onClick={() => (publishing ? setPublishFormId(null) : openPublish(form))}
-                    >
-                      {publishing ? "Скрыть" : "Опубликовать кнопку формы"}
-                    </button>
+                    <div className="row" style={{ flexWrap: "wrap", gap: "0.4rem" }}>
+                      {!disabled ? (
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={pending}
+                          onClick={() => (publishing ? setPublishFormId(null) : openPublish(form))}
+                        >
+                          {publishing ? "Скрыть" : "Опубликовать кнопку формы"}
+                        </button>
+                      ) : null}
+                      {disabled ? (
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={pending}
+                          onClick={() => void setFormLifecycle(form.id, "enable-form")}
+                        >
+                          Включить
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={pending}
+                          onClick={() => void setFormLifecycle(form.id, "disable-form")}
+                        >
+                          Отключить
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        disabled={pending}
+                        onClick={() => void setFormLifecycle(form.id, "archive-form")}
+                      >
+                        Удалить
+                      </button>
+                    </div>
                   </div>
                   <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                     Доставка:{" "}
@@ -337,6 +497,9 @@ export function DiscordFormsManager({
                     ]
                       .filter(Boolean)
                       .join(" · ") || "—"}
+                    {disabled
+                      ? " · кнопка form.open не работает, пока форма отключена"
+                      : null}
                   </p>
                   {link ? (
                     <p style={{ margin: 0, fontSize: "0.9rem" }}>
@@ -345,12 +508,12 @@ export function DiscordFormsManager({
                         {link}
                       </a>
                     </p>
-                  ) : (
+                  ) : !disabled ? (
                     <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
                       Кнопка ещё не опубликована — без неё форму нельзя открыть в Discord.
                     </p>
-                  )}
-                  {publishing ? (
+                  ) : null}
+                  {publishing && !disabled ? (
                     <div className="stack" style={{ gap: "0.5rem" }}>
                       <div className="form-grid-3">
                         <label className="field">

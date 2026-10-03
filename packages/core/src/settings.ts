@@ -164,6 +164,9 @@ async function readSettingValue<K extends SettingKey>(
   db: Db,
 ): Promise<SettingValue<K>> {
   const definition = settingDefinitions[key];
+  if (!definition) {
+    throw new SettingValidationError(`Неизвестный ключ настройки: ${String(key)}`);
+  }
   if (!row) return definition.defaultValue as SettingValue<K>;
 
   const decoded = fromJsonValue(row.value);

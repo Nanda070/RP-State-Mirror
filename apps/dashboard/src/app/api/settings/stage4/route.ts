@@ -1,7 +1,10 @@
 import {
+  archiveDiscordForm,
   createDiscordForm,
   closeFeedbackTicket,
   addFeedbackMessage,
+  disableDiscordForm,
+  enableDiscordForm,
   listFeedbackTickets,
   listIcBlacklistEntries,
   listWebhookRequests,
@@ -46,8 +49,8 @@ const bodySchema = z.object({
     .object({
       name: z.string().trim().min(1).max(120),
       description: z.string().trim().max(1000).nullable().optional(),
-      webhookUrl: z.string().url().nullable().optional(),
-      deliveryChannelId: snowflake.nullable().optional(),
+      webhookUrl: z.union([z.string().url(), z.literal("")]).nullable().optional(),
+      deliveryChannelId: z.union([snowflake, z.literal("")]).nullable().optional(),
       expiresAt: z.string().datetime().nullable().optional(),
       responseLimit: z.number().int().positive().nullable().optional(),
       fields: z
@@ -62,6 +65,17 @@ const bodySchema = z.object({
         .min(1)
         .max(5),
     })
+    .superRefine((data, ctx) => {
+      const webhook = data.webhookUrl?.trim() || null;
+      const channel = data.deliveryChannelId?.trim() || null;
+      if (!webhook && !channel) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Укажите канал доставки и/или webhook URL для ответов формы.",
+          path: ["deliveryChannelId"],
+        });
+      }
+    })
     .optional(),
 });
 
@@ -71,7 +85,7 @@ export async function GET() {
     const [settings, forms] = await Promise.all([
       Promise.all(settingKeys.map(async (key) => [key, await getSetting(key)] as const)),
       prisma.discordForm.findMany({
-        where: { status: RecordStatus.ACTIVE },
+        where: { status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } },
         include: { fields: { orderBy: { position: "asc" } }, _count: { select: { submissions: true } } },
         orderBy: { updatedAt: "desc" },
         take: 50,
@@ -108,6 +122,9 @@ const actionSchema = z.discriminatedUnion("action", [
     guildDiscordId: snowflake,
     channelDiscordId: snowflake,
   }),
+  z.object({ action: z.literal("disable-form"), formId: z.string().min(1) }),
+  z.object({ action: z.literal("enable-form"), formId: z.string().min(1) }),
+  z.object({ action: z.literal("archive-form"), formId: z.string().min(1) }),
 ]);
 
 export async function PATCH(request: Request) {
@@ -146,6 +163,15 @@ export async function PATCH(request: Request) {
         ),
       );
     }
+    if (action.action === "disable-form") {
+      return Response.json(await disableDiscordForm(action.formId, context));
+    }
+    if (action.action === "enable-form") {
+      return Response.json(await enableDiscordForm(action.formId, context));
+    }
+    if (action.action === "archive-form") {
+      return Response.json(await archiveDiscordForm(action.formId, context));
+    }
     return Response.json(await addFeedbackMessage(action.id, session.user.id, action.content, context));
   } catch (error) {
     return jsonError(error);
@@ -165,12 +191,14 @@ export async function POST(request: Request) {
 
     let form = null;
     if (body.form) {
+      const webhookUrl = body.form.webhookUrl?.trim() || null;
+      const deliveryChannelId = body.form.deliveryChannelId?.trim() || null;
       form = await createDiscordForm(
         {
           name: body.form.name,
           description: body.form.description ?? null,
-          webhookUrl: body.form.webhookUrl ?? null,
-          deliveryChannelId: body.form.deliveryChannelId ?? null,
+          webhookUrl,
+          deliveryChannelId,
           expiresAt: body.form.expiresAt ? new Date(body.form.expiresAt) : null,
           responseLimit: body.form.responseLimit ?? null,
           fields: body.form.fields,

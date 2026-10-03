@@ -18,7 +18,7 @@ export default async function SettingsFormsPage({
 
   const [forms, channels, guilds] = await Promise.all([
     prisma.discordForm.findMany({
-      where: { status: RecordStatus.ACTIVE },
+      where: { status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } },
       include: {
         fields: { orderBy: { position: "asc" }, select: { key: true, label: true } },
         _count: { select: { submissions: true } },
