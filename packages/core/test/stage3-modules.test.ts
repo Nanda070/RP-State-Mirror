@@ -6,6 +6,7 @@ import {
   createFine,
   createWanted,
   closeWanted,
+  getDocumentByNumber,
   listActiveFactionsForAutocomplete,
   markFinePaid,
   normalizeLinkOrText,
@@ -120,6 +121,8 @@ describe("stage 3 modules", () => {
     expect(response.personalFile).toContain("forum.example");
     expect(response.video).toBe("clip.mp4");
     expect(response.content).toBe("done");
+    const closedDoc = await getDocumentByNumber(doc.number);
+    expect(closedDoc?.status).toBe(RecordStatus.CLOSED);
     expect(normalizeLinkOrText("https://x.test/a")).toBe("[Открыть](https://x.test/a)");
     expect(normalizeLinkOrText("plain")).toBe("plain");
   });

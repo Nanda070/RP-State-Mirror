@@ -10,7 +10,7 @@ import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 const STATUS_RU: Record<string, string> = {
   ACTIVE: "Активен",
-  CLOSED: "Закрыт",
+  CLOSED: "Отправлено",
   EXPIRED: "Истёк",
   REVOKED: "Отозван",
   ARCHIVED: "В архиве",
@@ -61,7 +61,13 @@ export default async function DocumentsRegistryPage() {
                     <td>
                       <span
                         className="registry-status"
-                        data-status={doc.status === RecordStatus.ACTIVE ? "ok" : "muted"}
+                        data-status={
+                          doc.status === RecordStatus.ACTIVE
+                            ? "warn"
+                            : doc.status === RecordStatus.CLOSED
+                              ? "ok"
+                              : "muted"
+                        }
                       >
                         {STATUS_RU[doc.status] ?? doc.status}
                       </span>

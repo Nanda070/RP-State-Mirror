@@ -217,8 +217,25 @@ export const personnelCommand = factionOption(
     .addUserOption((o) =>
       o.setName("сотрудник").setDescription("Сотрудник, которого касается событие").setRequired(true),
     )
+    .addIntegerOption((o) =>
+      o
+        .setName("с_ранга")
+        .setDescription("Текущий ранг (для типа Повышение)")
+        .setMinValue(1)
+        .setMaxValue(20),
+    )
+    .addIntegerOption((o) =>
+      o
+        .setName("на_ранг")
+        .setDescription("Новый ранг (для типа Повышение)")
+        .setMinValue(1)
+        .setMaxValue(20),
+    )
     .addStringOption((o) =>
-      o.setName("детали").setDescription("Детали события (JSON или произвольный текст)").setMaxLength(500),
+      o
+        .setName("детали")
+        .setDescription("Причина / детали (для Повышения — комментарий; иначе по типу)")
+        .setMaxLength(500),
     ),
   { required: false, description: "Код фракции (если не из вашей роли)" },
 );

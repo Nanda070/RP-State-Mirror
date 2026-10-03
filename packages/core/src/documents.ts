@@ -115,7 +115,17 @@ export async function createDocumentResponse(input: CreateDocumentResponseInput,
         status: RecordStatus.ACTIVE,
       },
     });
-    return { entityId: response.id, after: response, result: { response, document: doc } };
+    // After a successful /ответ the registry shows «Отправлено» (CLOSED).
+    const updatedDoc = await tx.document.update({
+      where: { id: doc.id },
+      data: { status: RecordStatus.CLOSED },
+    });
+    return {
+      entityId: response.id,
+      before: { documentStatus: doc.status },
+      after: { response, document: updatedDoc },
+      result: { response, document: updatedDoc },
+    };
   });
 }
 

@@ -13,7 +13,6 @@ import {
   MODULE_JOB_TYPES,
   PERSONNEL_AUDIT_META,
   checkDiscordLimits,
-  deliveryConfigured,
   discordIdentity,
   embedSpecSchema,
   formatPersonnelDetailsText,
@@ -31,8 +30,9 @@ import {
   resolveDocumentResponseDelivery,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
-  resolveFactionSeniorRoleId,
+  resolveFactionPingRoleId,
   resolveFineDelivery,
+  resolveFinePaidDelivery,
   resolveWantedDelivery,
   type ClassicEmbed,
   type DeliveryTarget,
@@ -219,15 +219,15 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
     deputyText: doc.deputyText,
   });
 
-  const seniorRoleId = await resolveFactionSeniorRoleId(doc.factionCode);
-  const mention = seniorRoleId ? formatRoleMentions([seniorRoleId]) : "";
+  const pingRoleId = await resolveFactionPingRoleId(doc.factionCode);
+  const mention = pingRoleId ? formatRoleMentions([pingRoleId]) : "";
   const content = mention
     ? `Новый документ из правительства. ${mention} незамедлительно исполнить.`
     : "Новый документ из правительства.";
 
   const result = await sendEmbed(client, target, classic, log, {
     content,
-    mentionRoleIds: seniorRoleId ? [seniorRoleId] : [],
+    mentionRoleIds: pingRoleId ? [pingRoleId] : [],
   });
   if (result.status === "deferred") return result;
   await persistSend(result, { documentId: doc.id });
@@ -379,8 +379,8 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
   const fine = await prisma.fine.findUnique({ where: { id: fineId } });
   if (!fine) throw new Error(`Fine ${fineId} not found`);
 
-  const target = await resolveFineDelivery();
-  const pingRoleIds = await getSetting("fines.pingRoleIds");
+  // Legacy + product: /штраф goes only to the selected faction documents channel (like /пост), not ЧП.
+  const target = await resolveFineDelivery(fine.factionCode);
   const actor = await resolveAuthor(client, fine.issuedByDiscordId);
 
   const classic = makeFineEmbed({
@@ -394,35 +394,18 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
     paymentDeadlineText: fine.paymentDeadlineText,
   });
 
-  const chpContent = formatRoleMentions(pingRoleIds);
+  const pingRoleId = await resolveFactionPingRoleId(fine.factionCode);
+  const mention = pingRoleId ? formatRoleMentions([pingRoleId]) : "";
+  const content = mention
+    ? `Новый штраф из правительства. ${mention} требуется исполнение и контроль оплаты.`
+    : "Новый штраф из правительства.";
+
   const result = await sendEmbed(client, target, classic, log, {
-    ...(chpContent ? { content: chpContent } : {}),
-    mentionRoleIds: pingRoleIds,
+    content,
+    mentionRoleIds: pingRoleId ? [pingRoleId] : [],
   });
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });
-
-  // Legacy: fine went to the faction webhook with leader_role_id.
-  // Mirror keeps the registry on ЧП and additionally notifies faction senior staff
-  // when documents delivery + seniorRoleId are configured.
-  const seniorRoleId = await resolveFactionSeniorRoleId(fine.factionCode);
-  const factionTarget = await resolveFactionDocumentDelivery(fine.factionCode);
-  if (seniorRoleId && deliveryConfigured(factionTarget)) {
-    const mention = formatRoleMentions([seniorRoleId]);
-    const factionContent = `Новый штраф из правительства. ${mention} требуется исполнение и контроль оплаты.`;
-    try {
-      const factionResult = await sendEmbed(client, factionTarget, classic, log, {
-        content: factionContent,
-        mentionRoleIds: [seniorRoleId],
-      });
-      if (factionResult.status === "sent") {
-        await persistSend(factionResult, { fineId: fine.id });
-      }
-    } catch (error) {
-      log.warn({ err: error, fineId: fine.id }, "faction fine notice failed; ЧП publish kept");
-    }
-  }
-
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
 };
 
@@ -445,6 +428,7 @@ const fineEditPaid: JobHandler = async (payload, { client, log }) => {
   });
   const embed = classicToEmbed(classic);
 
+  // Best-effort: update the original faction fine message if we still have a link.
   if (link?.sentMessage && link.sentMessage.status === RecordStatus.ACTIVE) {
     try {
       const guild = await client.guilds.fetch(link.sentMessage.guildDiscordId);
@@ -452,14 +436,14 @@ const fineEditPaid: JobHandler = async (payload, { client, log }) => {
       if (channel?.isTextBased()) {
         const message = await channel.messages.fetch(link.sentMessage.messageDiscordId);
         await message.edit({ embeds: [embed] });
-        return { status: "edited", fineNumber: fine.number, messageId: message.id };
       }
     } catch (error) {
-      log.warn({ err: error }, "failed to edit fine message; publishing new");
+      log.warn({ err: error }, "failed to edit fine message; continuing with GOV notice");
     }
   }
 
-  const target = await resolveFineDelivery();
+  // Paid notice → GOV documents channel (same place as /ответ), not ЧП.
+  const target = await resolveFinePaidDelivery();
   const result = await sendEmbed(client, target, classic, log);
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });

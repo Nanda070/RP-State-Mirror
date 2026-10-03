@@ -36,6 +36,7 @@ import {
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFineDelivery,
+  resolveFinePaidDelivery,
   resolveIdentity,
   resolveWantedDelivery,
   type Identity,
@@ -97,6 +98,7 @@ function primaryFactionCode(identity: Identity): string | null {
 function buildPersonnelDetails(
   type: PersonnelEventType,
   raw: string | null,
+  ranks?: { fromRank: number | null; toRank: number | null },
 ): Record<string, unknown> {
   const text = raw?.trim() ?? "";
   if (text.startsWith("{")) {
@@ -104,11 +106,16 @@ function buildPersonnelDetails(
   }
   switch (type) {
     case "promotion": {
-      const toRank = Number.parseInt(text, 10);
-      if (!Number.isFinite(toRank) || toRank < 1) {
-        throw new Error('Для повышения укажите новый ранг числом или JSON {"toRank":N}');
+      const fromRank = ranks?.fromRank ?? null;
+      const toRank = ranks?.toRank ?? null;
+      if (fromRank == null || toRank == null || fromRank < 1 || toRank < 1) {
+        throw new Error("Для повышения укажите «с_ранга» и «на_ранг»");
       }
-      return { toRank };
+      return {
+        fromRank,
+        toRank,
+        ...(text ? { comment: text } : {}),
+      };
     }
     case "dismissal":
       return { reason: text || "Не указана" };
@@ -347,7 +354,7 @@ async function handleFineCreate(interaction: ChatInputCommandInteraction, ctx: S
     auditFromInteraction(interaction),
   );
   await enqueueFinePublish(fine.id);
-  const target = await resolveFineDelivery();
+  const target = await resolveFineDelivery(factionCode);
   await interaction.editReply(
     `Штраф **${fine.number}** на ${fine.amount.toLocaleString("ru-RU")} ₽ создан.\n${deliveryDeferredMessage(target)}`,
   );
@@ -367,7 +374,7 @@ async function handleFinePaid(interaction: ChatInputCommandInteraction, ctx: Sla
     auditFromInteraction(interaction),
   );
   await enqueueFineEditPaid(paid.id);
-  const target = await resolveFineDelivery();
+  const target = await resolveFinePaidDelivery();
   await interaction.editReply(
     `Штраф **${paid.number}** отмечен как оплаченный.\n${deliveryDeferredMessage(target)}`,
   );
@@ -384,6 +391,8 @@ async function handlePersonnel(interaction: ChatInputCommandInteraction, ctx: Sl
   const type = typeRaw as PersonnelEventType;
   const subject = interaction.options.getUser("сотрудник", true);
   const detailsRaw = interaction.options.getString("детали");
+  const fromRank = interaction.options.getInteger("с_ранга");
+  const toRank = interaction.options.getInteger("на_ранг");
 
   const factionRaw = interaction.options.getString("фракция") ?? primaryFactionCode(identity);
   if (!factionRaw) {
@@ -398,9 +407,14 @@ async function handlePersonnel(interaction: ChatInputCommandInteraction, ctx: Sl
     return;
   }
 
+  if (type === "promotion" && (fromRank == null || toRank == null)) {
+    await interaction.editReply("Для типа «Повышение» укажите «с_ранга» и «на_ранг».");
+    return;
+  }
+
   let details: Record<string, unknown>;
   try {
-    details = buildPersonnelDetails(type, detailsRaw);
+    details = buildPersonnelDetails(type, detailsRaw, { fromRank, toRank });
   } catch (error) {
     await interaction.editReply(error instanceof Error ? error.message : "Некорректные детали");
     return;

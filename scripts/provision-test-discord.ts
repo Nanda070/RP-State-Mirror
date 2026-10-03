@@ -414,11 +414,21 @@ async function main() {
     const isCp = guild.id === INCIDENT_GUILD_ID;
     const extraRoles = isCp ? [...factionCodes] : [];
     const extraChannels = isCp ? [...CP_CHANNELS] : [];
+    // Faction guilds also get a role named by faction code (FIB → @FIB) for doc/fine pings.
+    const factionCodeForGuild = !isCp
+      ? factionCodes.find((code) => matchFactionCode(guild.name, [code]))
+      : undefined;
+    const guildExtraRoles = [
+      ...extraRoles,
+      ...(factionCodeForGuild && !extraRoles.includes(factionCodeForGuild)
+        ? [factionCodeForGuild]
+        : []),
+    ];
     const { provision, roles, channels } = await provisionGuildStructure(
       token,
       guild,
       botUserId,
-      extraRoles,
+      guildExtraRoles,
       extraChannels,
     );
     provisions.push(provision);

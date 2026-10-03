@@ -15,8 +15,10 @@ import {
   MODULE_JOB_TYPES,
   resolveDocumentResponseDelivery,
   resolveFactionDocumentDelivery,
+  resolveFactionPingRoleId,
   resolveFactionSeniorRoleId,
   resolveFineDelivery,
+  resolveFinePaidDelivery,
   resolveWantedDelivery,
   seedFoundation,
   setSetting,
@@ -37,13 +39,15 @@ describe("stage 3 delivery + job enqueue", () => {
     expect(docTarget.kind).toBe("unconfigured");
 
     expect(deliveryConfigured(await resolveWantedDelivery())).toBe(false);
-    expect(deliveryConfigured(await resolveFineDelivery())).toBe(false);
+    expect(deliveryConfigured(await resolveFineDelivery("LSPD"))).toBe(false);
+    expect(deliveryConfigured(await resolveFinePaidDelivery())).toBe(false);
   });
 
-  it("resolves wanted/fine channels from system settings + incident guild", async () => {
+  it("resolves wanted from ЧП settings; fines from faction/GOV documents channels", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     await setSetting("core.incidentGuildId", "200000000000000099", ctx);
     await setSetting("wanted.channelId", "300000000000000001", ctx);
+    // fines.channelId on ЧП must NOT drive /штраф delivery anymore
     await setSetting("fines.channelId", "300000000000000002", ctx);
 
     const wanted = await resolveWantedDelivery();
@@ -53,8 +57,49 @@ describe("stage 3 delivery + job enqueue", () => {
       channelDiscordId: "300000000000000001",
     });
 
-    const fine = await resolveFineDelivery();
-    expect(fine).toEqual({
+    expect(deliveryConfigured(await resolveFineDelivery("LSPD"))).toBe(false);
+
+    const lspdGuild = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000010",
+        name: "LSPD Guild",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    const govGuild = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000020",
+        name: "GOV Guild",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await prisma.faction.update({
+      where: { code: "LSPD" },
+      data: {
+        guildId: lspdGuild.id,
+        settings: { documentsChannelId: "300000000000000010" },
+      },
+    });
+    await prisma.faction.update({
+      where: { code: "GOV" },
+      data: {
+        guildId: govGuild.id,
+        settings: { documentsChannelId: "300000000000000020" },
+      },
+    });
+
+    expect(await resolveFineDelivery("LSPD")).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000010",
+      channelDiscordId: "300000000000000010",
+    });
+    expect(await resolveFinePaidDelivery()).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000020",
+      channelDiscordId: "300000000000000020",
+    });
+    // Still not the CHП fines.channelId
+    expect(await resolveFineDelivery("LSPD")).not.toEqual({
       kind: "channel",
       guildDiscordId: "200000000000000099",
       channelDiscordId: "300000000000000002",
@@ -191,15 +236,24 @@ describe("stage 3 delivery + job enqueue", () => {
     expect(replyTarget).not.toEqual(await resolveFactionDocumentDelivery("LSPD"));
   });
 
-  it("stores and resolves seniorRoleId from faction delivery settings", async () => {
+  it("stores and resolves seniorRoleId / ping role from faction delivery settings", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     expect(formatRoleMentions(["400000000000000001", "bad"])).toBe("<@&400000000000000001>");
     expect(await resolveFactionSeniorRoleId("LSPD")).toBeNull();
+    expect(await resolveFactionPingRoleId("LSPD")).toBeNull();
 
     const guild = await prisma.guild.create({
       data: {
         discordId: "200000000000000011",
         name: "LSPD Guild",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await prisma.discordRole.create({
+      data: {
+        discordId: "400000000000000099",
+        guildId: guild.id,
+        name: "LSPD",
         status: RecordStatus.ACTIVE,
       },
     });
@@ -214,6 +268,8 @@ describe("stage 3 delivery + job enqueue", () => {
     );
 
     expect(await resolveFactionSeniorRoleId("LSPD")).toBe("400000000000000011");
+    // Prefer role named like faction code over seniorRoleId
+    expect(await resolveFactionPingRoleId("LSPD")).toBe("400000000000000099");
     const faction = await prisma.faction.findUniqueOrThrow({ where: { code: "LSPD" } });
     expect(faction.settings).toMatchObject({
       seniorRoleId: "400000000000000011",

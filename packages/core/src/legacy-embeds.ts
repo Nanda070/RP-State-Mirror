@@ -1,6 +1,9 @@
 /**
  * Legacy Discord embed builders ported 1:1 from embeds.py / utils.py.
  * Outbound bot job delivery should use these shapes (colors, fields, spoilers).
+ *
+ * Field layout: prefer non-inline fields over cramped descriptions so Discord
+ * renders embeds at a usable width (description-only embeds stay narrow).
  */
 import type { ClassicEmbed } from "./embeds.js";
 import { normalizeLinkOrText, spoilerLink } from "./text.js";
@@ -67,6 +70,22 @@ export function safeAvatarUrl(avatarUrl: string | null | undefined): string {
   return url || BOT_FOOTER_ICON;
 }
 
+function fieldValue(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "—";
+}
+
+/** Non-inline fields stretch Discord embeds wider than description-only layouts. */
+function detailFields(
+  rows: ReadonlyArray<{ name: string; value: string }>,
+): NonNullable<ClassicEmbed["fields"]> {
+  return rows.map((row) => ({
+    name: row.name,
+    value: fieldValue(row.value),
+    inline: false,
+  }));
+}
+
 function withFooter(embed: Omit<ClassicEmbed, "type" | "footer">, now?: Date): ClassicEmbed {
   return {
     type: "embed",
@@ -125,14 +144,17 @@ export function makeDocumentEmbed(input: {
     {
       title: `Новый документ от ${actor.displayName}`,
       color: COLOR_DEFAULT,
-      description: [
-        `**Уведомляемая фракция:** ${input.faction}`,
-        `**Уведомляемое лицо:** ${input.notifiedPerson}`,
-        `**Номер документа:** ${input.docNumber}`,
-        `**Краткое описание:** ${input.description}`,
-        `**Ответственные:** ${input.leaderText}, ${input.deputyText}, ${input.notifiedPerson}.`,
-      ].join("\n"),
-      fields: [{ name: "Ссылка на форум", value: spoilerLink(input.forumLink), inline: false }],
+      fields: detailFields([
+        { name: "Уведомляемая фракция", value: input.faction },
+        { name: "Уведомляемое лицо", value: input.notifiedPerson },
+        { name: "Номер документа", value: input.docNumber },
+        { name: "Краткое описание", value: input.description },
+        {
+          name: "Ответственные",
+          value: `${input.leaderText}, ${input.deputyText}, ${input.notifiedPerson}.`,
+        },
+        { name: "Ссылка на форум", value: spoilerLink(input.forumLink) },
+      ]),
       author: {
         name: `Автор: ${actor.username}`,
         iconUrl: safeAvatarUrl(actor.avatarUrl),
@@ -155,11 +177,11 @@ export function makeResponseEmbed(input: {
     {
       title: `Ответ на Документ ${input.docNumber}`,
       color: COLOR_RESPONSE,
-      description: [
-        `**Личное дело:** ${normalizeLinkOrText(input.personalFile)}`,
-        `**Видеофиксация:** ${normalizeLinkOrText(input.video)}`,
-        `**Комментарий:** ${normalizeLinkOrText(input.comment)}`,
-      ].join("\n"),
+      fields: detailFields([
+        { name: "Личное дело", value: normalizeLinkOrText(input.personalFile) },
+        { name: "Видеофиксация", value: normalizeLinkOrText(input.video) },
+        { name: "Комментарий", value: normalizeLinkOrText(input.comment) },
+      ]),
       author: {
         name: `Автор ответа: ${actor.username}`,
         iconUrl: safeAvatarUrl(actor.avatarUrl),
@@ -185,33 +207,32 @@ export function makeWantedEmbed(input: {
   now?: Date;
 }): ClassicEmbed {
   const closed = Boolean(input.closed);
-  const lines = [
-    `Издал ордер: ${input.actorName}`,
-    `Разыскиваемый: **${input.fio}**`,
-    `Номер паспорта: **${input.passport}**`,
-    `Номер ордера: **${input.orderNumber}**`,
-    `Обвинения: **${input.article}**`,
-    `Срок заключения: **${input.termText}**`,
-  ];
+  const wrap = (text: string) => (closed ? `~~${text}~~` : text);
 
-  let description: string;
+  const fields = detailFields([
+    { name: "Издал ордер", value: wrap(input.actorName) },
+    { name: "Разыскиваемый", value: wrap(input.fio) },
+    { name: "Номер паспорта", value: wrap(input.passport) },
+    { name: "Номер ордера", value: wrap(input.orderNumber) },
+    { name: "Обвинения", value: wrap(input.article) },
+    { name: "Срок заключения", value: wrap(input.termText) },
+  ]);
+
   if (closed) {
-    const struck = lines.map((line) => `~~${line}~~`).join("\n");
-    const status = [
-      "",
-      "**Статус:** Исполнено",
-      `**Исполнение зарегистрировал:** ${input.closedBy ?? "—"}`,
-      `**Доказательства:** ${normalizeLinkOrText(input.evidenceLink)}`,
-    ].join("\n");
-    description = struck + status;
-  } else {
-    description = lines.join("\n");
+    fields.push(
+      ...detailFields([
+        { name: "Статус", value: "Исполнено" },
+        { name: "Исполнение зарегистрировал", value: input.closedBy ?? "—" },
+        { name: "Доказательства", value: normalizeLinkOrText(input.evidenceLink) },
+      ]),
+    );
+  } else if (input.forumLink) {
+    fields.push({
+      name: "Ссылка на форум",
+      value: spoilerLink(input.forumLink),
+      inline: false,
+    });
   }
-
-  const fields =
-    input.forumLink && !closed
-      ? [{ name: "Ссылка на форум", value: spoilerLink(input.forumLink), inline: false }]
-      : undefined;
 
   return withFooter(
     {
@@ -219,8 +240,7 @@ export function makeWantedEmbed(input: {
         ? "Исполненный ордер правительства штата"
         : "Новый ордер от правительства штата",
       color: closed ? COLOR_WANTED_DONE : COLOR_WANTED,
-      description,
-      ...(fields ? { fields } : {}),
+      fields,
       author: {
         name: `Автор: ${input.actorUsername}`,
         iconUrl: safeAvatarUrl(input.actorAvatarUrl),
@@ -241,11 +261,14 @@ export function makeWantedDoneEmbed(input: {
     {
       title: "Зарегистрировано исполнение ордера",
       color: COLOR_WANTED_DONE,
-      description: [
-        `Исполнение зарегистрировал: **${discordIdentity(actor.displayName, actor.username)}**`,
-        `Номер ордера: **${input.wantedNumber}**`,
-        `Доказательства исполнения: ${normalizeLinkOrText(input.evidenceLink)}`,
-      ].join("\n"),
+      fields: detailFields([
+        {
+          name: "Исполнение зарегистрировал",
+          value: discordIdentity(actor.displayName, actor.username),
+        },
+        { name: "Номер ордера", value: input.wantedNumber },
+        { name: "Доказательства исполнения", value: normalizeLinkOrText(input.evidenceLink) },
+      ]),
       author: {
         name: `Автор: ${actor.username}`,
         iconUrl: safeAvatarUrl(actor.avatarUrl),
@@ -271,15 +294,15 @@ export function makeFineEmbed(input: {
     {
       title: `Новый штраф от ${actor.displayName}`,
       color: COLOR_FINE,
-      description: [
-        `**Уведомляемая фракция:** ${input.faction}`,
-        `**Номер штрафа:** ${input.fineNumber}`,
-        `**ФИО:** ${input.fio}`,
-        `**Паспорт:** ${input.passport}`,
-        `**Статья:** ${input.article}`,
-        `**Сумма штрафа:** ${input.amount}`,
-        `**Срок оплаты:** ${input.paymentDeadlineText}`,
-      ].join("\n"),
+      fields: detailFields([
+        { name: "Уведомляемая фракция", value: input.faction },
+        { name: "Номер штрафа", value: input.fineNumber },
+        { name: "ФИО", value: input.fio },
+        { name: "Паспорт", value: input.passport },
+        { name: "Статья", value: input.article },
+        { name: "Сумма штрафа", value: String(input.amount) },
+        { name: "Срок оплаты", value: input.paymentDeadlineText },
+      ]),
       author: {
         name: `Автор: ${actor.username}`,
         iconUrl: safeAvatarUrl(actor.avatarUrl),
@@ -302,13 +325,16 @@ export function makeFinePaidEmbed(input: {
     {
       title: "Штраф оплачен",
       color: COLOR_FINE_PAID,
-      description: [
-        `**Номер штрафа:** ${input.fineNumber}`,
-        `**ФИО:** ${input.fio}`,
-        `**Паспорт:** ${input.passport}`,
-        `**Сумма:** ${input.amount}`,
-        `**Оплату зарегистрировал:** ${discordIdentity(actor.displayName, actor.username)}`,
-      ].join("\n"),
+      fields: detailFields([
+        { name: "Номер штрафа", value: input.fineNumber },
+        { name: "ФИО", value: input.fio },
+        { name: "Паспорт", value: input.passport },
+        { name: "Сумма", value: String(input.amount) },
+        {
+          name: "Оплату зарегистрировал",
+          value: discordIdentity(actor.displayName, actor.username),
+        },
+      ]),
       author: {
         name: `Автор: ${actor.username}`,
         iconUrl: safeAvatarUrl(actor.avatarUrl),
@@ -327,16 +353,19 @@ export function makeFineOverdueEmbed(input: {
     {
       title: "Неоплаченный штраф",
       color: COLOR_FINE_OVERDUE,
-      description: [
-        `**Номер штрафа:** ${fine.fineNumber}`,
-        `**Фракция:** ${fine.faction}`,
-        `**ФИО:** ${fine.fio}`,
-        `**Паспорт:** ${fine.passport}`,
-        `**Статья:** ${fine.article}`,
-        `**Сумма штрафа:** ${fine.amount}`,
-        `**Срок оплаты истёк:** ${fine.paymentDeadlineText}`,
-        `**Штраф выписал:** ${fine.createdByDisplayName} (${fine.createdByUsername})`,
-      ].join("\n"),
+      fields: detailFields([
+        { name: "Номер штрафа", value: fine.fineNumber },
+        { name: "Фракция", value: fine.faction },
+        { name: "ФИО", value: fine.fio },
+        { name: "Паспорт", value: fine.passport },
+        { name: "Статья", value: fine.article },
+        { name: "Сумма штрафа", value: String(fine.amount) },
+        { name: "Срок оплаты истёк", value: fine.paymentDeadlineText },
+        {
+          name: "Штраф выписал",
+          value: `${fine.createdByDisplayName} (${fine.createdByUsername})`,
+        },
+      ]),
     },
     input.now,
   );
@@ -397,13 +426,12 @@ export function makeSyncLogEmbed(input: {
       title: `Синхронизация доступов: ${input.action}`,
       color: input.color,
       timestamp: true,
-      description: [
-        `**Пользователь:** ${input.memberMention}`,
-        `**Discord:** ${discordIdentity(input.displayName, input.username)}`,
-        `**User ID:** \`${input.userId}\``,
-        "",
-        input.details,
-      ].join("\n"),
+      fields: detailFields([
+        { name: "Пользователь", value: input.memberMention },
+        { name: "Discord", value: discordIdentity(input.displayName, input.username) },
+        { name: "User ID", value: `\`${input.userId}\`` },
+        { name: "Детали", value: input.details },
+      ]),
       thumbnail: safeAvatarUrl(input.avatarUrl),
     },
     input.now,
