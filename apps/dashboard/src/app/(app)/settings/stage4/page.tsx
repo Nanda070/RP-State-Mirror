@@ -1,4 +1,4 @@
-import { getSettings } from "@mirror/core";
+import { getSettings, migrateLegacyRegistrationChannels } from "@mirror/core";
 import Link from "next/link";
 import {
   Stage4SettingsManager,
@@ -39,10 +39,13 @@ export default async function Stage4SettingsPage({
   const params = searchParams ? await searchParams : {};
   const initialTab = TAB_IDS.has(params.tab as TabId) ? (params.tab as TabId) : "registrations";
 
+  await migrateLegacyRegistrationChannels();
+
   const [settings, channels, guilds] = await Promise.all([
     getSettings([
       "registrations.ttlDays",
-      "registrations.channelId",
+      "registrations.vehicleChannelId",
+      "registrations.uniformChannelId",
       "registrations.coordinatorRoleIds",
       "transfers.channelId",
       "transfers.approvalDmText",
@@ -72,7 +75,8 @@ export default async function Stage4SettingsPage({
 
   const initial: Stage4SettingsValues = {
     "registrations.ttlDays": settings["registrations.ttlDays"],
-    "registrations.channelId": settings["registrations.channelId"],
+    "registrations.vehicleChannelId": settings["registrations.vehicleChannelId"],
+    "registrations.uniformChannelId": settings["registrations.uniformChannelId"],
     "registrations.coordinatorRoleIds": settings["registrations.coordinatorRoleIds"],
     "transfers.channelId": settings["transfers.channelId"],
     "transfers.approvalDmText": settings["transfers.approvalDmText"] ?? "",

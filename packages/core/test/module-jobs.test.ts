@@ -21,11 +21,13 @@ import {
   resolveFactionSeniorRoleId,
   resolveFineDelivery,
   resolveFinePaidDelivery,
+  resolveRegistrationDelivery,
   resolveWantedDelivery,
   resolveWantedPingRoleIds,
   sameDeliveryChannel,
   seedFoundation,
   setSetting,
+  toJsonValue,
   updateFactionDeliverySettings,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
@@ -45,6 +47,47 @@ describe("stage 3 delivery + job enqueue", () => {
     expect(deliveryConfigured(await resolveWantedDelivery())).toBe(false);
     expect(deliveryConfigured(await resolveFineDelivery("LSPD"))).toBe(false);
     expect(deliveryConfigured(await resolveFinePaidDelivery())).toBe(false);
+  });
+
+  it("resolves vehicle and uniform registration channels separately", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    await setSetting("core.incidentGuildId", "200000000000000099", ctx);
+    await setSetting("registrations.vehicleChannelId", "300000000000000101", ctx);
+    await setSetting("registrations.uniformChannelId", "300000000000000102", ctx);
+
+    expect(await resolveRegistrationDelivery("VEHICLE")).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000099",
+      channelDiscordId: "300000000000000101",
+    });
+    expect(await resolveRegistrationDelivery("UNIFORM")).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000099",
+      channelDiscordId: "300000000000000102",
+    });
+  });
+
+  it("migrates legacy registrations.channelId onto both vehicle and uniform channels", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    await setSetting("core.incidentGuildId", "200000000000000099", ctx);
+    await prisma.systemSetting.create({
+      data: { key: "registrations.channelId", value: toJsonValue("300000000000000200") },
+    });
+    await prisma.systemSetting.deleteMany({
+      where: { key: { in: ["registrations.vehicleChannelId", "registrations.uniformChannelId"] } },
+    });
+
+    expect(await resolveRegistrationDelivery("VEHICLE")).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000099",
+      channelDiscordId: "300000000000000200",
+    });
+    expect(await resolveRegistrationDelivery("UNIFORM")).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000099",
+      channelDiscordId: "300000000000000200",
+    });
+    expect(await prisma.systemSetting.findUnique({ where: { key: "registrations.channelId" } })).toBeNull();
   });
 
   it("resolves wanted from ЧП settings; fines from faction/GOV documents channels", async () => {

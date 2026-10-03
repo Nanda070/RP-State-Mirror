@@ -60,15 +60,20 @@ export const settingDefinitions = {
     [],
     "Роли на сервере ЧП: право объявлять и закрывать розыск (Координатор)",
   ),
-  "registrations.channelId": defineSetting(
+  "registrations.vehicleChannelId": defineSetting(
     snowflakeSchema.nullable(),
     null,
-    "Канал на сервере ЧП для заявок ТС и униформы",
+    "Канал на сервере ЧП для заявок регистрации ТС",
+  ),
+  "registrations.uniformChannelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал на сервере ЧП для заявок регистрации формы (униформы)",
   ),
   "registrations.coordinatorRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],
-    "Роли на сервере ЧП: обработка заявок ТС и униформы",
+    "Роли на сервере ЧП: координаторы регистраций (одобрение/отказ и пинг для ТС и формы)",
   ),
   "transfers.channelId": defineSetting(
     snowflakeSchema.nullable(),
@@ -222,6 +227,39 @@ export async function setSetting<K extends SettingKey>(
     });
     return { entityId: key, before, after: next, result: next };
   });
+}
+
+/**
+ * Legacy split: `registrations.channelId` → both vehicle + uniform channels.
+ * Copies the old value to each new key when that key is still unset/null, then
+ * deletes the legacy row. Idempotent; safe to call on seed and bot/dashboard boot.
+ */
+export async function migrateLegacyRegistrationChannels(): Promise<{
+  migrated: boolean;
+  value: string | null;
+}> {
+  const legacy = await prisma.systemSetting.findUnique({ where: { key: "registrations.channelId" } });
+  if (!legacy) return { migrated: false, value: null };
+
+  const decoded = fromJsonValue(legacy.value);
+  const parsed = snowflakeSchema.safeParse(decoded);
+  const value = parsed.success ? parsed.data : null;
+
+  if (value) {
+    for (const key of ["registrations.vehicleChannelId", "registrations.uniformChannelId"] as const) {
+      const current = await getSetting(key);
+      if (current === null) {
+        await prisma.systemSetting.upsert({
+          where: { key },
+          create: { key, value: toJsonValue(value) },
+          update: { value: toJsonValue(value) },
+        });
+      }
+    }
+  }
+
+  await prisma.systemSetting.delete({ where: { key: "registrations.channelId" } });
+  return { migrated: true, value };
 }
 
 /**

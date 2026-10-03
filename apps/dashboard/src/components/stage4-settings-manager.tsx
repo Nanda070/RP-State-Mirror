@@ -8,7 +8,8 @@ import { ToggleRow } from "./toggle-row";
 
 export type Stage4SettingsValues = {
   "registrations.ttlDays": number;
-  "registrations.channelId": string | null;
+  "registrations.vehicleChannelId": string | null;
+  "registrations.uniformChannelId": string | null;
   "registrations.coordinatorRoleIds": string[];
   "transfers.channelId": string | null;
   "transfers.approvalDmText": string;
@@ -81,7 +82,8 @@ export function Stage4SettingsManager({
         body: JSON.stringify({
           settings: {
             ...values,
-            "registrations.channelId": values["registrations.channelId"] || null,
+            "registrations.vehicleChannelId": values["registrations.vehicleChannelId"] || null,
+            "registrations.uniformChannelId": values["registrations.uniformChannelId"] || null,
             "transfers.channelId": values["transfers.channelId"] || null,
             "webhooks.notifyChannelId": values["webhooks.notifyChannelId"] || null,
             "feedback.notifyChannelId": values["feedback.notifyChannelId"] || null,
@@ -130,7 +132,8 @@ export function Stage4SettingsManager({
           <>
             <h2 className="panel-title">Регистрации ТС и униформы</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              Срок действия заявок, канал на сервере ЧП и роли координаторов.
+              Подать заявку могут все. Каналы ТС и формы раздельные; координаторы общие — одобряют и
+              получают пинг в обоих каналах.
             </p>
             <label className="field">
               <span>Срок действия, дней</span>
@@ -143,18 +146,29 @@ export function Stage4SettingsManager({
               />
             </label>
             <label className="field">
-              <span>Канал заявок</span>
+              <span>Канал регистрации ТС</span>
               <ChannelSelect
-                id="registrations-channel"
-                value={values["registrations.channelId"] ?? ""}
-                onChange={(v) => patch("registrations.channelId", v || null)}
+                id="registrations-vehicle-channel"
+                value={values["registrations.vehicleChannelId"] ?? ""}
+                onChange={(v) => patch("registrations.vehicleChannelId", v || null)}
+                channels={channels}
+                guildDiscordId={incidentGuildId}
+                emptyLabel={channelEmpty}
+              />
+            </label>
+            <label className="field">
+              <span>Канал регистрации формы (униформы)</span>
+              <ChannelSelect
+                id="registrations-uniform-channel"
+                value={values["registrations.uniformChannelId"] ?? ""}
+                onChange={(v) => patch("registrations.uniformChannelId", v || null)}
                 channels={channels}
                 guildDiscordId={incidentGuildId}
                 emptyLabel={channelEmpty}
               />
             </label>
             <div className="field">
-              <span className="field-label">Роли координаторов</span>
+              <span className="field-label">Координаторы регистраций</span>
               <RoleChipPicker
                 roles={incidentRoles}
                 selected={values["registrations.coordinatorRoleIds"]}

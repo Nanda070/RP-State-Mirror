@@ -1,7 +1,7 @@
 import { AuditActorType, prisma } from "@mirror/db";
 import { writeAuditEvent, type AuditContext } from "./audit.js";
 import { toJsonValue } from "./db.js";
-import { SETTING_KEYS, settingDefinitions } from "./settings.js";
+import { SETTING_KEYS, migrateLegacyRegistrationChannels, settingDefinitions } from "./settings.js";
 
 export interface FactionSeed {
   code: string;
@@ -59,6 +59,10 @@ export async function seedFoundation(options: { superAdminUserIds: readonly stri
       result.settingsCreated += 1;
     });
   }
+
+  // Prefer copying the legacy shared channel to both new keys so nothing breaks
+  // until an admin sets vehicle vs uniform channels apart in the dashboard.
+  await migrateLegacyRegistrationChannels();
 
   for (const discordId of options.superAdminUserIds) {
     await prisma.$transaction(async (tx) => {

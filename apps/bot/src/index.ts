@@ -9,6 +9,7 @@ import {
   expireRegistrations,
   markGuildUnavailable,
   markMemberLeft,
+  migrateLegacyRegistrationChannels,
   parseEnv,
   syncGuildChannels,
   syncGuildRoles,
@@ -57,6 +58,7 @@ function guarded(name: string, fn: () => Promise<unknown>) {
 client.once(Events.ClientReady, (ready) => {
   log.info({ user: ready.user.tag, guilds: ready.guilds.cache.size }, "connected to Discord");
   guarded("ready", async () => {
+    await migrateLegacyRegistrationChannels();
     await syncAllGuilds(ready, log);
     const { ALL_COMMANDS, registerCommands } = await import("./commands.js");
     await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);

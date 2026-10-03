@@ -5,7 +5,7 @@
 import { RecordStatus, RoleMappingKind, prisma } from "@mirror/db";
 import { z } from "zod";
 import { snowflakeSchema } from "./env.js";
-import { getSetting } from "./settings.js";
+import { getSetting, migrateLegacyRegistrationChannels } from "./settings.js";
 
 export const factionDeliverySettingsSchema = z
   .object({
@@ -303,6 +303,31 @@ export async function resolveWantedDelivery(): Promise<DeliveryTarget> {
     return {
       kind: "unconfigured",
       reason: "Канал розыска или сервер ЧП ещё не настроены",
+    };
+  }
+  return {
+    kind: "channel",
+    guildDiscordId: incidentGuildId,
+    channelDiscordId: channelId,
+  };
+}
+
+/** Registration review channel on ЧП — vehicle and uniform use separate settings. */
+export async function resolveRegistrationDelivery(
+  kind: "VEHICLE" | "UNIFORM",
+): Promise<DeliveryTarget> {
+  await migrateLegacyRegistrationChannels();
+  const channelKey =
+    kind === "VEHICLE" ? "registrations.vehicleChannelId" : "registrations.uniformChannelId";
+  const [channelId, incidentGuildId] = await Promise.all([
+    getSetting(channelKey),
+    getSetting("core.incidentGuildId"),
+  ]);
+  if (!channelId || !incidentGuildId) {
+    const label = kind === "VEHICLE" ? "регистрации ТС" : "регистрации формы (униформы)";
+    return {
+      kind: "unconfigured",
+      reason: `Канал ${label} или сервер ЧП ещё не настроены`,
     };
   }
   return {

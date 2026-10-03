@@ -19,7 +19,8 @@ import { requireSystemSettings } from "@/lib/session";
 
 const settingKeys = [
   "registrations.ttlDays",
-  "registrations.channelId",
+  "registrations.vehicleChannelId",
+  "registrations.uniformChannelId",
   "registrations.coordinatorRoleIds",
   "transfers.channelId",
   "transfers.approvalDmText",

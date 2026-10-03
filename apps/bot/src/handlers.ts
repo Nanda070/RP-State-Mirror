@@ -38,6 +38,7 @@ import {
   resolveWantedPingRoleIds,
   resolveFineDelivery,
   resolveFinePaidDelivery,
+  resolveRegistrationDelivery,
   resolveWantedDelivery,
   sameDeliveryChannel,
   readMediaFile,
@@ -728,11 +729,15 @@ const registrationReview: JobHandler = async (payload, { client, log }) => {
     return { status: "skipped", reason: "already posted", messageId: registration.reviewMessageId };
   }
 
-  const incidentGuildId = await getSetting("core.incidentGuildId");
-  const channelId = await getSetting("registrations.channelId");
-  if (!incidentGuildId || !channelId) return { status: "deferred", reason: "Канал заявок ЧП не настроен." };
+  const target = await resolveRegistrationDelivery(registration.kind === "VEHICLE" ? "VEHICLE" : "UNIFORM");
+  if (target.kind !== "channel") {
+    return {
+      status: "deferred",
+      reason: target.kind === "unconfigured" ? target.reason : "Канал заявок ЧП не настроен.",
+    };
+  }
 
-  const channel = await fetchReviewChannel(client, incidentGuildId, channelId);
+  const channel = await fetchReviewChannel(client, target.guildDiscordId, target.channelDiscordId);
   const photo = registration.evidenceFileIds[0] ? await readMediaFile(registration.evidenceFileIds[0]) : null;
   const pingRoleIds = await getSetting("registrations.coordinatorRoleIds");
   const message = await channel.send({
@@ -744,7 +749,7 @@ const registrationReview: JobHandler = async (payload, { client, log }) => {
     files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
   });
   await setRegistrationReviewMessage(registrationId, {
-    guildId: incidentGuildId,
+    guildId: target.guildDiscordId,
     channelId: channel.id,
     messageId: message.id,
   });

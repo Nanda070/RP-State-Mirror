@@ -95,6 +95,9 @@ docker-compose.test.yml изолированный тестовый контур
 | `app.timezone` | `Europe/Moscow` | часовой пояс отображения |
 | `documents.ttlHours` | `72` | срок жизни документов |
 | `registrations.ttlDays` | `31` | через сколько дней регистрация ТС или формы неактуальна |
+| `registrations.vehicleChannelId` | `null` | канал ЧП для заявок `/регистрация-тс` |
+| `registrations.uniformChannelId` | `null` | канал ЧП для заявок `/регистрация-формы` |
+| `registrations.coordinatorRoleIds` | `[]` | общие роли координаторов (одобрение/отказ и пинг для обоих каналов) |
 | `tokens.expandThresholdPercent` | `10` | при каком остатке свободных номеров токены удлиняются на цифру |
 | `tokens.finderRoleIds` | `[]` | роли (ОГП/Юстиция), которым доступен `/token find` |
 | `transfers.approvalDmText` | текст про холл/собеседование | ЛС игроку после одобрения перевода обеими фракциями |
