@@ -73,19 +73,24 @@ export async function resolveFactionLeaderRoleIds(factionCode: string): Promise<
 
 /**
  * Roles to ping when posting a transfer application (§4.8).
- * Uses `transfers.pingRoleIds` and keeps only roles present in the posting guild
- * snapshot — never mentions missing roles (avoids Discord `@unknown-role`).
+ * Uses `transfers.pingRoleIds` and keeps only roles present on the ЧП guild
+ * (`core.incidentGuildId`) — never GOV, never missing roles (`@unknown-role`).
  */
-export async function resolveTransferPingRoleIds(guildDiscordId: string): Promise<string[]> {
-  const configured = await getSetting("transfers.pingRoleIds");
-  if (configured.length === 0) return [];
+export async function resolveTransferPingRoleIds(
+  _guildDiscordId?: string,
+): Promise<string[]> {
+  const [configured, incidentGuildDiscordId] = await Promise.all([
+    getSetting("transfers.pingRoleIds"),
+    getSetting("core.incidentGuildId"),
+  ]);
+  if (configured.length === 0 || !incidentGuildDiscordId) return [];
 
   const snowflake = (id: string) => /^\d{17,20}$/.test(id);
   const candidates = [...new Set(configured.filter(snowflake))];
   if (candidates.length === 0) return [];
 
   const guild = await prisma.guild.findFirst({
-    where: { discordId: guildDiscordId, status: RecordStatus.ACTIVE },
+    where: { discordId: incidentGuildDiscordId, status: RecordStatus.ACTIVE },
     select: { id: true },
   });
   if (!guild) return [];

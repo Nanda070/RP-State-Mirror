@@ -224,14 +224,14 @@ export function Stage4SettingsManager({
             <div className="field">
               <span className="field-label">Кого тегать при заявке на перевод</span>
               <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
-                Роли серверов GOV и ЧП. В сообщении тегаются только роли сервера канала переводов
-                (остальные пропускаются, без @unknown-role).
+                Только роли сервера ЧП. В заявке тегаются выбранные роли, которые есть в снимке ЧП
+                (чужие id пропускаются, без @unknown-role).
               </p>
               <RoleChipPicker
-                roles={finderRoles}
+                roles={incidentRoles}
                 selected={values["transfers.pingRoleIds"]}
                 onChange={(next) => patch("transfers.pingRoleIds", next)}
-                emptyHint={finderRolesEmpty}
+                emptyHint={incidentRolesEmpty}
               />
             </div>
             <label className="field">

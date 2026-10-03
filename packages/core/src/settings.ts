@@ -89,12 +89,12 @@ export const settingDefinitions = {
   "transfers.channelId": defineSetting(
     snowflakeSchema.nullable(),
     null,
-    "Канал для заявок переводов между фракциями",
+    "Канал на сервере ЧП для заявок переводов между фракциями",
   ),
   "transfers.pingRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],
-    "Роли для пинга при новой заявке на перевод (в канале переводов; только роли сервера канала реально тегаются)",
+    "Роли на сервере ЧП: пинг при новой заявке на перевод (тегаются только роли из снимка ЧП)",
   ),
   "transfers.approvalDmText": defineSetting(
     z.string().min(1).max(2000),

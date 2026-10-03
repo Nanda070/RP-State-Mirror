@@ -372,9 +372,9 @@ describe("stage 3 delivery + job enqueue", () => {
     expect(pingIds).not.toContain("400000000000000004"); // shared Фракция skipped
   });
 
-  it("resolves transfer ping roles from settings and skips roles missing in guild", async () => {
+  it("resolves transfer ping roles from ЧП settings and skips roles missing on ЧП", async () => {
     await seedFoundation({ superAdminUserIds: [] });
-    expect(await resolveTransferPingRoleIds("200000000000000199")).toEqual([]);
+    expect(await resolveTransferPingRoleIds()).toEqual([]);
 
     const incident = await prisma.guild.create({
       data: {
@@ -391,14 +391,18 @@ describe("stage 3 delivery + job enqueue", () => {
         status: RecordStatus.ACTIVE,
       },
     });
+    await setSetting("core.incidentGuildId", incident.discordId, ctx);
     await setSetting(
       "transfers.pingRoleIds",
       ["400000000000000111", "400000000000000999"],
       ctx,
     );
 
-    expect(await resolveTransferPingRoleIds(incident.discordId)).toEqual(["400000000000000111"]);
-    expect(await resolveTransferPingRoleIds("200000000000000000")).toEqual([]);
+    expect(await resolveTransferPingRoleIds()).toEqual(["400000000000000111"]);
+    // Argument is ignored — always resolves against ЧП, never a GOV guild snapshot.
+    expect(await resolveTransferPingRoleIds("200000000000000000")).toEqual([
+      "400000000000000111",
+    ]);
   });
 
   it("stores and resolves seniorRoleId / ping role from faction delivery settings", async () => {
