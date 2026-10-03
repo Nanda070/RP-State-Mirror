@@ -241,49 +241,21 @@ export const personnelCommand = factionOption(
   { required: false, description: "Код фракции (если не из вашей роли)" },
 );
 
-export const characterCommand = new SlashCommandBuilder()
-  .setName("персонаж")
-  .setDescription("Управление своими персонажами")
-  .addSubcommand((sub) =>
-    sub
-      .setName("создать")
-      .setDescription("Добавить персонажа")
-      .addIntegerOption((o) => o.setName("слот").setDescription("Слот от 1 до 3").setRequired(true).setMinValue(1).setMaxValue(3))
-      .addStringOption((o) => o.setName("статик").setDescription("Уникальный статик персонажа").setRequired(true).setMaxLength(32))
-      .addStringOption((o) => o.setName("имя").setDescription("Имя персонажа").setRequired(true).setMaxLength(128))
-      .addStringOption((o) =>
-        o
-          .setName("фракция")
-          .setDescription("Код фракции (необязательно)")
-          .setMaxLength(32)
-          .setAutocomplete(true),
-      )
-      .addStringOption((o) => o.setName("отдел").setDescription("Отдел (необязательно)").setMaxLength(128)),
-  )
-  .addSubcommand((sub) => sub.setName("список").setDescription("Показать своих персонажей"))
-  .addSubcommand((sub) =>
-    sub
-      .setName("статик")
-      .setDescription("Изменить статик персонажа (только администратор)")
-      .addStringOption((o) => o.setName("текущий").setDescription("Текущий статик").setRequired(true).setMaxLength(32))
-      .addStringOption((o) => o.setName("новый").setDescription("Новый статик").setRequired(true).setMaxLength(32)),
-  );
-
 export const tokenCommand = new SlashCommandBuilder()
-  .setName("token")
+  .setName("нашивка")
   .setDescription("Управление номерами нашивок")
   .addSubcommand((sub) =>
     sub
-      .setName("receive")
+      .setName("получить")
       .setDescription("Получить нашивку по статику (персонаж создаётся при необходимости)")
       .addStringOption((o) =>
         o.setName("статик").setDescription("Статик — единственное поле; персонаж создаётся автоматически").setRequired(true).setMaxLength(32),
       ),
   )
-  .addSubcommand((sub) => sub.setName("list").setDescription("Показать все ваши нашивки и даты получения"))
+  .addSubcommand((sub) => sub.setName("список").setDescription("Показать все ваши нашивки и даты получения"))
   .addSubcommand((sub) =>
     sub
-      .setName("find")
+      .setName("найти")
       .setDescription("Найти владельца нашивки (ОГП/Юстиция/админы)")
       .addStringOption((o) =>
         o.setName("запрос").setDescription("Номер нашивки, Discord ID или статик").setRequired(true).setMaxLength(64),
@@ -291,7 +263,7 @@ export const tokenCommand = new SlashCommandBuilder()
   )
   .addSubcommand((sub) =>
     sub
-      .setName("remove")
+      .setName("снять")
       .setDescription("Отозвать номер нашивки (только администратор)")
       .addStringOption((o) => o.setName("номер").setDescription("Номер нашивки").setRequired(true).setMaxLength(16)),
   );
@@ -339,9 +311,9 @@ export const transferCommand = transferFactionOption(
   .addAttachmentOption((o) => o.setName("документы").setDescription("Фото документов (изображение до 10 МБ)").setRequired(true));
 
 export const webhookRequestCommand = new SlashCommandBuilder()
-  .setName("создать-webhook")
-  .setDescription("Запросить webhook для будущей формы")
-  .addChannelOption((o) => o.setName("канал").setDescription("Канал для webhook").setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+  .setName("создать-вебхук")
+  .setDescription("Запросить вебхук для будущей формы")
+  .addChannelOption((o) => o.setName("канал").setDescription("Канал для вебхука").setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
   .addStringOption((o) => o.setName("описание").setDescription("Для чего нужна форма").setRequired(true).setMaxLength(2000));
 
 export const blacklistAddCommand = new SlashCommandBuilder()
@@ -406,7 +378,6 @@ export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   fineCommand.toJSON(),
   finePaidCommand.toJSON(),
   personnelCommand.toJSON(),
-  characterCommand.toJSON(),
   tokenCommand.toJSON(),
   vehicleRegistrationCommand.toJSON(),
   uniformRegistrationCommand.toJSON(),

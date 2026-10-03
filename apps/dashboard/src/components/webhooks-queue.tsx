@@ -54,7 +54,7 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
       <section className="panel stack">
         <h2 className="panel-title">Очередь запросов webhook</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          Запросы из <code>/создать-webhook</code>. URL создаёт бот — подставьте его при сборке
+          Запросы из <code>/создать-вебхук</code>. URL создаёт бот — подставьте его при сборке
           Discord-формы, опубликуйте кнопку формы (чтобы в ЛС была ссылка), затем отметьте «Форма
           собрана» — заявитель получит уведомление в личные сообщения.
         </p>

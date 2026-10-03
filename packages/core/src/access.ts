@@ -61,7 +61,7 @@ export function canManageModules(identity: Pick<Identity, "adminLevel" | "isSupe
   return identity.isSuperAdmin || hasMinAdminLevel(identity, AdminLevel.ADMIN);
 }
 
-/** /token find: admins, or holders of roles from `tokens.finderRoleIds` (ОГП/Юстиция). */
+/** /нашивка найти: admins, or holders of roles from `tokens.finderRoleIds` (ОГП/Юстиция). */
 export function canFindTokens(
   identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
   heldRoleIds: readonly string[],

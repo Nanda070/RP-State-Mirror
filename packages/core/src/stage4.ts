@@ -296,7 +296,7 @@ export const receiveTokenForStaticSchema = z.object({
 export type ReceiveTokenForStaticInput = z.infer<typeof receiveTokenForStaticSchema>;
 
 /**
- * `/token receive` and the receive button: user enters only a static.
+ * `/нашивка получить` and the receive button: user enters only a static.
  * Creates an ACTIVE character in the next free slot when needed, then issues a badge.
  */
 export async function receiveTokenForStatic(input: ReceiveTokenForStaticInput, context: AuditContext) {

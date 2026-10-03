@@ -30,7 +30,7 @@ export const settingDefinitions = {
   "tokens.finderRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],
-    "Роли на серверах GOV и ЧП (ОГП/Юстиция): право /token find",
+    "Роли на серверах GOV и ЧП (ОГП/Юстиция): право /нашивка найти",
   ),
   "backups.retentionDays": defineSetting(z.number().int().positive(), 14, "Срок хранения бэкапов, дни"),
   "fines.dueDays": defineSetting(z.number().int().positive(), 14, "Срок оплаты штрафа, дни"),
@@ -88,7 +88,7 @@ export const settingDefinitions = {
   "webhooks.notifyChannelId": defineSetting(
     snowflakeSchema.nullable(),
     null,
-    "Канал уведомлений админам о новых запросах форм (/создать-webhook)",
+    "Канал уведомлений админам о новых запросах форм (/создать-вебхук)",
   ),
   "feedback.notifyChannelId": defineSetting(
     snowflakeSchema.nullable(),

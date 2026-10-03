@@ -120,7 +120,7 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/webhooks",
       title: "Webhooks",
-      description: "Очередь запросов /создать-webhook.",
+      description: "Очередь запросов /создать-вебхук.",
       status: "ready",
       meta: "Администрирование",
     },

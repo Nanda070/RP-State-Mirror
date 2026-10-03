@@ -23,7 +23,6 @@ import {
   canManageModules,
   canSearchIcBlacklist,
   closeWanted,
-  createCharacter,
   createRegistration,
   createTransfer,
   createWebhookRequest,
@@ -32,7 +31,6 @@ import {
   findActiveIcBlacklist,
   findTokens,
   formatTokenDisplay,
-  listActiveIcBlacklistForStatics,
   listTokensForUser,
   tokenStatusLabelRu,
   createDocument,
@@ -60,7 +58,6 @@ import {
   ensureUserByDiscordId,
   formatUserError,
   receiveTokenForStatic,
-  listCharacters,
   PERSONNEL_EVENT_LABELS_RU,
   PERSONNEL_EVENT_TYPES,
   resolveDocumentResponseDelivery,
@@ -74,7 +71,6 @@ import {
   resolveWantedDelivery,
   revokeToken,
   sameDeliveryChannel,
-  updateCharacterStaticId,
   type Identity,
   type Logger,
   type PersonnelEventType,
@@ -305,10 +301,7 @@ export async function handleSlashCommand(
       case "кадровый-аудит":
         await handlePersonnel(interaction, ctx);
         break;
-      case "персонаж":
-        await handleCharacter(interaction, ctx);
-        break;
-      case "token":
+      case "нашивка":
         await handleToken(interaction, ctx);
         break;
       case "регистрация-тс":
@@ -318,7 +311,7 @@ export async function handleSlashCommand(
       case "перевод-фракции":
         await handleTransfer(interaction, ctx);
         break;
-      case "создать-webhook":
+      case "создать-вебхук":
         await handleWebhookRequest(interaction, ctx);
         break;
       case "чс-гос":
@@ -351,84 +344,10 @@ export async function handleSlashCommand(
   }
 }
 
-async function handleCharacter(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
-  const { user } = await ensureUserByDiscordId(interaction.user.id);
-  const subcommand = interaction.options.getSubcommand();
-  if (subcommand === "создать") {
-    const factionRaw = interaction.options.getString("фракция");
-    const factionCode = factionRaw ? await requireActiveFaction(factionRaw) : undefined;
-    const department = interaction.options.getString("отдел")?.trim() || undefined;
-    const character = await createCharacter(
-      {
-        userId: user.id,
-        slot: interaction.options.getInteger("слот", true),
-        staticId: interaction.options.getString("статик", true),
-        name: interaction.options.getString("имя", true),
-        ...(factionCode ? { factionCode } : {}),
-        ...(department ? { department } : {}),
-      },
-      auditFromInteraction(interaction),
-    );
-    const extras = [
-      character.factionCode ? `фракция **${character.factionCode}**` : null,
-      character.department ? `отдел **${character.department}**` : null,
-    ]
-      .filter(Boolean)
-      .join(", ");
-    await interaction.reply(
-      ephemeral(
-        `Персонаж **${character.name}** создан. Статик: **${character.staticId}**.${extras ? ` ${extras}.` : ""}`,
-      ),
-    );
-    return;
-  }
-  if (subcommand === "статик") {
-    const identity = await loadIdentity(interaction.user.id, ctx);
-    if (!canManageModules(identity)) {
-      await interaction.reply(ephemeral("Изменить статик могут только администраторы."));
-      return;
-    }
-    const updated = await updateCharacterStaticId(
-      {
-        currentStaticId: interaction.options.getString("текущий", true),
-        newStaticId: interaction.options.getString("новый", true),
-      },
-      auditFromInteraction(interaction),
-    );
-    await interaction.reply(ephemeral(`Статик персонажа **${updated.name}** изменён на **${updated.staticId}**.`));
-    return;
-  }
-
-  const characters = await listCharacters(user.id);
-  const flagged = await listActiveIcBlacklistForStatics(characters.map((c) => c.staticId));
-  await interaction.reply(
-    ephemeral(
-      characters.length === 0
-        ? "Персонажей пока нет."
-        : characters
-            .map((character) => {
-              const token = character.tokens[0];
-              const bl = flagged.get(character.staticId);
-              return [
-                `${character.slot}. **${character.name}** · статик ${character.staticId}`,
-                character.factionCode || character.department
-                  ? `${character.factionCode ?? "—"} / ${character.department ?? "—"}`
-                  : null,
-                token ? `нашивка ${formatTokenDisplay(token.number)}` : null,
-                bl ? `⚠ в IC чёрном списке (${bl.number})` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-            })
-            .join("\n"),
-    ),
-  );
-}
-
 async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   const { user } = await ensureUserByDiscordId(interaction.user.id);
   const subcommand = interaction.options.getSubcommand();
-  if (subcommand === "remove") {
+  if (subcommand === "снять") {
     const identity = await loadIdentity(interaction.user.id, ctx);
     if (!canManageModules(identity)) {
       await interaction.reply(ephemeral("Отозвать нашивку могут только администраторы."));
@@ -438,7 +357,7 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     await interaction.reply(ephemeral("Нашивка отозвана."));
     return;
   }
-  if (subcommand === "find") {
+  if (subcommand === "найти") {
     const identity = await loadIdentity(interaction.user.id, ctx);
     const finderRoleIds = await getSetting("tokens.finderRoleIds");
     // Cross-guild: ОГП/Юстиция may live on GOV while the command runs on ЧП (or vice versa).
@@ -465,7 +384,7 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     return;
   }
 
-  if (subcommand === "list") {
+  if (subcommand === "список") {
     const items = await listTokensForUser(user.id);
     if (items.length === 0) {
       await interaction.reply(ephemeral("У вас пока нет нашивок."));
@@ -489,7 +408,7 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     return;
   }
 
-  // receive — create character from static if needed, then issue badge
+  // получить — create character from static if needed, then issue badge
   const staticId = interaction.options.getString("статик", true);
   const identity = await loadIdentity(interaction.user.id, ctx);
   const factionCode = primaryFactionCode(identity);

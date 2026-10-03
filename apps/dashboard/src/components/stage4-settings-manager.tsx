@@ -287,7 +287,7 @@ export function Stage4SettingsManager({
               />
             </label>
             <div className="field">
-              <span className="field-label">Роли /token find</span>
+              <span className="field-label">Роли /нашивка найти</span>
               <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
                 Роли серверов GOV и ЧП, которым разрешён поиск нашивок.
               </p>

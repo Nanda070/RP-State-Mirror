@@ -12,7 +12,7 @@ export default async function SettingsWebhooksPage() {
       <div className="section-head">
         <h1>Webhooks</h1>
         <p className="muted">
-          Очередь запросов <code>/создать-webhook</code> и переход к сборке Discord-форм.
+          Очередь запросов <code>/создать-вебхук</code> и переход к сборке Discord-форм.
         </p>
         <div className="status-link-row">
           <span className="stub-badge" data-ready>

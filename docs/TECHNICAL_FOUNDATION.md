@@ -99,9 +99,9 @@ docker-compose.test.yml изолированный тестовый контур
 | `registrations.uniformChannelId` | `null` | канал ЧП для заявок `/регистрация-формы` |
 | `registrations.coordinatorRoleIds` | `[]` | общие роли координаторов (одобрение/отказ и пинг для обоих каналов) |
 | `tokens.expandThresholdPercent` | `10` | при каком остатке свободных номеров токены удлиняются на цифру |
-| `tokens.finderRoleIds` | `[]` | роли (ОГП/Юстиция), которым доступен `/token find` |
+| `tokens.finderRoleIds` | `[]` | роли (ОГП/Юстиция), которым доступен `/нашивка найти` |
 | `transfers.approvalDmText` | текст про холл/собеседование | ЛС игроку после одобрения перевода обеими фракциями |
-| `webhooks.notifyChannelId` | `null` | канал уведомлений админам о `/создать-webhook` |
+| `webhooks.notifyChannelId` | `null` | канал уведомлений админам о `/создать-вебхук` |
 | `icBlacklist.managerRoleIds` | `[]` | роли GOV: добавление/снятие IC чёрного списка |
 | `icBlacklist.searchRoleIds` | `[]` | роли с правом `/чс-найти` |
 | `backups.retentionDays` | `14` | срок хранения бэкапов |
