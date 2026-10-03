@@ -31,7 +31,6 @@ function withFooter(embed: Omit<ClassicEmbed, "type" | "footer">, now?: Date): C
 
 export type RegistrationReviewInput = {
   kind: "VEHICLE" | "UNIFORM";
-  characterName: string;
   staticId: string;
   applicantDiscordId: string | null;
   payload: Record<string, unknown>;
@@ -59,7 +58,6 @@ function registrationDataLines(input: RegistrationReviewInput): string[] {
 export function makeRegistrationReviewEmbed(input: RegistrationReviewInput): ClassicEmbed {
   if (input.decision === "APPROVED") return makeRegistrationCardEmbed(input);
   const lines = [
-    `**Персонаж:** ${input.characterName}`,
     `**Статик:** ${input.staticId}`,
     `**Заявитель:** ${mention(input.applicantDiscordId)}`,
     ...registrationDataLines(input),
@@ -85,7 +83,7 @@ export function makeRegistrationReviewEmbed(input: RegistrationReviewInput): Cla
 export function makeRegistrationCardEmbed(input: RegistrationReviewInput): ClassicEmbed {
   const expired = Boolean(input.expired);
   const lines = [
-    `**Персонаж:** ${input.characterName} (${input.staticId})`,
+    `**Статик:** ${input.staticId}`,
     ...registrationDataLines(input),
     `**Одобрил:** ${mention(input.decidedByDiscordId)}`,
     expired

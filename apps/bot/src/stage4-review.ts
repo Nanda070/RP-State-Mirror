@@ -23,7 +23,7 @@ import { classicToEmbed } from "./embed-payload.js";
 export type ReviewMessagePayload = Required<Pick<MessageEditOptions, "embeds" | "components">>;
 
 export function loadRegistration(id: string) {
-  return prisma.registration.findUnique({ where: { id }, include: { character: { include: { user: true } } } });
+  return prisma.registration.findUnique({ where: { id } });
 }
 
 export function loadTransfer(id: string) {
@@ -62,9 +62,8 @@ export function renderRegistrationReview(
   const payload = jsonRecord(registration.payload);
   const embed = makeRegistrationReviewEmbed({
     kind: registration.kind,
-    characterName: registration.character.name,
-    staticId: registration.character.staticId,
-    applicantDiscordId: registration.character.user.discordId,
+    staticId: registration.staticId,
+    applicantDiscordId: registration.applicantDiscordId,
     payload,
     decision: registration.decision,
     decidedByDiscordId: registration.decidedByDiscordId,

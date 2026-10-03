@@ -531,8 +531,12 @@ model Token {
 model Registration {
   id                 String           @id @default(cuid())
   kind               RegistrationKind
-  characterId        String           @map("character_id")
-  character          Character        @relation(fields: [characterId], references: [id])
+  /// Optional legacy link; vehicle/uniform registration does not require a Character/token.
+  characterId        String?          @map("character_id")
+  character          Character?       @relation(fields: [characterId], references: [id])
+  /// Free-text static from the application (not looked up against characters/tokens).
+  staticId           String           @map("static_id")
+  applicantDiscordId String           @map("applicant_discord_id")
   payload            Json
   /// Normalized plate for VEHICLE; unique among ACTIVE vehicle registrations (partial index in SQL).
   plate              String?
@@ -553,6 +557,7 @@ model Registration {
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
 
+  @@index([staticId, kind, status])
   @@index([characterId, kind, status])
   @@index([decision, status])
   @@index([status, expiresAt])

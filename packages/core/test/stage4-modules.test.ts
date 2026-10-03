@@ -48,13 +48,16 @@ async function createTestTransfer(discordId: string) {
 }
 
 async function createVehicleRegistration(discordId: string) {
-  const user = await createUser(discordId);
-  const character = await createCharacter({ userId: user.id, slot: 1, staticId: `S-${discordId}`, name: "Driver" }, context);
   const registration = await createRegistration(
-    { kind: RegistrationKind.VEHICLE, characterId: character.id, payload: { model: "Sultan", plate: "A123AA" } },
+    {
+      kind: RegistrationKind.VEHICLE,
+      staticId: `S-${discordId}`,
+      applicantDiscordId: discordId,
+      payload: { model: "Sultan", plate: "A123AA" },
+    },
     context,
   );
-  return { user, character, registration };
+  return { registration };
 }
 
 describe("stage 4 modules", () => {
@@ -138,11 +141,16 @@ describe("stage 4 modules", () => {
     expect(stored.decision).not.toBe(DecisionStatus.PENDING);
   });
 
-  it("lets the character apply again after a rejection", async () => {
-    const { character, registration } = await createVehicleRegistration("220");
+  it("lets the applicant apply again after a rejection", async () => {
+    const { registration } = await createVehicleRegistration("220");
     await decideRegistration(registration.id, DecisionStatus.REJECTED, "admin", "фото нечитаемо", context);
     const next = await createRegistration(
-      { kind: RegistrationKind.VEHICLE, characterId: character.id, payload: { model: "Sultan", plate: "B1" } },
+      {
+        kind: RegistrationKind.VEHICLE,
+        staticId: "S-220",
+        applicantDiscordId: "220",
+        payload: { model: "Sultan", plate: "B1" },
+      },
       context,
     );
     expect(next.decision).toBe(DecisionStatus.PENDING);

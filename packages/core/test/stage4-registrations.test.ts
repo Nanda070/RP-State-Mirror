@@ -4,7 +4,6 @@ import {
   MODULE_JOB_TYPES,
   MediaValidationError,
   assertDiscordMediaUrl,
-  createCharacter,
   createRegistration,
   decideRegistration,
   expireRegistrations,
@@ -19,14 +18,15 @@ afterAll(() => prisma.$disconnect());
 
 const context = { actorType: AuditActorType.SYSTEM, source: "stage4.registrations.test" } as const;
 
-async function character(discordId: string) {
-  const user = await prisma.user.create({ data: { discordId } });
-  return createCharacter({ userId: user.id, slot: 1, staticId: `S-${discordId}`, name: `Driver ${discordId}` }, context);
-}
-
-function vehicle(characterId: string, plate: string) {
+function vehicle(staticId: string, plate: string, applicantDiscordId = "applicant-1") {
   return createRegistration(
-    { kind: RegistrationKind.VEHICLE, characterId, payload: { model: "Sultan" }, plate },
+    {
+      kind: RegistrationKind.VEHICLE,
+      staticId,
+      applicantDiscordId,
+      payload: { model: "Sultan" },
+      plate,
+    },
     context,
   );
 }
@@ -79,37 +79,46 @@ describe("media guards", () => {
 });
 
 describe("vehicle registrations", () => {
+  it("creates without a Character/token and stores free-text static", async () => {
+    const registration = await vehicle("S-FREE", "Z9");
+    expect(registration.staticId).toBe("S-FREE");
+    expect(registration.applicantDiscordId).toBe("applicant-1");
+    expect(registration.characterId).toBeNull();
+    expect(await prisma.character.count()).toBe(0);
+    expect(await prisma.token.count()).toBe(0);
+  });
+
   it("normalizes plates and rejects a plate held by another active registration", async () => {
     expect(normalizePlate(" a 123 bc ")).toBe("A123BC");
     expect(() => normalizePlate("!")).toThrow(/Госномер/);
-    const first = await character("500");
-    const second = await character("501");
-    const registration = await vehicle(first.id, "a123bc");
+    const registration = await vehicle("S-500", "a123bc");
     expect(registration.plate).toBe("A123BC");
-    await expect(vehicle(second.id, "A 123 BC")).rejects.toThrow(/уже занят/);
+    await expect(vehicle("S-501", "A 123 BC")).rejects.toThrow(/уже занят/);
 
     await decideRegistration(registration.id, DecisionStatus.REJECTED, "admin", "нет", context);
-    expect((await vehicle(second.id, "A123BC")).plate).toBe("A123BC");
+    expect((await vehicle("S-501", "A123BC")).plate).toBe("A123BC");
   });
 
-  it("requires a catalog model only when the catalog is not empty", async () => {
+  it("accepts any non-empty free-text model name", async () => {
     expect(await resolveVehicleModelName("Anything")).toBe("Anything");
-    await prisma.vehicleModel.create({ data: { name: "Sultan RS", brand: "Karin" } });
-    expect(await resolveVehicleModelName("sultan rs")).toBe("Sultan RS");
-    await expect(resolveVehicleModelName("Anything")).rejects.toThrow(/каталоге/);
+    expect(await resolveVehicleModelName("  Sultan RS  ")).toBe("Sultan RS");
+    await expect(resolveVehicleModelName("   ")).rejects.toThrow();
+  });
+
+  it("rejects a second active registration for the same static and kind", async () => {
+    await vehicle("S-DUP", "D1");
+    await expect(vehicle("S-DUP", "D2")).rejects.toThrow(/уже есть активная/);
   });
 
   it("queues a notification job with every decision", async () => {
-    const owner = await character("510");
-    const registration = await vehicle(owner.id, "B1");
+    const registration = await vehicle("S-510", "B1");
     await decideRegistration(registration.id, DecisionStatus.REJECTED, "admin", "фото", context);
     const jobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.REGISTRATION_DECIDED } });
     expect(jobs.map((job) => job.payload)).toEqual([{ registrationId: registration.id }]);
   });
 
   it("expires approved registrations after the TTL and lets the owner register again", async () => {
-    const owner = await character("520");
-    const registration = await vehicle(owner.id, "C1");
+    const registration = await vehicle("S-520", "C1");
     const approved = await decideRegistration(registration.id, DecisionStatus.APPROVED, "admin", null, context);
     const ttlMs = (approved.expiresAt?.getTime() ?? 0) - (approved.decidedAt?.getTime() ?? 0);
     expect(Math.round(ttlMs / 86_400_000)).toBe(31);
@@ -122,6 +131,6 @@ describe("vehicle registrations", () => {
     const stored = await prisma.registration.findUniqueOrThrow({ where: { id: registration.id } });
     expect(stored.status).toBe(RecordStatus.EXPIRED);
     expect(await prisma.job.count({ where: { type: MODULE_JOB_TYPES.REGISTRATION_EXPIRED } })).toBe(1);
-    expect((await vehicle(owner.id, "C1")).decision).toBe(DecisionStatus.PENDING);
+    expect((await vehicle("S-520", "C1")).decision).toBe(DecisionStatus.PENDING);
   });
 });

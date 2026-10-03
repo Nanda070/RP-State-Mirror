@@ -306,21 +306,16 @@ export async function listVehicleModels(query = "", limit = 25) {
   });
 }
 
-/** With an empty catalog any model is accepted; otherwise the name must match an active catalog entry. */
+/** Free-text model name: non-empty, trimmed, max 128. Catalog is not required for registration. */
 export async function resolveVehicleModelName(raw: string): Promise<string> {
-  const name = nonEmptyText(128).parse(raw);
-  const catalogSize = await prisma.vehicleModel.count({ where: { status: RecordStatus.ACTIVE } });
-  if (catalogSize === 0) return name;
-  const match = await prisma.vehicleModel.findFirst({
-    where: { status: RecordStatus.ACTIVE, name: { equals: name, mode: "insensitive" } },
-  });
-  if (!match) throw new Error(`Модели «${name}» нет в каталоге разрешённых ТС. Выберите модель из подсказок.`);
-  return match.name;
+  return nonEmptyText(128).parse(raw);
 }
 
 export const createRegistrationSchema = z.object({
   kind: z.nativeEnum(RegistrationKind),
-  characterId: z.string().min(1),
+  /** Free-text static on the application — not resolved against characters/tokens. */
+  staticId: nonEmptyText(32),
+  applicantDiscordId: snowflakeLike,
   payload: z.record(z.unknown()),
   plate: z.string().optional(),
   evidenceFileIds: z.array(z.string().min(1)).max(10).default([]),
@@ -336,9 +331,9 @@ export async function createRegistration(
     data.kind === RegistrationKind.VEHICLE ? normalizePlate(data.plate ?? plateFromPayload) : null;
   return auditedMutation(context, "registration.created", "registration", async (tx) => {
     const active = await tx.registration.findFirst({
-      where: { characterId: data.characterId, kind: data.kind, status: RecordStatus.ACTIVE },
+      where: { staticId: data.staticId, kind: data.kind, status: RecordStatus.ACTIVE },
     });
-    if (active) throw new Error("У персонажа уже есть активная регистрация этого типа.");
+    if (active) throw new Error("По этому статику уже есть активная регистрация этого типа.");
     if (plate) {
       const plateTaken = await tx.registration.findFirst({
         where: { kind: RegistrationKind.VEHICLE, status: RecordStatus.ACTIVE, plate },
@@ -349,7 +344,8 @@ export async function createRegistration(
     const created = await tx.registration.create({
       data: {
         kind: data.kind,
-        characterId: data.characterId,
+        staticId: data.staticId,
+        applicantDiscordId: data.applicantDiscordId,
         payload: toJsonValue(plate ? { ...data.payload, plate } : data.payload),
         plate,
         evidenceFileIds: data.evidenceFileIds,

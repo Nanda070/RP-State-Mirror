@@ -753,7 +753,7 @@ const registrationReview: JobHandler = async (payload, { client, log }) => {
   try {
     const plate = registration.plate ? ` · ${registration.plate}` : "";
     const thread = await message.startThread({
-      name: `${registration.kind === "VEHICLE" ? "ТС" : "Униформа"} · ${registration.character.staticId}${plate}`.slice(0, 100),
+      name: `${registration.kind === "VEHICLE" ? "ТС" : "Униформа"} · ${registration.staticId}${plate}`.slice(0, 100),
       autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
     });
     threadId = thread.id;
@@ -794,7 +794,7 @@ const registrationDecided: JobHandler = async (payload, { client, log }) => {
   const registration = await loadRegistration(registrationId);
   if (!registration) throw new Error(`Registration ${registrationId} not found`);
   const what = `регистрацию ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""}`;
-  const who = `персонаж ${registration.character.name}, статик ${registration.character.staticId}`;
+  const who = `статик ${registration.staticId}`;
   if (registration.decision === "REJECTED") {
     const thread = await postToThread(
       client,
@@ -804,7 +804,7 @@ const registrationDecided: JobHandler = async (payload, { client, log }) => {
     );
     const dm = await sendDirectMessage(
       client,
-      registration.character.user.discordId,
+      registration.applicantDiscordId,
       `Ваша заявка на ${what} (${who}) отклонена.\n**Причина:** ${registration.rejectionReason ?? "—"}`,
       log,
     );
@@ -820,7 +820,7 @@ const registrationDecided: JobHandler = async (payload, { client, log }) => {
     );
     const dm = await sendDirectMessage(
       client,
-      registration.character.user.discordId,
+      registration.applicantDiscordId,
       `Ваша заявка на ${what} (${who}) одобрена. Регистрация действует до ${until}.`,
       log,
     );
@@ -841,8 +841,8 @@ const registrationExpired: JobHandler = async (payload, { client, log }) => {
   }
   const dm = await sendDirectMessage(
     client,
-    registration.character.user.discordId,
-    `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для персонажа ${registration.character.name} истёк. При необходимости подайте заявку заново.`,
+    registration.applicantDiscordId,
+    `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} истёк. При необходимости подайте заявку заново.`,
     log,
   );
   return { status: "sent", edited, dm };
