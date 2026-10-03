@@ -1,5 +1,24 @@
 # Mirror: dev blog
 
+## 2026-10-03: закрытие этапа 3
+
+### Цель
+
+Закрыть Stage 3: конструктор эмбедов + button engine, UI каналов фракций, синхронизация ЧП, реестр персонала.
+
+### Что сделано
+
+- Prisma `discord_channels`; бот синхронизирует text/announcement каналы для pickers.
+- Embed manager (`/settings/embeds`): Classic/V2, превью, save/archive, send/resend jobs, кнопки `role.toggle` / `callback` (`mirror:<action>:<id>`).
+- `/settings/factions`: каналы и вебхуки документов/кадров; wanted/fines — select из снимка ЧП.
+- ЧП sync: `cp.syncEnabled` + excluded roles + log channel; plan в core; apply в bot (events + hourly); аудит.
+- Реестр `/personnel`; токены/регистрации остаются «скоро».
+- Docs: `STAGE_3.md` и PLAN отмечены ✅.
+
+### Проверка
+
+`pnpm lint`, `pnpm check`, `pnpm build`, `pnpm test`.
+
 ## 2026-10-03: legacy slash parity + настройки модулей
 
 ### Цель

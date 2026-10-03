@@ -24,9 +24,11 @@ const NAV: NavItem[] = [
   { href: "/documents", label: "Документы", group: "Реестры", match: "prefix" },
   { href: "/wanted", label: "Розыск", group: "Реестры", match: "prefix" },
   { href: "/fines", label: "Штрафы", group: "Реестры", match: "prefix" },
+  { href: "/personnel", label: "Персонал", group: "Реестры", match: "prefix" },
   { href: "/settings", label: "Настройки", group: "Администрирование", match: "exact" },
   { href: "/settings/system", label: "Система", group: "Администрирование", match: "prefix" },
   { href: "/settings/roles", label: "Роли", group: "Администрирование", match: "prefix" },
+  { href: "/settings/factions", label: "Фракции", group: "Администрирование", match: "prefix" },
 ];
 
 const CRUMBS: { test: (path: string) => boolean; section: string; page: string }[] = [
@@ -35,9 +37,11 @@ const CRUMBS: { test: (path: string) => boolean; section: string; page: string }
   { test: (p) => p.startsWith("/documents"), section: "Реестры", page: "Документы" },
   { test: (p) => p.startsWith("/wanted"), section: "Реестры", page: "Розыск" },
   { test: (p) => p.startsWith("/fines"), section: "Реестры", page: "Штрафы" },
+  { test: (p) => p.startsWith("/personnel"), section: "Реестры", page: "Персонал" },
   { test: (p) => p === "/settings", section: "Администрирование", page: "Настройки" },
   { test: (p) => p.startsWith("/settings/system") || p.startsWith("/settings/guilds"), section: "Настройки", page: "Система" },
   { test: (p) => p.startsWith("/settings/roles"), section: "Настройки", page: "Роли" },
+  { test: (p) => p.startsWith("/settings/factions"), section: "Настройки", page: "Фракции" },
   { test: (p) => p.startsWith("/settings/documents"), section: "Настройки", page: "Документы" },
   { test: (p) => p.startsWith("/settings/wanted"), section: "Настройки", page: "Розыск" },
   { test: (p) => p.startsWith("/settings/fines"), section: "Настройки", page: "Штрафы" },

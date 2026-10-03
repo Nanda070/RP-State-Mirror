@@ -16,6 +16,9 @@ const bodySchema = z.object({
   "wanted.channelId": snowflakeSchema.nullable().optional(),
   "fines.dueDays": z.number().int().positive().optional(),
   "fines.channelId": snowflakeSchema.nullable().optional(),
+  "cp.syncEnabled": z.boolean().optional(),
+  "cp.excludedRoleIds": z.array(snowflakeSchema).optional(),
+  "cp.logChannelId": snowflakeSchema.nullable().optional(),
 });
 
 export async function GET() {
@@ -27,12 +30,18 @@ export async function GET() {
       wantedChannelId,
       finesDueDays,
       finesChannelId,
+      cpSyncEnabled,
+      cpExcludedRoleIds,
+      cpLogChannelId,
     ] = await Promise.all([
       getSetting("documents.ttlHours"),
       getSetting("wanted.enabled"),
       getSetting("wanted.channelId"),
       getSetting("fines.dueDays"),
       getSetting("fines.channelId"),
+      getSetting("cp.syncEnabled"),
+      getSetting("cp.excludedRoleIds"),
+      getSetting("cp.logChannelId"),
     ]);
     return Response.json({
       "documents.ttlHours": documentsTtlHours,
@@ -40,6 +49,9 @@ export async function GET() {
       "wanted.channelId": wantedChannelId,
       "fines.dueDays": finesDueDays,
       "fines.channelId": finesChannelId,
+      "cp.syncEnabled": cpSyncEnabled,
+      "cp.excludedRoleIds": cpExcludedRoleIds,
+      "cp.logChannelId": cpLogChannelId,
     });
   } catch (error) {
     return jsonError(error);

@@ -1,47 +1,62 @@
 # Mirror: этап 3 — базовые модули бота
 
-Статус: **в работе** (2026-10-03). Ядро модулей, slash с parity legacy-полей, jobs и реестры/настройки дашборда подняты. Не закрыт: UI каналов фракций, button Components, синхронизация ЧП, конструктор эмбедов, токены/регистрации.
+Статус: **✅ закрыт** (2026-10-03).
 
 ## Цель этапа
 
 1. Embed-менеджер и движок кнопок (фундамент для всех исходящих сообщений).
 2. Документы — **только отправка и реестр**, без шаблонов и генерации.
 3. Розыск, штрафы, кадровый аудит.
-4. Заготовки синхронизации ЧП и утилит.
+4. Синхронизация ЧП (`cp.syncEnabled`) и заготовки утилит (slash утилит — этап 4/полировка).
 5. Разделы в дашборде под каждый модуль (свои страницы настроек/реестров).
 
-## Что уже есть
+## Критерии закрытия
+
+| Критерий | Статус |
+|---|---|
+| Embed manager: create/edit Classic + V2, preview, save, list, archive | ✅ |
+| Send / resend через jobs в выбранный guild/channel (из снимка) | ✅ |
+| Button engine: `button_actions`, `mirror:<action>:<id>`, role.toggle / callback | ✅ |
+| `/settings/embeds` реально готов (не stub) | ✅ |
+| UI каналов/вебхуков фракций + wanted/fines channel pickers | ✅ |
+| ЧП sync по `cp.syncEnabled`, исключения, аудит | ✅ |
+| Реестр персонала | ✅ |
+| Токены / регистрации / персонажи | «скоро» (этап 4) |
+
+## Что есть
 
 | Слой | Содержимое |
 |---|---|
-| Prisma | модули Stage 3 + legacy-поля (`forum_link`, `term_text`, `payment_deadline_text`, …) |
-| Core | `documents`, `wanted`, `fines`, `personnel`, `factions` (autocomplete), `delivery`, `module-jobs` |
-| Settings | `documents.ttlHours`, `fines.*`, `wanted.*`, `cp.syncEnabled` |
-| Bot | 7 slash-команд; autocomplete «фракция» = все ACTIVE из БД; jobs доставки |
-| Dashboard | реестры + настройки документов/розыска/штрафов/эмбедов (**готово**); токены/регистрации — скоро |
+| Prisma | модули Stage 3 + `discord_channels` + legacy-поля |
+| Core | documents, wanted, fines, personnel, embeds, message-designs, delivery, cp-sync, factions delivery |
+| Settings | `documents.*`, `fines.*`, `wanted.*`, `cp.syncEnabled`, `cp.excludedRoleIds`, `cp.logChannelId` |
+| Bot | 7 slash; jobs доставки модулей + message_design.send/resend; buttons; channel sync; CP reconcile |
+| Dashboard | реестры documents/wanted/fines/personnel; настройки модулей, фракций, эмбедов, ЧП |
 
-Номера документов (`LSPD-001`), розысков (`W-001`) и штрафов (`F-001`) выделяются **внутри** аудируемой транзакции (в отличие от ручного номера в legacy).
+Номера документов (`LSPD-001`), розысков (`W-001`) и штрафов (`F-001`) выделяются **внутри** аудируемой транзакции.
 
 Доставка в Discord идёт через очередь jobs. Если канал/вебхук ещё не настроен — запись в БД сохраняется, ephemeral-ответ сообщает об отложенной отправке; job завершается как `deferred` без ретраев.
+
+## Конфиг доставки (без хардкода ID)
+
+- Фракция: сервер + `documentsChannelId` / `personnelChannelId` (+ опциональные webhook URL) в дашборде `/settings/factions`.
+- Система: `wanted.channelId` + `fines.channelId` на сервере ЧП; pickers из синхронизированных каналов.
+- Каналы синхронизируются ботом в `discord_channels` (text / announcement).
+
+## Синхронизация ЧП
+
+- Источник: роли `FACTION_MEMBER` / `LEADER` / `DEPUTY` на серверах фракций.
+- Цель: роли `FACTION_MEMBER` на сервере ЧП (по той же фракции).
+- Без фракционных ролей — kick с ЧП (кроме `cp.excludedRoleIds`).
+- Гейт: `cp.syncEnabled`. События join/update/remove + hourly reconcile. Аудит `cp.roles_updated` / `cp.member_kicked`.
 
 ## Документы — границы модуля
 
 - Входит: отправка документа во фракцию, ответ, реестр, TTL/`EXPIRED`.
 - Не входит: шаблоны документов, генерация текстов, конструктор бланков.
-- Поля `/пост` (legacy): `фракция`, `описание`, `уведомляемое_лицо`, `ссылка_на_форум`, `ответственный_лидер`, `ответственный_зам`.
-- Поля `/ответ`: `номер`, `личное_дело`, `видеофиксация`, `комментарий`.
-- Поля `/объявить-розыск`: `фио`, `паспорт`, `статья`, `срок`, `ссылка_на_форум`.
-- Поля `/штраф`: `фракция`, `фио`, `паспорт`, `статья`, `сумма`, `срок_оплаты` (`1m`/`24h`/`14d`).
 
-## Конфиг доставки (без хардкода ID)
+## Не входит в этап 3 (этап 4+)
 
-- Фракция `settings` JSON: `documentsChannelId`, `personnelChannelId`, опционально webhook URL.
-- Система: `wanted.channelId` + `fines.channelId` на сервере ЧП (`core.incidentGuildId`); правятся в дашборде.
-
-## Следующие шаги
-
-1. UI настройки каналов/вебхуков фракций.
-2. Persist button actions → Discord Components.
-3. Синхронизация ЧП по `cp.syncEnabled`.
-4. Редактирование/закрытие записей из реестров дашборда.
-5. Визуальный конструктор эмбедов; модули токенов и регистраций.
+- Токены, регистрации ТС/униформы, персонажи.
+- Slash-утилиты `/проверить-фракции`, `/инвайт-админ`.
+- Полный V2-редактор дерева (секции, файлы, select-меню) — базовый container+text+buttons есть.

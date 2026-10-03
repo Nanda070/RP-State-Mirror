@@ -1,4 +1,4 @@
-import { canManageSystemSettings, getSetting } from "@mirror/core";
+import { canManageSystemSettings, getSetting, listActiveChannels } from "@mirror/core";
 import { prisma } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -12,11 +12,12 @@ export default async function SettingsWantedPage() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) redirect("/overview");
 
-  const [enabled, channelId, incidentGuildId, wantedCount] = await Promise.all([
+  const [enabled, channelId, incidentGuildId, wantedCount, channels] = await Promise.all([
     getSetting("wanted.enabled"),
     getSetting("wanted.channelId"),
     getSetting("core.incidentGuildId"),
     prisma.wanted.count(),
+    listActiveChannels(),
   ]);
 
   return (
@@ -70,7 +71,16 @@ export default async function SettingsWantedPage() {
         </ul>
       </div>
 
-      <SettingsWantedForm initialEnabled={enabled} initialChannelId={channelId} />
+      <SettingsWantedForm
+        initialEnabled={enabled}
+        initialChannelId={channelId}
+        incidentGuildId={incidentGuildId}
+        channels={channels.map((c) => ({
+          discordId: c.discordId,
+          name: c.name,
+          guildDiscordId: c.guild.discordId,
+        }))}
+      />
     </div>
   );
 }

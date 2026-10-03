@@ -27,9 +27,12 @@ export default async function SettingsIndexPage() {
     docCount,
     wantedCount,
     fineCount,
+    personnelCount,
     designCount,
     wantedChannelId,
     finesChannelId,
+    cpSyncEnabled,
+    factionCount,
   ] = await Promise.all([
     prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
     getSetting("core.mainGuildId"),
@@ -38,18 +41,21 @@ export default async function SettingsIndexPage() {
     prisma.document.count(),
     prisma.wanted.count(),
     prisma.fine.count(),
+    prisma.personnelEvent.count(),
     prisma.messageDesign.count({ where: { status: RecordStatus.ACTIVE } }),
     getSetting("wanted.channelId"),
     getSetting("fines.channelId"),
+    getSetting("cp.syncEnabled"),
+    prisma.faction.count({ where: { status: RecordStatus.ACTIVE } }),
   ]);
 
   const core: ModuleCard[] = [
     {
       href: "/settings/system",
       title: "Система",
-      description: "Главный сервер и сервер ЧП — ядро доступа и синхронизации.",
+      description: "Главный сервер, сервер ЧП и синхронизация ролей.",
       status: "ready",
-      meta: `Серверов: ${guildCount} · Главный: ${mainGuildId ? "задан" : "нет"} · ЧП: ${incidentGuildId ? "задан" : "нет"}`,
+      meta: `Серверов: ${guildCount} · ЧП sync: ${cpSyncEnabled ? "вкл" : "выкл"} · Главный: ${mainGuildId ? "задан" : "нет"} · ЧП: ${incidentGuildId ? "задан" : "нет"}`,
     },
     {
       href: "/settings/roles",
@@ -57,6 +63,13 @@ export default async function SettingsIndexPage() {
       description: "Привязка Discord-ролей к уровням доступа и фракциям.",
       status: "ready",
       meta: `Активных привязок: ${mappings.length}`,
+    },
+    {
+      href: "/settings/factions",
+      title: "Фракции",
+      description: "Каналы и вебхуки документов / кадрового аудита.",
+      status: "ready",
+      meta: `Фракций: ${factionCount}`,
     },
   ];
 
@@ -85,7 +98,7 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/embeds",
       title: "Эмбеды",
-      description: "Движок дизайнов и журнал отправленных сообщений.",
+      description: "Конструктор Classic/V2, превью, отправка и кнопки.",
       status: "ready",
       meta: `Дизайнов: ${designCount}`,
     },
@@ -142,6 +155,9 @@ export default async function SettingsIndexPage() {
           </Link>
           <Link href="/fines" className="btn btn-secondary">
             Реестр штрафов
+          </Link>
+          <Link href="/personnel" className="btn btn-secondary">
+            Реестр персонала ({personnelCount})
           </Link>
         </div>
         <div className="settings-hub-grid">

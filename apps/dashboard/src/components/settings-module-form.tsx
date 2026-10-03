@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { ChannelSelect, type ChannelOption } from "./channel-select";
 
 type ModuleKey = "documents" | "wanted" | "fines";
 
@@ -40,9 +41,13 @@ export function SettingsDocumentsForm({
 export function SettingsWantedForm({
   initialEnabled,
   initialChannelId,
+  channels,
+  incidentGuildId,
 }: {
   initialEnabled: boolean;
   initialChannelId: string | null;
+  channels: ChannelOption[];
+  incidentGuildId: string | null;
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [channelId, setChannelId] = useState(initialChannelId ?? "");
@@ -67,13 +72,14 @@ export function SettingsWantedForm({
         </label>
       </div>
       <div className="field">
-        <label htmlFor="wantedChannel">Канал на сервере ЧП (Discord ID)</label>
-        <input
+        <label htmlFor="wantedChannel">Канал на сервере ЧП</label>
+        <ChannelSelect
           id="wantedChannel"
           value={channelId}
-          onChange={(e) => setChannelId(e.target.value)}
-          placeholder="например 123456789012345678"
-          inputMode="numeric"
+          onChange={setChannelId}
+          channels={channels}
+          guildDiscordId={incidentGuildId}
+          emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
         />
       </div>
     </ModuleSettingsForm>
@@ -83,9 +89,13 @@ export function SettingsWantedForm({
 export function SettingsFinesForm({
   initialDueDays,
   initialChannelId,
+  channels,
+  incidentGuildId,
 }: {
   initialDueDays: number;
   initialChannelId: string | null;
+  channels: ChannelOption[];
+  incidentGuildId: string | null;
 }) {
   const [dueDays, setDueDays] = useState(String(initialDueDays));
   const [channelId, setChannelId] = useState(initialChannelId ?? "");
@@ -117,13 +127,14 @@ export function SettingsFinesForm({
         </p>
       </div>
       <div className="field">
-        <label htmlFor="finesChannel">Канал на сервере ЧП (Discord ID)</label>
-        <input
+        <label htmlFor="finesChannel">Канал на сервере ЧП</label>
+        <ChannelSelect
           id="finesChannel"
           value={channelId}
-          onChange={(e) => setChannelId(e.target.value)}
-          placeholder="например 123456789012345678"
-          inputMode="numeric"
+          onChange={setChannelId}
+          channels={channels}
+          guildDiscordId={incidentGuildId}
+          emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
         />
       </div>
     </ModuleSettingsForm>

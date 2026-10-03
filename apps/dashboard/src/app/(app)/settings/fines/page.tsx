@@ -1,4 +1,4 @@
-import { canManageSystemSettings, getSetting } from "@mirror/core";
+import { canManageSystemSettings, getSetting, listActiveChannels } from "@mirror/core";
 import { prisma } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -12,11 +12,12 @@ export default async function SettingsFinesPage() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) redirect("/overview");
 
-  const [dueDays, channelId, incidentGuildId, fineCount] = await Promise.all([
+  const [dueDays, channelId, incidentGuildId, fineCount, channels] = await Promise.all([
     getSetting("fines.dueDays"),
     getSetting("fines.channelId"),
     getSetting("core.incidentGuildId"),
     prisma.fine.count(),
+    listActiveChannels(),
   ]);
 
   return (
@@ -65,7 +66,16 @@ export default async function SettingsFinesPage() {
         </ul>
       </div>
 
-      <SettingsFinesForm initialDueDays={dueDays} initialChannelId={channelId} />
+      <SettingsFinesForm
+        initialDueDays={dueDays}
+        initialChannelId={channelId}
+        incidentGuildId={incidentGuildId}
+        channels={channels.map((c) => ({
+          discordId: c.discordId,
+          name: c.name,
+          guildDiscordId: c.guild.discordId,
+        }))}
+      />
     </div>
   );
 }
