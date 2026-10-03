@@ -21,7 +21,6 @@ import {
   enqueueFeedbackReplySend,
   enqueueFeedbackTicketNotify,
   enqueueFormOpenPublish,
-  enqueueFormSubmissionDeliver,
   enqueueIcBlacklistEditClosed,
   enqueueIcBlacklistPublish,
   enqueueRolePanelArchive,
@@ -1096,69 +1095,6 @@ export async function setTokenReceiveOpenMessage(message: {
   return parsed;
 }
 
-export async function getDiscordForm(formId: string) {
-  return prisma.discordForm.findFirst({
-    where: { id: formId, status: RecordStatus.ACTIVE },
-    include: { fields: { orderBy: { position: "asc" } } },
-  });
-}
-
-const formFieldSchema = z.object({
-  key: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
-  label: z.string().trim().min(1).max(45),
-  type: z.enum(["short", "paragraph"]).default("short"),
-  required: z.boolean().default(false),
-});
-
-export const createDiscordFormSchema = z
-  .object({
-    name: z.string().trim().min(1).max(120),
-    description: z.string().trim().max(1000).nullable().optional(),
-    webhookUrl: z.string().url().nullable().optional(),
-    deliveryChannelId: snowflakeStrict.nullable().optional(),
-    expiresAt: z.date().nullable().optional(),
-    responseLimit: z.number().int().positive().nullable().optional(),
-    /** Discord modals accept at most 5 fields per step; multi-step (>5) is Stage 5. */
-    fields: z.array(formFieldSchema).min(1).max(5),
-    createdByDiscordId: snowflakeLike,
-  })
-  .superRefine((data, ctx) => {
-    if (!data.webhookUrl && !data.deliveryChannelId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Укажите канал доставки и/или webhook URL для ответов формы.",
-        path: ["deliveryChannelId"],
-      });
-    }
-  });
-export type CreateDiscordFormInput = z.infer<typeof createDiscordFormSchema>;
-
-export async function createDiscordForm(input: CreateDiscordFormInput, context: AuditContext) {
-  const data = createDiscordFormSchema.parse(input);
-  return auditedMutation(context, "form.created", "form", async (tx) => {
-    const form = await tx.discordForm.create({
-      data: {
-        name: data.name,
-        description: data.description ?? null,
-        webhookUrl: data.webhookUrl ?? null,
-        deliveryChannelId: data.deliveryChannelId ?? null,
-        expiresAt: data.expiresAt ?? null,
-        responseLimit: data.responseLimit ?? null,
-        createdByDiscordId: data.createdByDiscordId,
-        fields: {
-          create: data.fields.map((field, position) => ({
-            ...field,
-            position,
-            validation: {},
-          })),
-        },
-      },
-      include: { fields: { orderBy: { position: "asc" } } },
-    });
-    return { entityId: form.id, after: form, result: form };
-  });
-}
-
 /** Disable form.open without deleting history (status CLOSED). */
 export async function disableDiscordForm(id: string, context: AuditContext) {
   return auditedMutation(context, "form.disabled", "form", async (tx) => {
@@ -1246,38 +1182,5 @@ export async function setDiscordFormOpenMessage(
       openChannelDiscordId: message.channelDiscordId,
       openMessageDiscordId: message.messageDiscordId,
     },
-  });
-}
-
-export async function submitDiscordForm(
-  formId: string,
-  values: Record<string, string>,
-  authorDiscordId: string | null,
-) {
-  const form = await getDiscordForm(formId);
-  if (!form) throw new Error("Форма не найдена или отключена.");
-  if (form.expiresAt && form.expiresAt <= new Date()) throw new Error("Срок действия формы истёк.");
-  for (const field of form.fields) {
-    if (field.required && !values[field.key]?.trim()) throw new Error(`Заполните поле «${field.label}».`);
-  }
-  const context: AuditContext = {
-    actorType: authorDiscordId ? AuditActorType.USER : AuditActorType.SYSTEM,
-    source: "discord.form",
-    metadata: { authorDiscordId: authorDiscordId ?? null, formId },
-  };
-  return auditedMutation(context, "form.submitted", "form_submission", async (tx) => {
-    // Lock the form row so concurrent submissions cannot both pass the response-limit check.
-    await tx.$queryRaw`SELECT id FROM forms WHERE id = ${formId} FOR UPDATE`;
-    if (form.responseLimit !== null) {
-      const count = await tx.formSubmission.count({ where: { formId } });
-      if (count >= form.responseLimit) throw new Error("Лимит ответов формы исчерпан.");
-    }
-    const submission = await tx.formSubmission.create({
-      data: { formId, values: toJsonValue(values), authorDiscordId, source: "discord" },
-    });
-    if (form.webhookUrl || form.deliveryChannelId) {
-      await enqueueFormSubmissionDeliver(submission.id, tx);
-    }
-    return { entityId: submission.id, after: submission, result: submission };
   });
 }

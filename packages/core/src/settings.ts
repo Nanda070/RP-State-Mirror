@@ -20,6 +20,15 @@ export const settingDefinitions = {
     "Сервер ЧП: синхронизация ролей, розыск, регистрации",
   ),
   "app.timezone": defineSetting(z.string().min(1), "Europe/Moscow", "Часовой пояс отображения"),
+  "app.publicBaseUrl": defineSetting(
+    z
+      .string()
+      .url()
+      .regex(/^https?:\/\/[^/]+$/, "Только адрес сайта без пути, например https://mirror.example")
+      .nullable(),
+    null,
+    "Публичный адрес дашборда: бот строит по нему ссылки на веб-формы и публичные карточки",
+  ),
   "documents.ttlHours": defineSetting(z.number().int().positive(), 72, "Срок актуальности документа, часы"),
   "registrations.ttlDays": defineSetting(z.number().int().positive(), 31, "Срок актуальности регистрации, дни"),
   "tokens.expandThresholdPercent": defineSetting(

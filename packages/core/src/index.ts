@@ -12,6 +12,7 @@ export * from "./errors.js";
 export * from "./factions.js";
 export * from "./faq.js";
 export * from "./fines.js";
+export * from "./forms.js";
 export * from "./identity.js";
 export * from "./jobs.js";
 export * from "./logger.js";
