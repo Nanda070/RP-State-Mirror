@@ -3,12 +3,14 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { BrandMark } from "./brand-mark";
+import { LoginBackdrop } from "./login-backdrop";
 import { LoginButton } from "./login-button";
 import { SiteFooter } from "./site-footer";
 
 export function LoginHero({ nextPath }: { nextPath?: string }) {
   return (
     <div className="public-page public-page-login">
+      <LoginBackdrop />
       <div className="hero">
         <motion.div
           className="hero-card"

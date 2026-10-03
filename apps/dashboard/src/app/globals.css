@@ -904,6 +904,225 @@ h3 {
 .public-page-login {
   min-height: 100vh;
   min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+}
+
+.public-page-login .hero,
+.public-page-login .site-footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ——— Login backdrop (layered ambient) ——— */
+
+.login-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.login-bg > * {
+  position: absolute;
+}
+
+.login-bg-base {
+  inset: 0;
+  background:
+    radial-gradient(130% 85% at 50% 118%, rgba(255, 106, 26, 0.16), transparent 62%),
+    radial-gradient(70% 55% at 88% -8%, rgba(64, 116, 200, 0.16), transparent 68%),
+    radial-gradient(60% 50% at 6% 4%, rgba(255, 160, 50, 0.09), transparent 70%),
+    linear-gradient(180deg, #090a0e 0%, #08090c 45%, #0a090c 100%);
+}
+
+.login-bg-blob {
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.login-bg-blob-a {
+  left: -18%;
+  top: -22%;
+  width: 62vmax;
+  height: 62vmax;
+  background: radial-gradient(circle, rgba(255, 106, 26, 0.13), transparent 68%);
+  animation: login-bg-drift-a 26s ease-in-out infinite;
+}
+
+.login-bg-blob-b {
+  right: -16%;
+  bottom: -26%;
+  width: 58vmax;
+  height: 58vmax;
+  background: radial-gradient(circle, rgba(72, 128, 214, 0.12), transparent 70%);
+  animation: login-bg-drift-b 34s ease-in-out infinite;
+}
+
+.login-bg-blob-c {
+  left: 50%;
+  bottom: -30%;
+  width: 70vmax;
+  height: 46vmax;
+  translate: -50% 0;
+  background: radial-gradient(circle, rgba(255, 160, 50, 0.09), transparent 65%);
+  animation: login-bg-drift-c 22s ease-in-out infinite;
+}
+
+.login-bg-sweep {
+  left: 50%;
+  top: 50%;
+  width: 170vmax;
+  height: 170vmax;
+  translate: -50% -50%;
+  opacity: 0.9;
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    transparent 0deg,
+    rgba(255, 106, 26, 0.055) 24deg,
+    transparent 62deg,
+    transparent 180deg,
+    rgba(120, 170, 255, 0.035) 208deg,
+    transparent 250deg
+  );
+  animation: login-bg-turn 62s linear infinite;
+}
+
+.login-bg-beam {
+  top: -30%;
+  height: 150%;
+  transform-origin: top;
+}
+
+.login-bg-beam-warm {
+  left: 8%;
+  width: 26vmax;
+  background: linear-gradient(180deg, rgba(255, 160, 50, 0.09), rgba(255, 106, 26, 0.03) 45%, transparent 78%);
+  filter: blur(46px);
+  transform: rotate(14deg);
+  animation: login-bg-glimmer 17s ease-in-out infinite;
+}
+
+.login-bg-beam-cool {
+  right: 14%;
+  width: 18vmax;
+  background: linear-gradient(180deg, rgba(150, 190, 255, 0.07), rgba(72, 128, 214, 0.025) 50%, transparent 80%);
+  filter: blur(52px);
+  transform: rotate(-11deg);
+  animation: login-bg-glimmer 23s ease-in-out 3s infinite;
+}
+
+.login-bg-mark {
+  left: -10vw;
+  bottom: -14vh;
+  width: min(900px, 70vw);
+  height: auto;
+  color: var(--accent);
+  opacity: 0.035;
+  transform: rotate(-8deg);
+}
+
+.login-bg-stars {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.login-bg-horizon {
+  left: -20%;
+  right: -20%;
+  bottom: -32vmax;
+  height: 46vmax;
+  background: radial-gradient(
+    50% 100% at 50% 100%,
+    rgba(255, 130, 45, 0.3),
+    rgba(255, 106, 26, 0.08) 45%,
+    transparent 72%
+  );
+  filter: blur(18px);
+}
+
+.login-bg-horizon-line {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 160, 50, 0.35) 35%,
+    rgba(255, 214, 160, 0.5) 50%,
+    rgba(255, 160, 50, 0.35) 65%,
+    transparent
+  );
+}
+
+.login-bg-vignette {
+  inset: 0;
+  background: radial-gradient(125% 115% at 50% 42%, transparent 42%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.login-bg-grain {
+  inset: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+@keyframes login-bg-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(7%, -5%) scale(1.15);
+  }
+}
+
+@keyframes login-bg-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-6%, 6%) scale(1.1);
+  }
+}
+
+@keyframes login-bg-drift-c {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translate(4%, 4%) scale(0.9);
+  }
+}
+
+@keyframes login-bg-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes login-bg-glimmer {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-bg-mark {
+    display: none;
+  }
 }
 
 .public-nav {
