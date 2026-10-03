@@ -61,6 +61,7 @@ export default async function Stage4SettingsPage({
       "invites.defaultMaxAgeSeconds",
       "tokens.expandThresholdPercent",
       "tokens.finderRoleIds",
+      "tokens.openMessage",
       "core.incidentGuildId",
     ] as const),
     getActiveChannelOptions(),
@@ -118,12 +119,14 @@ export default async function Stage4SettingsPage({
           discordId: c.discordId,
           name: c.name,
           guildDiscordId: c.guild.discordId,
+          guildName: c.guild.name,
         }))}
         incidentRoles={incidentRoles}
         govRoles={govRoles}
         guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         incidentGuildId={incidentGuildId}
         govGuildId={govGuildId}
+        tokenOpenMessage={settings["tokens.openMessage"]}
       />
     </div>
   );

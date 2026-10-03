@@ -12,6 +12,7 @@ import {
   isSettingKey,
   publishDiscordFormOpen,
   publishFeedbackOpen,
+  publishTokenReceive,
   setSetting,
   setWebhookRequestStatus,
   type SettingKey,
@@ -123,6 +124,12 @@ const actionSchema = z.discriminatedUnion("action", [
     guildDiscordId: snowflake,
     channelDiscordId: snowflake,
   }),
+  z.object({
+    action: z.literal("publish-token-receive"),
+    guildDiscordId: snowflake,
+    channelDiscordId: snowflake,
+    messageText: z.string().trim().max(2000).nullable().optional(),
+  }),
   z.object({ action: z.literal("disable-form"), formId: z.string().min(1) }),
   z.object({ action: z.literal("enable-form"), formId: z.string().min(1) }),
   z.object({ action: z.literal("archive-form"), formId: z.string().min(1) }),
@@ -159,6 +166,18 @@ export async function PATCH(request: Request) {
           {
             guildDiscordId: action.guildDiscordId,
             channelDiscordId: action.channelDiscordId,
+          },
+          context,
+        ),
+      );
+    }
+    if (action.action === "publish-token-receive") {
+      return Response.json(
+        await publishTokenReceive(
+          {
+            guildDiscordId: action.guildDiscordId,
+            channelDiscordId: action.channelDiscordId,
+            messageText: action.messageText ?? null,
           },
           context,
         ),

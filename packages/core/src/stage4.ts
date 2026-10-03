@@ -26,6 +26,7 @@ import {
   enqueueIcBlacklistPublish,
   enqueueRolePanelArchive,
   enqueueRolePanelPublish,
+  enqueueTokenReceivePublish,
   enqueueWebhookRequestNotify,
 } from "./module-jobs.js";
 import { embedSpecSchema } from "./embeds.js";
@@ -1039,6 +1040,57 @@ export async function setFeedbackOpenMessage(message: {
   await prisma.systemSetting.upsert({
     where: { key: "feedback.openMessage" },
     create: { key: "feedback.openMessage", value: toJsonValue(parsed) },
+    update: { value: toJsonValue(parsed) },
+  });
+  return parsed;
+}
+
+export const publishTokenReceiveSchema = z.object({
+  guildDiscordId: snowflakeStrict,
+  channelDiscordId: snowflakeStrict,
+  messageText: z.string().trim().max(2000).nullable().optional(),
+});
+export type PublishTokenReceiveInput = z.infer<typeof publishTokenReceiveSchema>;
+
+/** Queue bot delivery of a channel message with a token.receive button. */
+export async function publishTokenReceive(
+  input: z.input<typeof publishTokenReceiveSchema>,
+  context: AuditContext,
+) {
+  const data = publishTokenReceiveSchema.parse(input);
+  return auditedMutation(context, "token.receive_publish_queued", "system_setting", async (tx) => {
+    await enqueueTokenReceivePublish(
+      {
+        guildDiscordId: data.guildDiscordId,
+        channelDiscordId: data.channelDiscordId,
+        messageText: data.messageText ?? null,
+      },
+      tx,
+    );
+    return {
+      entityId: "tokens.openMessage",
+      after: data,
+      result: data,
+    };
+  });
+}
+
+/** Persist the last published token.receive message coordinates (called by the bot worker). */
+export async function setTokenReceiveOpenMessage(message: {
+  guildDiscordId: string;
+  channelDiscordId: string;
+  messageDiscordId: string;
+}) {
+  const parsed = z
+    .object({
+      guildDiscordId: snowflakeStrict,
+      channelDiscordId: snowflakeStrict,
+      messageDiscordId: snowflakeStrict,
+    })
+    .parse(message);
+  await prisma.systemSetting.upsert({
+    where: { key: "tokens.openMessage" },
+    create: { key: "tokens.openMessage", value: toJsonValue(parsed) },
     update: { value: toJsonValue(parsed) },
   });
   return parsed;

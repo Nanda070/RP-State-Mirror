@@ -23,6 +23,7 @@ import {
   issueToken,
   publishDiscordFormOpen,
   publishFeedbackOpen,
+  publishTokenReceive,
   revokeToken,
   setWebhookRequestStatus,
   submitDiscordForm,
@@ -294,8 +295,9 @@ describe("stage 4 modules", () => {
     });
   });
 
-  it("exposes feedback.openMessage default without crashing", async () => {
+  it("exposes feedback.openMessage and tokens.openMessage defaults without crashing", async () => {
     expect(await getSetting("feedback.openMessage")).toBeNull();
+    expect(await getSetting("tokens.openMessage")).toBeNull();
   });
 
   it("enforces the form response limit under concurrent submissions", async () => {
@@ -417,6 +419,24 @@ describe("stage 4 modules", () => {
     expect(jobs[0]?.payload).toEqual({
       guildDiscordId: "100000000000000001",
       channelDiscordId: "200000000000000001",
+    });
+  });
+
+  it("enqueues token.receive publish job", async () => {
+    await publishTokenReceive(
+      {
+        guildDiscordId: "100000000000000001",
+        channelDiscordId: "200000000000000001",
+        messageText: "Получите нашивку",
+      },
+      context,
+    );
+    const jobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.TOKEN_RECEIVE_PUBLISH } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.payload).toEqual({
+      guildDiscordId: "100000000000000001",
+      channelDiscordId: "200000000000000001",
+      messageText: "Получите нашивку",
     });
   });
 

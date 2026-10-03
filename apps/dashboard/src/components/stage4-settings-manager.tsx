@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { GuildChipPicker, RoleChipPicker, type RoleChipOption } from "./role-chip-picker";
 import { ToggleRow } from "./toggle-row";
+import { TokenReceivePublish } from "./token-receive-publish";
 
 export type Stage4SettingsValues = {
   "registrations.ttlDays": number;
@@ -54,6 +55,7 @@ export function Stage4SettingsManager({
   guilds,
   incidentGuildId,
   govGuildId,
+  tokenOpenMessage = null,
 }: {
   initial: Stage4SettingsValues;
   initialTab?: TabId;
@@ -63,6 +65,11 @@ export function Stage4SettingsManager({
   guilds: Array<{ discordId: string; name: string }>;
   incidentGuildId: string | null;
   govGuildId: string | null;
+  tokenOpenMessage?: {
+    guildDiscordId: string;
+    channelDiscordId: string;
+    messageDiscordId: string;
+  } | null;
 }) {
   const [tab, setTab] = useState<TabId>(initialTab);
   const [values, setValues] = useState(initial);
@@ -312,6 +319,12 @@ export function Stage4SettingsManager({
                 emptyHint={finderRolesEmpty}
               />
             </div>
+            <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "0.5rem 0" }} />
+            <TokenReceivePublish
+              guilds={guilds}
+              channels={channels}
+              initialOpenMessage={tokenOpenMessage}
+            />
           </>
         ) : null}
 

@@ -32,6 +32,17 @@ export const settingDefinitions = {
     [],
     "Роли на серверах GOV и ЧП (ОГП/Юстиция): право /нашивка найти",
   ),
+  "tokens.openMessage": defineSetting(
+    z
+      .object({
+        guildDiscordId: snowflakeSchema,
+        channelDiscordId: snowflakeSchema,
+        messageDiscordId: snowflakeSchema,
+      })
+      .nullable(),
+    null,
+    "Последнее опубликованное сообщение с кнопкой token.receive",
+  ),
   "backups.retentionDays": defineSetting(z.number().int().positive(), 14, "Срок хранения бэкапов, дни"),
   "fines.dueDays": defineSetting(z.number().int().positive(), 14, "Срок оплаты штрафа, дни"),
   "fines.channelId": defineSetting(

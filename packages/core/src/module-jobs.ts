@@ -27,6 +27,7 @@ export const MODULE_JOB_TYPES = {
   FEEDBACK_OPEN_PUBLISH: "feedback.open_publish",
   FORM_SUBMISSION_DELIVER: "form.submission_deliver",
   FORM_OPEN_PUBLISH: "form.open_publish",
+  TOKEN_RECEIVE_PUBLISH: "token.receive_publish",
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
   IC_BLACKLIST_PUBLISH: "ic_blacklist.publish",
   IC_BLACKLIST_EDIT_CLOSED: "ic_blacklist.edit_closed",
@@ -135,6 +136,17 @@ export function enqueueFormOpenPublish(
   db?: Db,
 ) {
   return enqueueJob({ type: MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, payload }, db);
+}
+
+export function enqueueTokenReceivePublish(
+  payload: {
+    guildDiscordId: string;
+    channelDiscordId: string;
+    messageText?: string | null;
+  },
+  db?: Db,
+) {
+  return enqueueJob({ type: MODULE_JOB_TYPES.TOKEN_RECEIVE_PUBLISH, payload }, db);
 }
 
 export function enqueueWebhookRequestNotify(requestId: string, db?: Db) {
