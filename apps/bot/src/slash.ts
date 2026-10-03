@@ -231,7 +231,7 @@ export async function handleFactionAutocomplete(interaction: AutocompleteInterac
     );
     return;
   }
-  if (focused.name !== "фракция") {
+  if (focused.name !== "фракция" && focused.name !== "из" && focused.name !== "в") {
     await interaction.respond([]);
     return;
   }
@@ -278,7 +278,7 @@ export async function handleSlashCommand(
         await handleRegistration(interaction, ctx);
         break;
       case "перевод-фракции":
-        await handleTransfer(interaction);
+        await handleTransfer(interaction, ctx);
         break;
       case "создать-webhook":
         await handleWebhookRequest(interaction, ctx);
@@ -421,30 +421,43 @@ async function handleRegistration(interaction: ChatInputCommandInteraction, ctx:
   }
 }
 
-async function handleTransfer(interaction: ChatInputCommandInteraction) {
+async function handleTransfer(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { user } = await ensureUserByDiscordId(interaction.user.id);
   const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
   if (!character) {
-    await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+    await interaction.editReply("Персонаж с таким статиком не найден в вашем профиле.");
     return;
   }
-  const documents = (interaction.options.getString("документы") ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const transfer = await createTransfer(
-    {
-      characterId: character.id,
-      fromFactionCode: interaction.options.getString("из", true),
-      toFactionCode: interaction.options.getString("в", true),
-      fromRank: interaction.options.getInteger("с_ранга", true),
-      toRank: interaction.options.getInteger("на_ранг", true),
-      documentFileIds: documents,
-      createdByDiscordId: interaction.user.id,
-    },
-    auditFromInteraction(interaction),
-  );
-  await interaction.reply(ephemeral(`Заявка на перевод **${transfer.id}** создана. Требуется одобрение обеих фракций.`));
+  const fromFactionCode = await requireActiveFaction(interaction.options.getString("из", true));
+  const toFactionCode = await requireActiveFaction(interaction.options.getString("в", true));
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  const memberOfFrom = identity.factions.some((f) => f.code.toUpperCase() === fromFactionCode);
+  if (!memberOfFrom && !canManageModules(identity)) {
+    await interaction.editReply(`Вы должны быть участником фракции **${fromFactionCode}**, чтобы подать перевод из неё.`);
+    return;
+  }
+  const photo = await storeImageAttachment(interaction, interaction.options.getAttachment("документы", true), user.id);
+  try {
+    const transfer = await createTransfer(
+      {
+        characterId: character.id,
+        fromFactionCode,
+        toFactionCode,
+        fromRank: interaction.options.getInteger("с_ранга", true),
+        toRank: interaction.options.getInteger("на_ранг", true),
+        documentFileIds: [photo.id],
+        createdByDiscordId: interaction.user.id,
+      },
+      auditFromInteraction(interaction),
+    );
+    await interaction.editReply(
+      `Заявка на перевод **${fromFactionCode} → ${toFactionCode}** создана (\`${transfer.id}\`). Нужно одобрение обеих фракций.`,
+    );
+  } catch (error) {
+    await archiveOrphanMedia(interaction, [photo.id], ctx);
+    throw error;
+  }
 }
 
 async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {

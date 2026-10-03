@@ -295,11 +295,11 @@ export const transferCommand = new SlashCommandBuilder()
   .setName("перевод-фракции")
   .setDescription("Подать заявку на перевод между фракциями")
   .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
-  .addStringOption((o) => o.setName("из").setDescription("Текущая фракция").setRequired(true).setMaxLength(32))
-  .addStringOption((o) => o.setName("в").setDescription("Принимающая фракция").setRequired(true).setMaxLength(32))
+  .addStringOption((o) => o.setName("из").setDescription("Текущая фракция").setRequired(true).setMaxLength(32).setAutocomplete(true))
+  .addStringOption((o) => o.setName("в").setDescription("Принимающая фракция").setRequired(true).setMaxLength(32).setAutocomplete(true))
   .addIntegerOption((o) => o.setName("с_ранга").setDescription("Текущий ранг").setRequired(true).setMinValue(0).setMaxValue(100))
-  .addIntegerOption((o) => o.setName("на_ранг").setDescription("Новый ранг").setRequired(true).setMinValue(0).setMaxValue(100))
-  .addStringOption((o) => o.setName("документы").setDescription("Ссылки на документы через запятую").setMaxLength(2000));
+  .addIntegerOption((o) => o.setName("на_ранг").setDescription("Новый ранг (по таблице переводов)").setRequired(true).setMinValue(0).setMaxValue(100))
+  .addAttachmentOption((o) => o.setName("документы").setDescription("Фото документов (изображение до 10 МБ)").setRequired(true));
 
 export const webhookRequestCommand = new SlashCommandBuilder()
   .setName("создать-webhook")

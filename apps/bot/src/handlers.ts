@@ -40,6 +40,7 @@ import {
   sameDeliveryChannel,
   readMediaFile,
   registrationKindLabel,
+  resolveFactionLeaderRoleIds,
   setRegistrationReviewThread,
   setRegistrationReviewMessage,
   setTransferReviewMessage,
@@ -764,7 +765,7 @@ const registrationExpired: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", edited, dm };
 };
 
-const transferReview: JobHandler = async (payload, { client }) => {
+const transferReview: JobHandler = async (payload, { client, log }) => {
   const transferId = String(payload.transferId ?? "");
   const transfer = await loadTransfer(transferId);
   if (!transfer) throw new Error(`Transfer ${transferId} not found`);
@@ -776,9 +777,51 @@ const transferReview: JobHandler = async (payload, { client }) => {
   if (!guildId || !channelId) return { status: "deferred", reason: "Канал переводов не настроен." };
 
   const channel = await fetchReviewChannel(client, guildId, channelId);
-  const message = await channel.send(renderTransferReview(transfer));
+  const photo = transfer.documentFileIds[0] ? await readMediaFile(transfer.documentFileIds[0]) : null;
+  const leaderRoles = [
+    ...(await resolveFactionLeaderRoleIds(transfer.fromFactionCode)),
+    ...(await resolveFactionLeaderRoleIds(transfer.toFactionCode)),
+  ];
+  const pingRoleIds = [...new Set(leaderRoles)];
+  const message = await channel.send({
+    ...renderTransferReview(transfer, {
+      imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
+    }),
+    ...(pingRoleIds.length > 0 ? { content: formatRoleMentions(pingRoleIds) } : {}),
+    allowedMentions: { parse: [], roles: pingRoleIds },
+    files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
+  });
   await setTransferReviewMessage(transferId, { guildId, channelId: channel.id, messageId: message.id });
-  return { status: "sent", messageId: message.id, transferId };
+  if (pingRoleIds.length === 0) {
+    log.warn({ transferId }, "transfer review posted without leader role pings");
+  }
+  return { status: "sent", messageId: message.id, transferId, pinged: pingRoleIds.length };
+};
+
+const transferDecided: JobHandler = async (payload, { client, log }) => {
+  const transferId = String(payload.transferId ?? "");
+  const transfer = await loadTransfer(transferId);
+  if (!transfer) throw new Error(`Transfer ${transferId} not found`);
+  if (transfer.status === "REJECTED") {
+    const dm = await sendDirectMessage(
+      client,
+      transfer.createdByDiscordId,
+      `Заявка на перевод **${transfer.fromFactionCode} → ${transfer.toFactionCode}** (статик ${transfer.character.staticId}) отклонена.\n**Причина:** ${transfer.rejectionReason ?? "—"}`,
+      log,
+    );
+    return { status: "sent", decision: "REJECTED", dm };
+  }
+  if (transfer.status === "APPROVED") {
+    const text = await getSetting("transfers.approvalDmText");
+    const dm = await sendDirectMessage(
+      client,
+      transfer.createdByDiscordId,
+      `${text}\n\nПеревод: **${transfer.fromFactionCode} → ${transfer.toFactionCode}**, персонаж ${transfer.character.name} (${transfer.character.staticId}).`,
+      log,
+    );
+    return { status: "sent", decision: "APPROVED", dm };
+  }
+  return { status: "skipped", reason: "pending" };
 };
 
 export const jobHandlers = new Map<string, JobHandler>([
@@ -804,4 +847,5 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.REGISTRATION_DECIDED, registrationDecided],
   [MODULE_JOB_TYPES.REGISTRATION_EXPIRED, registrationExpired],
   [MODULE_JOB_TYPES.TRANSFER_REVIEW, transferReview],
+  [MODULE_JOB_TYPES.TRANSFER_DECIDED, transferDecided],
 ]);

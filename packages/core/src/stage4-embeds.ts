@@ -133,7 +133,7 @@ export function makeTransferReviewEmbed(input: TransferReviewInput): ClassicEmbe
     `**Заявитель:** ${mention(input.applicantDiscordId)}`,
     `**Из:** ${input.fromFactionCode} · ранг ${input.fromRank}`,
     `**В:** ${input.toFactionCode} · ранг ${input.toRank}`,
-    `**Документы:** ${input.documents.length > 0 ? input.documents.join(", ") : "—"}`,
+    `**Документы:** ${input.documents.length > 0 ? `фото (${input.documents.length})` : "—"}`,
     "",
     sideLine(`Решение ${input.fromFactionCode}`, input.sourceDecision, input.sourceDecidedByDiscordId),
     sideLine(`Решение ${input.toFactionCode}`, input.targetDecision, input.targetDecidedByDiscordId),

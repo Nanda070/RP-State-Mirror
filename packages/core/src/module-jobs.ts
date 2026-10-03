@@ -18,6 +18,7 @@ export const MODULE_JOB_TYPES = {
   REGISTRATION_DECIDED: "registration.decided",
   REGISTRATION_EXPIRED: "registration.expired",
   TRANSFER_REVIEW: "transfer.review",
+  TRANSFER_DECIDED: "transfer.decided",
 } as const;
 
 export type ModuleJobType = (typeof MODULE_JOB_TYPES)[keyof typeof MODULE_JOB_TYPES];

@@ -10,6 +10,7 @@ const TABLES = [
   "ic_blacklist",
   "webhook_requests",
   "transfers",
+  "transfer_rank_rules",
   "registrations",
   "vehicle_models",
   "media_files",

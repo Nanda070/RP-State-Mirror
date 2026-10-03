@@ -619,6 +619,21 @@ model Transfer {
   @@map("transfers")
 }
 
+/// Rank equivalence for /перевод-фракции (§4.8 / §5.3). Empty pair = free ranks.
+model TransferRankRule {
+  id              String       @id @default(cuid())
+  fromFactionCode String       @map("from_faction_code")
+  toFactionCode   String       @map("to_faction_code")
+  fromRank        Int          @map("from_rank")
+  toRank          Int          @map("to_rank")
+  status          RecordStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([fromFactionCode, toFactionCode, status])
+  @@map("transfer_rank_rules")
+}
+
 model WebhookRequest {
   id                 String              @id @default(cuid())
   requesterDiscordId String              @map("requester_discord_id")

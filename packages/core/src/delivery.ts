@@ -39,6 +39,38 @@ export async function resolveFactionSeniorRoleId(factionCode: string): Promise<s
   return settings.seniorRoleId ?? null;
 }
 
+/** Leader role Discord ids for transfer review pings (§4.8); falls back to seniorRoleId. */
+export async function resolveFactionLeaderRoleIds(factionCode: string): Promise<string[]> {
+  const code = factionCode.toUpperCase();
+  const faction = await prisma.faction.findFirst({
+    where: { code, status: RecordStatus.ACTIVE },
+    select: { id: true, guildId: true, settings: true },
+  });
+  if (!faction) return [];
+  const snowflake = (id: string) => /^\d{17,20}$/.test(id);
+  const byFaction = await prisma.roleMapping.findMany({
+    where: { status: RecordStatus.ACTIVE, kind: RoleMappingKind.FACTION_LEADER, factionId: faction.id },
+    select: { roleDiscordId: true },
+  });
+  const ids = [...new Set(byFaction.map((m) => m.roleDiscordId).filter(snowflake))];
+  if (ids.length > 0) return ids;
+  if (faction.guildId) {
+    const byGuild = await prisma.roleMapping.findMany({
+      where: {
+        status: RecordStatus.ACTIVE,
+        kind: RoleMappingKind.FACTION_LEADER,
+        guildId: faction.guildId,
+        factionId: null,
+      },
+      select: { roleDiscordId: true },
+    });
+    const guildIds = [...new Set(byGuild.map((m) => m.roleDiscordId).filter(snowflake))];
+    if (guildIds.length > 0) return guildIds;
+  }
+  const senior = parseFactionSettings(faction.settings).seniorRoleId;
+  return senior && snowflake(senior) ? [senior] : [];
+}
+
 /**
  * Role to ping for faction-bound notices (/пост, /штраф).
  * Prefers a Discord role named like the faction code (FIB → @FIB) on the faction guild,

@@ -318,11 +318,39 @@ export const createTransferSchema = z.object({
   createdByDiscordId: snowflakeLike,
 });
 
+/** Empty catalog for a faction pair accepts any ranks; otherwise fromRank→toRank must match a rule. */
+export async function assertTransferRanksAllowed(
+  fromFactionCode: string,
+  toFactionCode: string,
+  fromRank: number,
+  toRank: number,
+  db: Db = prisma,
+) {
+  const from = fromFactionCode.toUpperCase();
+  const to = toFactionCode.toUpperCase();
+  const rules = await db.transferRankRule.count({
+    where: { fromFactionCode: from, toFactionCode: to, status: RecordStatus.ACTIVE },
+  });
+  if (rules === 0) return;
+  const match = await db.transferRankRule.findFirst({
+    where: { fromFactionCode: from, toFactionCode: to, fromRank, status: RecordStatus.ACTIVE },
+  });
+  if (!match) {
+    throw new Error(`Для перевода ${from} → ${to} ранг ${fromRank} не описан в таблице переводов.`);
+  }
+  if (match.toRank !== toRank) {
+    throw new Error(`По таблице переводов ранг ${fromRank} (${from}) соответствует рангу ${match.toRank} (${to}), а не ${toRank}.`);
+  }
+}
+
 export async function createTransfer(input: z.input<typeof createTransferSchema>, context: AuditContext) {
   const data = createTransferSchema.parse(input);
-  if (data.fromFactionCode.toUpperCase() === data.toFactionCode.toUpperCase()) {
+  const fromFactionCode = data.fromFactionCode.toUpperCase();
+  const toFactionCode = data.toFactionCode.toUpperCase();
+  if (fromFactionCode === toFactionCode) {
     throw new Error("Фракции отправителя и получателя должны различаться.");
   }
+  await assertTransferRanksAllowed(fromFactionCode, toFactionCode, data.fromRank, data.toRank);
   return auditedMutation(context, "transfer.created", "transfer", async (tx) => {
     const pending = await tx.transfer.findFirst({
       where: { characterId: data.characterId, status: TransferStatus.PENDING },
@@ -332,8 +360,8 @@ export async function createTransfer(input: z.input<typeof createTransferSchema>
     const created = await tx.transfer.create({
       data: {
         ...data,
-        fromFactionCode: data.fromFactionCode.toUpperCase(),
-        toFactionCode: data.toFactionCode.toUpperCase(),
+        fromFactionCode,
+        toFactionCode,
         documentFileIds: data.documentFileIds,
       },
     });
@@ -377,6 +405,9 @@ export async function decideTransfer(
         rejectionReason: decision === DecisionStatus.REJECTED ? rejectionReason : current.rejectionReason,
       },
     });
+    if (status === TransferStatus.APPROVED || status === TransferStatus.REJECTED) {
+      await enqueueJob({ type: MODULE_JOB_TYPES.TRANSFER_DECIDED, payload: { transferId: id } }, tx);
+    }
     return { entityId: id, before: current, after: updated, result: updated };
   });
 }

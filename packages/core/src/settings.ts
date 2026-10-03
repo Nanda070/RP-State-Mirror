@@ -70,6 +70,11 @@ export const settingDefinitions = {
     null,
     "Канал для заявок переводов между фракциями",
   ),
+  "transfers.approvalDmText": defineSetting(
+    z.string().min(1).max(2000),
+    "Ваш перевод одобрен обеими сторонами. Можете подойти в холл на собеседование.",
+    "Текст ЛС игроку после одобрения перевода обеими фракциями",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
