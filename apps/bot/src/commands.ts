@@ -341,6 +341,23 @@ export const blacklistFindCommand = new SlashCommandBuilder()
   .setDescription("Найти гражданина в IC чёрном списке")
   .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32));
 
+export const checkFactionsCommand = new SlashCommandBuilder()
+  .setName("проверить-фракции")
+  .setDescription("Показать пересечения состава между фракциями (админ)");
+
+export const adminInviteCommand = new SlashCommandBuilder()
+  .setName("инвайт-админ")
+  .setDescription("Создать временный инвайт на сервер из списка дашборда")
+  .addStringOption((o) =>
+    o.setName("сервер").setDescription("Сервер из списка invites.guildIds").setRequired(true).setAutocomplete(true),
+  )
+  .addIntegerOption((o) =>
+    o.setName("срок_минут").setDescription("Срок жизни инвайта в минутах (по умолчанию из настроек)").setMinValue(1).setMaxValue(10080),
+  )
+  .addIntegerOption((o) =>
+    o.setName("использований").setDescription("Максимум использований").setMinValue(1).setMaxValue(100),
+  );
+
 // ──────────────────────────────────────────────────────────────
 // Collect all commands for registration
 // ──────────────────────────────────────────────────────────────
@@ -362,6 +379,8 @@ export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   blacklistAddCommand.toJSON(),
   blacklistRemoveCommand.toJSON(),
   blacklistFindCommand.toJSON(),
+  checkFactionsCommand.toJSON(),
+  adminInviteCommand.toJSON(),
 ];
 
 // ──────────────────────────────────────────────────────────────

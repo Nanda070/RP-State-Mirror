@@ -95,6 +95,16 @@ export const settingDefinitions = {
     [],
     "Роли: поиск по IC чёрному списку",
   ),
+  "invites.guildIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Серверы для /инвайт-админ (пусто = главный + серверы фракций)",
+  ),
+  "invites.defaultMaxAgeSeconds": defineSetting(
+    z.number().int().min(60).max(7 * 24 * 3600),
+    3600,
+    "Срок жизни временного инвайта /инвайт-админ, секунды",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),

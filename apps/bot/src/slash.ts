@@ -52,6 +52,8 @@ import {
   getDocumentByNumber,
   getSetting,
   listActiveFactionsForAutocomplete,
+  listInviteGuilds,
+  findFactionOverlaps,
   markFinePaid,
   ensureUserByDiscordId,
   issueToken,
@@ -247,6 +249,17 @@ export async function handleFactionAutocomplete(interaction: AutocompleteInterac
     );
     return;
   }
+  if (focused.name === "сервер") {
+    const q = focused.value.trim().toLowerCase();
+    const guilds = await listInviteGuilds();
+    await interaction.respond(
+      guilds
+        .filter((g) => !q || g.name.toLowerCase().includes(q) || g.discordId.includes(q))
+        .slice(0, 25)
+        .map((g) => ({ name: g.label.slice(0, 100), value: g.discordId })),
+    );
+    return;
+  }
   if (focused.name !== "фракция" && focused.name !== "из" && focused.name !== "в") {
     await interaction.respond([]);
     return;
@@ -303,6 +316,12 @@ export async function handleSlashCommand(
       case "чс-снять":
       case "чс-найти":
         await handleIcBlacklist(interaction, ctx);
+        break;
+      case "проверить-фракции":
+        await handleCheckFactions(interaction, ctx);
+        break;
+      case "инвайт-админ":
+        await handleAdminInvite(interaction, ctx);
         break;
       default:
         await interaction.reply(ephemeral("Неизвестная команда."));
@@ -711,6 +730,81 @@ async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: 
   } catch (error) {
     await archiveOrphanMedia(interaction, evidenceIds, ctx);
     throw error;
+  }
+}
+
+async function handleCheckFactions(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  if (!canManageModules(identity)) {
+    await interaction.reply(ephemeral("Команда доступна только администраторам."));
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const overlaps = await findFactionOverlaps(40);
+  if (overlaps.length === 0) {
+    await interaction.editReply("Пересечений состава между фракциями не найдено.");
+    return;
+  }
+  const lines = overlaps.map(
+    (item, index) =>
+      `${index + 1}. <@${item.discordUserId}>${item.username ? ` (${item.username})` : ""} — **${item.factions.join(", ")}**`,
+  );
+  const body = lines.join("\n");
+  await interaction.editReply(
+    body.length <= 1900 ? body : `${body.slice(0, 1900)}\n… и ещё записи (показаны первые ${overlaps.length}).`,
+  );
+}
+
+async function handleAdminInvite(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  if (!canManageModules(identity)) {
+    await interaction.reply(ephemeral("Команда доступна только администраторам."));
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const guildDiscordId = interaction.options.getString("сервер", true);
+  const allowed = await listInviteGuilds();
+  if (!allowed.some((g) => g.discordId === guildDiscordId)) {
+    await interaction.editReply("Этот сервер не входит в список для инвайтов (настройка `invites.guildIds`).");
+    return;
+  }
+  const guild = await interaction.client.guilds.fetch(guildDiscordId).catch(() => null);
+  if (!guild) {
+    await interaction.editReply("Бот не состоит на выбранном сервере.");
+    return;
+  }
+  const me = guild.members.me ?? (await guild.members.fetchMe());
+  await guild.channels.fetch().catch(() => null);
+  const channel =
+    guild.systemChannel ??
+    guild.channels.cache.find(
+      (ch) =>
+        ch.isTextBased() &&
+        !ch.isDMBased() &&
+        "createInvite" in ch &&
+        ch.permissionsFor(me)?.has(PermissionFlagsBits.CreateInstantInvite),
+    );
+  if (!channel || !("createInvite" in channel)) {
+    await interaction.editReply("Не найден канал с правом Create Instant Invite на этом сервере.");
+    return;
+  }
+  const defaultAge = await getSetting("invites.defaultMaxAgeSeconds");
+  const minutes = interaction.options.getInteger("срок_минут");
+  const maxAge = minutes ? minutes * 60 : defaultAge;
+  const maxUses = interaction.options.getInteger("использований") ?? 1;
+  try {
+    const invite = await channel.createInvite({
+      maxAge,
+      maxUses,
+      unique: true,
+      reason: `Mirror /инвайт-админ от ${interaction.user.tag}`,
+    });
+    await interaction.editReply(
+      `Временный инвайт на **${guild.name}**: ${invite.url}\nСрок: ${Math.round(maxAge / 60)} мин · использований: ${maxUses}`,
+    );
+  } catch (error) {
+    ctx.log.warn({ err: error, guildDiscordId }, "admin invite create failed");
+    await interaction.editReply("Не удалось создать инвайт. Проверьте права бота Create Instant Invite.");
   }
 }
 
