@@ -21,6 +21,9 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/overview", label: "Обзор", group: "Основное", match: "exact" },
   { href: "/profile", label: "Профиль", group: "Основное", match: "exact" },
+  { href: "/documents", label: "Документы", group: "Реестры", match: "prefix" },
+  { href: "/wanted", label: "Розыск", group: "Реестры", match: "prefix" },
+  { href: "/fines", label: "Штрафы", group: "Реестры", match: "prefix" },
   { href: "/settings", label: "Настройки", group: "Администрирование", match: "exact" },
   { href: "/settings/system", label: "Система", group: "Администрирование", match: "prefix" },
   { href: "/settings/roles", label: "Роли", group: "Администрирование", match: "prefix" },
@@ -29,6 +32,9 @@ const NAV: NavItem[] = [
 const CRUMBS: { test: (path: string) => boolean; section: string; page: string }[] = [
   { test: (p) => p === "/overview", section: "Основное", page: "Обзор" },
   { test: (p) => p === "/profile", section: "Основное", page: "Профиль" },
+  { test: (p) => p.startsWith("/documents"), section: "Реестры", page: "Документы" },
+  { test: (p) => p.startsWith("/wanted"), section: "Реестры", page: "Розыск" },
+  { test: (p) => p.startsWith("/fines"), section: "Реестры", page: "Штрафы" },
   { test: (p) => p === "/settings", section: "Администрирование", page: "Настройки" },
   { test: (p) => p.startsWith("/settings/system") || p.startsWith("/settings/guilds"), section: "Настройки", page: "Система" },
   { test: (p) => p.startsWith("/settings/roles"), section: "Настройки", page: "Роли" },

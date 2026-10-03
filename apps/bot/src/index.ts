@@ -12,6 +12,7 @@ import {
   upsertMember,
 } from "@mirror/core";
 import { jobHandlers } from "./handlers.js";
+import { handleSlashCommand } from "./slash.js";
 import { guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
 import { syncAllGuilds, syncGuild } from "./sync.js";
 import { JobWorker } from "./worker.js";
@@ -43,6 +44,16 @@ client.once(Events.ClientReady, (ready) => {
     worker.start();
     reconcileTimer = setInterval(() => guarded("reconcile", () => syncAllGuilds(ready, log)), RECONCILE_INTERVAL_MS);
   });
+});
+
+client.on(Events.InteractionCreate, (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  guarded("interactionCreate", () =>
+    handleSlashCommand(interaction, {
+      superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+      log: log.child({ component: "slash", command: interaction.commandName }),
+    }),
+  );
 });
 
 client.on(Events.GuildCreate, (guild) => guarded("guildCreate", () => syncGuild(guild, log)));

@@ -29,7 +29,17 @@ export const settingDefinitions = {
   ),
   "backups.retentionDays": defineSetting(z.number().int().positive(), 14, "Срок хранения бэкапов, дни"),
   "fines.dueDays": defineSetting(z.number().int().positive(), 14, "Срок оплаты штрафа, дни"),
+  "fines.channelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал на сервере ЧП для публикации штрафов",
+  ),
   "wanted.enabled": defineSetting(z.boolean(), true, "Модуль розыска включён"),
+  "wanted.channelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал на сервере ЧП для публикации розысков",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
 };
 

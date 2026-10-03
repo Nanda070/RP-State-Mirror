@@ -94,6 +94,9 @@ export const fineCommand = new SlashCommandBuilder()
   )
   .addStringOption((o) =>
     o.setName("основание").setDescription("Основание штрафа").setRequired(true).setMaxLength(1000),
+  )
+  .addStringOption((o) =>
+    o.setName("фракция").setDescription("Код фракции-инициатора (если не из вашей роли)").setMaxLength(32),
   );
 
 // ──────────────────────────────────────────────────────────────
@@ -132,6 +135,9 @@ export const personnelCommand = new SlashCommandBuilder()
   )
   .addStringOption((o) =>
     o.setName("детали").setDescription("Детали события (JSON или произвольный текст)").setMaxLength(500),
+  )
+  .addStringOption((o) =>
+    o.setName("фракция").setDescription("Код фракции (если не из вашей роли)").setMaxLength(32),
   );
 
 // ──────────────────────────────────────────────────────────────

@@ -1,5 +1,24 @@
 # Mirror: dev blog
 
+## 2026-10-03: этап 3 — handlers, jobs, реестры
+
+### Цель
+
+Подключить slash-обработчики, очередь доставки в Discord и минимальные реестры в дашборде.
+
+### Что сделано
+
+- CSS: текст «Добавить цель» / secondary-кнопок — без soft blur (Manrope, letter-spacing 0, solid bg).
+- Bot: `interactionCreate` → handlers для всех 7 slash-команд; AuditContext от Discord user; права через `resolveIdentity` + `canManageModules` / `canActOnModuleRecord` / фракция.
+- Jobs: `document.send`, `wanted.publish`, `wanted.edit_closed`, `fine.publish`, `fine.edit_paid`, `personnel.publish` (+ response); deferred если канал не настроен.
+- Settings: `wanted.channelId`, `fines.channelId`; faction.settings для каналов документов/кадров.
+- Dashboard: реестры `/documents`, `/wanted`, `/fines` (canViewModules), навигация «Реестры».
+- Тесты: enqueue + delivery resolve.
+
+### Проверка
+
+`pnpm lint`, `pnpm check`, `pnpm build`, `pnpm test`.
+
 ## 2026-10-03: старт этапа 3
 
 ### Цель
