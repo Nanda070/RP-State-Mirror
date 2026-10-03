@@ -3,6 +3,10 @@ name: mirror-test
 services:
   postgres-test:
     image: postgres:16-alpine
+    # Tests empty every table before each test, which leaves tens of thousands of files behind.
+    # With durability on, a checkpoint syncs them all and freezes the database for half a minute,
+    # and a test that waits for a transaction fails. The data lives in memory anyway.
+    command: postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
     environment:
       POSTGRES_DB: mirror_test
       POSTGRES_USER: mirror_test

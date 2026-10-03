@@ -9,15 +9,17 @@ import {
   assertSheetSnapshot,
   attachSheetImage,
   blankSheetSnapshot,
+  canViewSheet,
   createSheetDocument,
+  getSheetImageAccess,
   getSheetSnapshot,
-  isSheetImage,
   listSheetDocuments,
   listSheetRevisions,
   releaseSheetLock,
   reorderSheetDocuments,
   restoreSheetRevision,
   saveSheetSnapshot,
+  setSheetAccess,
   sheetSlugFromTitle,
   updateSheetDocumentMeta,
 } from "@mirror/core";
@@ -67,6 +69,39 @@ describe("sheet documents", () => {
     expect(() => assertSheetSnapshot({ sheets: {} })).toThrow(/хотя бы один лист/);
     expect(() => assertSheetSnapshot(workbook("x".repeat(6 * 1024 * 1024)))).toThrow(/5 МБ/);
     expect(assertSheetSnapshot(blankSheetSnapshot("Новая"))).toBeGreaterThan(0);
+  });
+});
+
+describe("who may open a sheet", () => {
+  const guest = { discordId: null, isAdmin: false };
+  const player = { discordId: OTHER, isAdmin: false };
+  const stranger = { discordId: "910000000000000003", isAdmin: false };
+  const admin = { discordId: ADMIN, isAdmin: true };
+
+  it("is open to everyone by default, to listed people, or to admins only", async () => {
+    const created = await createSheetDocument({ title: "Реестр" }, ADMIN, context);
+    expect(created.access).toBe("PUBLIC");
+    expect([guest, player, stranger, admin].map((viewer) => canViewSheet(created, viewer))).toEqual([true, true, true, true]);
+
+    const listed = await setSheetAccess(created.id, { access: "USERS", allowedDiscordIds: [OTHER, OTHER] }, context);
+    expect(listed.allowedDiscordIds).toEqual([OTHER]);
+    expect([guest, player, stranger, admin].map((viewer) => canViewSheet(listed, viewer))).toEqual([false, true, false, true]);
+
+    // Closing keeps the list for the day the table is opened to it again.
+    const closed = await setSheetAccess(created.id, { access: "ADMINS", allowedDiscordIds: [OTHER] }, context);
+    expect(closed.allowedDiscordIds).toEqual([OTHER]);
+    expect([guest, player, stranger, admin].map((viewer) => canViewSheet(closed, viewer))).toEqual([false, false, false, true]);
+    expect((await getSheetSnapshot(created.id))?.access).toBe("ADMINS");
+
+    // An access value nobody defined closes the table rather than opens it.
+    expect(canViewSheet({ access: "SOMETHING", allowedDiscordIds: [OTHER] }, player)).toBe(false);
+  });
+
+  it("refuses what is not a Discord id or not an access level", async () => {
+    const created = await createSheetDocument({ title: "Реестр" }, ADMIN, context);
+    await expect(setSheetAccess(created.id, { access: "USERS", allowedDiscordIds: ["nick#1234"] }, context)).rejects.toThrow(/17–20 цифр/);
+    await expect(setSheetAccess(created.id, { access: "EVERYONE", allowedDiscordIds: [] }, context)).rejects.toThrow();
+    await expect(setSheetAccess("missing", { access: "PUBLIC", allowedDiscordIds: [] }, context)).rejects.toThrow(/не найдена/);
   });
 });
 
@@ -149,11 +184,14 @@ describe("editing a sheet", () => {
     const file = await prisma.mediaFile.create({
       data: { objectKey: "media/test/pic.png", originalName: "pic.png", contentType: "image/png", sizeBytes: 10 },
     });
-    expect(await isSheetImage(file.id)).toBe(false);
+    expect(await getSheetImageAccess(file.id)).toBeNull();
     await attachSheetImage(document.id, file.id);
-    expect(await isSheetImage(file.id)).toBe(true);
+    expect(await getSheetImageAccess(file.id)).toEqual({ access: "PUBLIC", allowedDiscordIds: [] });
+    // A picture follows the access of its table.
+    await setSheetAccess(document.id, { access: "ADMINS", allowedDiscordIds: [] }, context);
+    expect((await getSheetImageAccess(file.id))?.access).toBe("ADMINS");
     await archiveSheetDocument(document.id, context);
-    expect(await isSheetImage(file.id)).toBe(false);
+    expect(await getSheetImageAccess(file.id)).toBeNull();
     expect((await prisma.sheetDocument.findUniqueOrThrow({ where: { id: document.id } })).status).toBe(RecordStatus.ARCHIVED);
   });
 });

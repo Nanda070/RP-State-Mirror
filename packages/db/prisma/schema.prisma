@@ -970,6 +970,9 @@ model SheetDocument {
   title              String
   sortOrder          Int             @default(0) @map("sort_order")
   status             RecordStatus    @default(ACTIVE)
+  /// PUBLIC — everyone; USERS — signed-in people from `allowedDiscordIds`; ADMINS — «Админ» and above.
+  access             String          @default("PUBLIC")
+  allowedDiscordIds  String[]        @default([]) @map("allowed_discord_ids")
   /// The workbook in the editor's own format.
   snapshot           Json
   version            Int             @default(1)

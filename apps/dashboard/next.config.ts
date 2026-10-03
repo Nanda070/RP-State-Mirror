@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   // ESLint is its own step (pnpm lint, CI); a style remark must not block a deploy.
   eslint: { ignoreDuringBuilds: true },
   transpilePackages: ["@mirror/core", "@mirror/db"],
+  // Read by Node as they are: the .xlsx reader drags in packages a bundler cannot follow.
+  serverExternalPackages: ["exceljs"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "cdn.discordapp.com" },

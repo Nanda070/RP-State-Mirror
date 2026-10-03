@@ -24,6 +24,7 @@
     "dashboard:dev": "pnpm --filter @mirror/dashboard dev",
     "dashboard:build": "pnpm --filter @mirror/dashboard build",
     "dashboard:start": "pnpm --filter @mirror/dashboard start",
+    "dashboard:prod": "pnpm --filter @mirror/db build && pnpm --filter @mirror/core build && pnpm --filter @mirror/dashboard build && pnpm --filter @mirror/dashboard start",
     "format": "prettier --write ."
   },
   "devDependencies": {

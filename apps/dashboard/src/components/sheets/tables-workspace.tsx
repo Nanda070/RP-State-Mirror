@@ -7,10 +7,12 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react
 import { confirmDialog } from "@/lib/confirm";
 import type { TableTab } from "@/lib/tables";
 import { EmptyState, MoreMenu } from "../ui";
+import { AccessDialog, type AllowedUser } from "./access-dialog";
 import { Modal, NameDialog, tablesApi } from "./shared";
 import type { SheetEditorHandle, SheetSnapshot } from "./sheet-editor";
 
-const SheetEditor = dynamic(() => import("./sheet-editor").then((mod) => mod.SheetEditor), {
+const loadEditor = () => import("./sheet-editor");
+const SheetEditor = dynamic(() => loadEditor().then((mod) => mod.SheetEditor), {
   ssr: false,
   loading: () => <p className="muted sheet-loading">Загрузка таблицы…</p>,
 });
@@ -39,11 +41,14 @@ export function TablesWorkspace({
   current,
   canEdit,
   otherEditor,
+  allowed,
 }: {
   current: TableTab;
   canEdit: boolean;
   /** Who is editing this table now, when it is someone else. */
   otherEditor: string | null;
+  /** People the table is open to when its access is «по списку»; for admins. */
+  allowed: AllowedUser[];
 }) {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<SheetSnapshot | null>(null);
@@ -52,7 +57,7 @@ export function TablesWorkspace({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [dialog, setDialog] = useState<"rename" | "history" | null>(null);
+  const [dialog, setDialog] = useState<"rename" | "history" | "access" | null>(null);
   const [revisions, setRevisions] = useState<Revision[] | null>(null);
 
   const handleRef = useRef<SheetEditorHandle | null>(null);
@@ -70,6 +75,7 @@ export function TablesWorkspace({
   // The workbook. A versioned address is cached by the browser for good.
   useEffect(() => {
     let cancelled = false;
+    void loadEditor();
     setSnapshot(null);
     setNotice(null);
     tablesApi<{ version: number; snapshot: SheetSnapshot }>(`/api/tables/${currentId}/snapshot?v=${currentVersion}`)
@@ -257,6 +263,11 @@ export function TablesWorkspace({
             </Link>
           )}
           <h1 className="tables-title">{current.title}</h1>
+          {canEdit && current.access !== "PUBLIC" ? (
+            <span className="registry-status" data-status={current.access === "ADMINS" ? "bad" : "warn"}>
+              {current.access === "ADMINS" ? "Закрытая" : "По списку"}
+            </span>
+          ) : null}
         </div>
 
         {canEdit ? (
@@ -288,6 +299,15 @@ export function TablesWorkspace({
                     }}
                   >
                     Переименовать
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      closeMenu(event);
+                      setDialog("access");
+                    }}
+                  >
+                    Доступ
                   </button>
                   <button
                     type="button"
@@ -351,6 +371,19 @@ export function TablesWorkspace({
             });
             setDialog(null);
             router.replace(`/tables/${renamed.slug}`);
+            router.refresh();
+          }}
+        />
+      ) : null}
+
+      {dialog === "access" ? (
+        <AccessDialog
+          documentId={currentId}
+          initialAccess={current.access}
+          initialAllowed={allowed}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
             router.refresh();
           }}
         />

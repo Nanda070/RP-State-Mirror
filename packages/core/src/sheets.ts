@@ -9,6 +9,9 @@
  * - no silent overwrites: a save names the version it was made from;
  * - history: a revision at most every ten minutes of editing, and one when editing ends.
  *
+ * Who may open a table is set per table: everyone, people listed by Discord id, or admins only.
+ * Admins open every table. The check itself is `canViewSheet`; callers supply who is looking.
+ *
  * Nothing is deleted: tables are archived, revisions stay.
  */
 import { RecordStatus, prisma, type Prisma } from "@mirror/db";
@@ -26,6 +29,31 @@ export const SHEET_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024;
 export const SHEET_LOCK_TTL_MS = 2 * 60_000;
 export const SHEET_REVISION_INTERVAL_MS = 10 * 60_000;
 export const MAX_SHEET_DOCUMENTS = 30;
+export const MAX_SHEET_ALLOWED_USERS = 200;
+
+export const SHEET_ACCESS = ["PUBLIC", "USERS", "ADMINS"] as const;
+export type SheetAccess = (typeof SHEET_ACCESS)[number];
+
+/** Who is looking at a table: `discordId` is null for a guest, `isAdmin` — «Админ» and above. */
+export type SheetViewer = { discordId: string | null; isAdmin: boolean };
+
+export function canViewSheet(
+  document: { access: string; allowedDiscordIds: readonly string[] },
+  viewer: SheetViewer,
+): boolean {
+  if (viewer.isAdmin) return true;
+  if (document.access === "PUBLIC") return true;
+  if (document.access === "USERS") return viewer.discordId !== null && document.allowedDiscordIds.includes(viewer.discordId);
+  // ADMINS, and anything unknown: closed.
+  return false;
+}
+
+const accessSchema = z.object({
+  access: z.enum(SHEET_ACCESS),
+  allowedDiscordIds: z
+    .array(z.string().trim().regex(/^\d{17,20}$/, "Discord ID — это 17–20 цифр."))
+    .max(MAX_SHEET_ALLOWED_USERS, `В списке доступа не больше ${MAX_SHEET_ALLOWED_USERS} человек.`),
+});
 
 const titleSchema = z.string().trim().min(1, "Укажите название таблицы.").max(80, "Название длиннее 80 символов.");
 const slugSchema = z
@@ -84,6 +112,8 @@ const META = {
   title: true,
   sortOrder: true,
   status: true,
+  access: true,
+  allowedDiscordIds: true,
   version: true,
   lockDiscordId: true,
   lockExpiresAt: true,
@@ -93,7 +123,7 @@ const META = {
 
 export type SheetDocumentMeta = Prisma.SheetDocumentGetPayload<{ select: typeof META }>;
 
-/** Tabs of the «Таблицы» page: active tables in their order, without the workbooks. */
+/** Every active table in order, without the workbooks. The caller keeps those the viewer may open. */
 export async function listSheetDocuments(): Promise<SheetDocumentMeta[]> {
   return prisma.sheetDocument.findMany({
     where: { status: RecordStatus.ACTIVE },
@@ -105,7 +135,27 @@ export async function listSheetDocuments(): Promise<SheetDocumentMeta[]> {
 export async function getSheetSnapshot(id: string) {
   return prisma.sheetDocument.findFirst({
     where: { id, status: RecordStatus.ACTIVE },
-    select: { id: true, version: true, snapshot: true },
+    select: { id: true, version: true, snapshot: true, access: true, allowedDiscordIds: true },
+  });
+}
+
+/** Sets who may open the table. The list of ids is kept even while the table is public or closed. */
+export async function setSheetAccess(
+  id: string,
+  input: { access: string; allowedDiscordIds: readonly string[] },
+  context: AuditContext,
+) {
+  const data = accessSchema.parse(input);
+  const allowedDiscordIds = [...new Set(data.allowedDiscordIds)];
+  return auditedMutation(context, "sheet_document.access_changed", "sheet_document", async (tx) => {
+    const before = await tx.sheetDocument.findFirst({ where: { id, status: RecordStatus.ACTIVE }, select: META });
+    if (!before) throw new SheetError("Таблица не найдена.");
+    const after = await tx.sheetDocument.update({
+      where: { id },
+      data: { access: data.access, allowedDiscordIds },
+      select: META,
+    });
+    return { entityId: id, before, after, result: after };
   });
 }
 
@@ -373,10 +423,14 @@ export async function attachSheetImage(documentId: string, mediaFileId: string) 
   return prisma.sheetImage.create({ data: { documentId, mediaFileId } });
 }
 
-export async function isSheetImage(mediaFileId: string): Promise<boolean> {
+/** The access settings of the table a picture belongs to; null when it is not a picture of an active table. */
+export async function getSheetImageAccess(
+  mediaFileId: string,
+): Promise<{ access: string; allowedDiscordIds: string[] } | null> {
   const image = await prisma.sheetImage.findUnique({
     where: { mediaFileId },
-    select: { document: { select: { status: true } } },
+    select: { document: { select: { status: true, access: true, allowedDiscordIds: true } } },
   });
-  return image?.document.status === RecordStatus.ACTIVE;
+  if (!image || image.document.status !== RecordStatus.ACTIVE) return null;
+  return { access: image.document.access, allowedDiscordIds: image.document.allowedDiscordIds };
 }

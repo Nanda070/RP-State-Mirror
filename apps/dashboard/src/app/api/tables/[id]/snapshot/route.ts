@@ -1,15 +1,16 @@
-import { LOCKDOWN_MESSAGE, getSheetSnapshot, saveSheetSnapshot } from "@mirror/core";
+import { LOCKDOWN_MESSAGE, canViewSheet, getSheetSnapshot, saveSheetSnapshot } from "@mirror/core";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { jsonError } from "@/lib/api";
 import { dashboardAuditContext } from "@/lib/audit-context";
 import { isLockedOut, publicLockedOut, requireModuleManager } from "@/lib/session";
+import { tableViewer } from "@/lib/tables";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 /**
- * The workbook, for everyone. With `?v=<version>` equal to the current one the answer never changes
- * and may be cached for good — a visitor's repeat views cost the server nothing.
+ * The workbook, for whoever may open the table. A public table asked with `?v=<version>` equal to
+ * the current one never changes and may be cached for good; a restricted one is never cached.
  */
 export async function GET(request: Request, { params }: RouteContext) {
   try {
@@ -19,14 +20,19 @@ export async function GET(request: Request, { params }: RouteContext) {
     }
     const { id } = await params;
     const document = await getSheetSnapshot(id);
-    if (!document) return Response.json({ error: "Таблица не найдена" }, { status: 404 });
+    // No access looks the same as no table: the address must not confirm that a closed table exists.
+    if (!document || !canViewSheet(document, await tableViewer())) {
+      return Response.json({ error: "Таблица не найдена" }, { status: 404 });
+    }
     const asked = new URL(request.url).searchParams.get("v");
     return Response.json(
       { version: document.version, snapshot: document.snapshot },
       {
         headers: {
           "Cache-Control":
-            asked === String(document.version) ? "public, max-age=31536000, immutable" : "no-store",
+            document.access === "PUBLIC" && asked === String(document.version)
+              ? "public, max-age=31536000, immutable"
+              : "no-store",
         },
       },
     );

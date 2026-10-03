@@ -132,14 +132,25 @@ export function SheetEditor({
       try {
         const form = new FormData();
         form.append("file", file);
-        const res = await fetch(`/api/tables/${documentId}/images`, { method: "POST", body: form });
+        // The editor measures the picture from a local copy before it is placed; the workbook keeps the address.
+        const [res, local] = await Promise.all([
+          fetch(`/api/tables/${documentId}/images`, { method: "POST", body: form }),
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(new Error(ImageUploadStatusType.ERROR_IMAGE));
+            reader.readAsDataURL(file);
+          }),
+        ]);
         const data = (await res.json().catch(() => ({}))) as { id?: string; url?: string };
+        // The editor shows its own message for each of these codes.
+        if (res.status === 400) throw new Error(ImageUploadStatusType.ERROR_IMAGE_TYPE);
         if (!res.ok || !data.id || !data.url) throw new Error(ImageUploadStatusType.ERROR_IMAGE);
         return {
           imageId: data.id,
           imageSourceType: ImageSourceType.URL,
           source: data.url,
-          base64Cache: "",
+          base64Cache: local,
           status: ImageUploadStatusType.SUCCUSS,
         };
       } finally {

@@ -3852,6 +3852,72 @@ a.tables-back:hover {
   margin: 0 0 1rem;
 }
 
+.access-levels {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.access-level {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.access-level[data-checked] {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent-soft);
+}
+
+.access-level input {
+  margin: 0.25rem 0 0;
+  accent-color: var(--accent);
+}
+
+.access-level > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: var(--fs-sm);
+}
+
+.access-users .row > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.access-list {
+  display: grid;
+  gap: 0.3rem;
+  max-height: 14rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.access-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: var(--fs-sm);
+}
+
+.access-list li > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .revision-list {
   display: grid;
   gap: 0.35rem;

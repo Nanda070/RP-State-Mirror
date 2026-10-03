@@ -112,6 +112,11 @@ export function TablesList({
                   </svg>
                 </span>
                 <span className="tables-list-title">{table.title}</span>
+                {canEdit && table.access !== "PUBLIC" ? (
+                  <span className="registry-status" data-status={table.access === "ADMINS" ? "bad" : "warn"}>
+                    {table.access === "ADMINS" ? "Закрытая" : "По списку"}
+                  </span>
+                ) : null}
                 <span className="tables-list-meta">
                   {editors[table.id] ? `Редактирует: ${editors[table.id]}` : `Изменена ${table.updatedAt}`}
                 </span>
