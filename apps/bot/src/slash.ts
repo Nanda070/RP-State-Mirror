@@ -345,16 +345,18 @@ export async function handleSlashCommand(
 }
 
 async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  // Defer first: Discord gives three seconds, and everything below talks to the database.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { user } = await ensureUserByDiscordId(interaction.user.id);
   const subcommand = interaction.options.getSubcommand();
   if (subcommand === "снять") {
     const identity = await loadIdentity(interaction.user.id, ctx);
     if (!canManageModules(identity)) {
-      await interaction.reply(ephemeral("Отозвать нашивку могут только администраторы."));
+      await interaction.editReply("Отозвать нашивку могут только администраторы.");
       return;
     }
     await revokeToken(interaction.options.getString("номер", true), auditFromInteraction(interaction));
-    await interaction.reply(ephemeral("Нашивка отозвана."));
+    await interaction.editReply("Нашивка отозвана.");
     return;
   }
   if (subcommand === "найти") {
@@ -363,47 +365,44 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     // Cross-guild: ОГП/Юстиция may live on GOV while the command runs on ЧП (or vice versa).
     const roleIds = [...new Set([...identity.heldRoleIds, ...interactionRoleIds(interaction)])];
     if (!canFindTokens(identity, roleIds, finderRoleIds)) {
-      await interaction.reply(ephemeral("Поиск нашивок доступен ролям ОГП/Юстиция и администраторам."));
+      await interaction.editReply("Поиск нашивок доступен ролям ОГП/Юстиция и администраторам.");
       return;
     }
     const results = await findTokens(interaction.options.getString("запрос", true));
     if (results.length === 0) {
-      await interaction.reply(ephemeral("Ничего не найдено."));
+      await interaction.editReply("Ничего не найдено.");
       return;
     }
-    await interaction.reply(
-      ephemeral(
-        results
-          .map(
-            (item) =>
-              `**${item.display}**\nПерсонаж: ${item.character.name} · статик ${item.character.staticId}\nВладелец: <@${item.ownerDiscordId}> (\`${item.ownerDiscordId}\`)`,
-          )
-          .join("\n\n"),
-      ),
-    );
+    await interaction.editReply({
+      content: results
+        .map(
+          (item) =>
+            `**${item.display}**\nПерсонаж: ${item.character.name} · статик ${item.character.staticId}\nВладелец: <@${item.ownerDiscordId}> (\`${item.ownerDiscordId}\`)`,
+        )
+        .join("\n\n")
+        .slice(0, 2000),
+      allowedMentions: { parse: [] },
+    });
     return;
   }
 
   if (subcommand === "список") {
     const items = await listTokensForUser(user.id);
     if (items.length === 0) {
-      await interaction.reply(ephemeral("У вас пока нет нашивок."));
+      await interaction.editReply("У вас пока нет нашивок.");
       return;
     }
     const dateOpts = { timeZone: "Europe/Moscow" } as const;
-    await interaction.reply(
-      ephemeral(
-        items
-          .map((item) => {
-            const received = item.token.issuedAt.toLocaleDateString("ru-RU", dateOpts);
-            const status =
-              item.token.status === "ACTIVE" ? null : `статус: ${tokenStatusLabelRu(item.token.status)}`;
-            return [`**${item.display}**`, [`Получена: ${received}`, status].filter(Boolean).join(" · ")].join(
-              "\n",
-            );
-          })
-          .join("\n\n"),
-      ),
+    await interaction.editReply(
+      items
+        .map((item) => {
+          const received = item.token.issuedAt.toLocaleDateString("ru-RU", dateOpts);
+          const status =
+            item.token.status === "ACTIVE" ? null : `статус: ${tokenStatusLabelRu(item.token.status)}`;
+          return [`**${item.display}**`, [`Получена: ${received}`, status].filter(Boolean).join(" · ")].join("\n");
+        })
+        .join("\n\n")
+        .slice(0, 2000),
     );
     return;
   }
@@ -420,7 +419,7 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     },
     auditFromInteraction(interaction),
   );
-  await interaction.reply(ephemeral(`Выдан номер нашивки: **${formatTokenDisplay(token.number)}**.`));
+  await interaction.editReply(`Выдан номер нашивки: **${formatTokenDisplay(token.number)}**.`);
 }
 
 /** Validates a slash attachment as an image ≤ 10 MB and stores it in media_files. */
@@ -524,12 +523,12 @@ async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ct
     await interaction.reply(ephemeral("Команда работает только на сервере."));
     return;
   }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
   if (!canPostDocument(identity)) {
-    await interaction.reply(ephemeral("Запрос webhook доступен сотрудникам фракций и администраторам."));
+    await interaction.editReply("Запрос webhook доступен сотрудникам фракций и администраторам.");
     return;
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const channelRef = interaction.options.getChannel("канал", true);
   const description = interaction.options.getString("описание", true);
   const channel = await interaction.client.channels.fetch(channelRef.id);
@@ -684,12 +683,12 @@ async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: 
 }
 
 async function handleCheckFactions(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
   if (!canManageModules(identity)) {
-    await interaction.reply(ephemeral("Команда доступна только администраторам."));
+    await interaction.editReply("Команда доступна только администраторам.");
     return;
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const overlaps = await findFactionOverlaps(40);
   if (overlaps.length === 0) {
     await interaction.editReply("Пересечений состава между фракциями не найдено.");
@@ -706,12 +705,12 @@ async function handleCheckFactions(interaction: ChatInputCommandInteraction, ctx
 }
 
 async function handleAdminInvite(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
   if (!canManageModules(identity)) {
-    await interaction.reply(ephemeral("Команда доступна только администраторам."));
+    await interaction.editReply("Команда доступна только администраторам.");
     return;
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const guildDiscordId = interaction.options.getString("сервер", true);
   const allowed = await listInviteGuilds();
   if (!allowed.some((g) => g.discordId === guildDiscordId)) {

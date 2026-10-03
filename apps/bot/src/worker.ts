@@ -1,6 +1,14 @@
 import type { Client } from "discord.js";
 import type { Job } from "@mirror/db";
-import { claimNextJob, completeJob, failJob, requeueStaleJobs, type Logger } from "@mirror/core";
+import { claimNextJob, completeJob, deferJob, failJob, requeueStaleJobs, type Logger } from "@mirror/core";
+
+/** A handler answers this when it cannot run yet (e.g. the target channel is not configured). */
+function deferredReason(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const { status, reason } = result as { status?: unknown; reason?: unknown };
+  if (status !== "deferred") return null;
+  return typeof reason === "string" && reason.trim() ? reason : "цель доставки не настроена";
+}
 
 export interface JobContext {
   client: Client;
@@ -88,6 +96,13 @@ export class JobWorker {
     try {
       const payload = (job.payload ?? {}) as Record<string, unknown>;
       const result = await handler(payload, { client: this.client, job, log });
+      const reason = deferredReason(result);
+      if (reason) {
+        // Not done: the job waits for configuration and is tried again later.
+        const updated = await deferJob(job.id, this.workerId, reason);
+        log.info({ reason, status: updated?.status, availableAt: updated?.availableAt }, "job deferred");
+        return;
+      }
       await completeJob(job.id, this.workerId, result);
       log.info("job succeeded");
     } catch (error) {

@@ -137,6 +137,7 @@ export function makeTransferReviewEmbed(input: TransferReviewInput): ClassicEmbe
     sideLine(`Решение ${input.toFactionCode}`, input.targetDecision, input.targetDecidedByDiscordId),
   ];
   if (input.status === "REJECTED") lines.push(`**Причина отказа:** ${str(input.rejectionReason)}`);
+  if (input.status === "CLOSED" && input.rejectionReason) lines.push(`**Причина:** ${input.rejectionReason}`);
   const statusLabel =
     input.status === "APPROVED" ? "Одобрено" : input.status === "REJECTED" ? "Отказано" : input.status === "CLOSED" ? "Закрыто" : "На рассмотрении";
   lines.push(`**Статус:** ${statusLabel}`);

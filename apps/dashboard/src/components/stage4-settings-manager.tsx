@@ -9,12 +9,14 @@ import { TokenReceivePublish } from "./token-receive-publish";
 
 export type Stage4SettingsValues = {
   "registrations.ttlDays": number;
+  "registrations.pendingTtlDays": number;
   "registrations.vehicleChannelId": string | null;
   "registrations.uniformChannelId": string | null;
   "registrations.coordinatorRoleIds": string[];
   "transfers.channelId": string | null;
   "transfers.pingRoleIds": string[];
   "transfers.approvalDmText": string;
+  "transfers.pendingTtlDays": number;
   "webhooks.notifyChannelId": string | null;
   "feedback.notifyChannelId": string | null;
   "icBlacklist.enabled": boolean;
@@ -174,6 +176,20 @@ export function Stage4SettingsManager({
               />
             </label>
             <label className="field">
+              <span>Закрывать нерассмотренную заявку через, дней</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={values["registrations.pendingTtlDays"]}
+                onChange={(e) => patch("registrations.pendingTtlDays", Number(e.target.value))}
+              />
+              <span className="field-hint">
+                Заявка, по которой никто не принял решение, закрывается сама: статик освобождается, заявитель
+                получает сообщение.
+              </span>
+            </label>
+            <label className="field">
               <span>Канал регистрации ТС</span>
               <ChannelSelect
                 id="registrations-vehicle-channel"
@@ -240,6 +256,16 @@ export function Stage4SettingsManager({
                 value={values["transfers.approvalDmText"]}
                 onChange={(e) => patch("transfers.approvalDmText", e.target.value)}
                 rows={4}
+              />
+            </label>
+            <label className="field">
+              <span>Закрывать нерассмотренную заявку через, дней</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={values["transfers.pendingTtlDays"]}
+                onChange={(e) => patch("transfers.pendingTtlDays", Number(e.target.value))}
               />
             </label>
           </>

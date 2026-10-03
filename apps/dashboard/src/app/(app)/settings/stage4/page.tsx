@@ -45,12 +45,14 @@ export default async function Stage4SettingsPage({
   const [settings, channels, guilds] = await Promise.all([
     getSettings([
       "registrations.ttlDays",
+      "registrations.pendingTtlDays",
       "registrations.vehicleChannelId",
       "registrations.uniformChannelId",
       "registrations.coordinatorRoleIds",
       "transfers.channelId",
       "transfers.pingRoleIds",
       "transfers.approvalDmText",
+      "transfers.pendingTtlDays",
       "webhooks.notifyChannelId",
       "feedback.notifyChannelId",
       "icBlacklist.enabled",
@@ -81,12 +83,14 @@ export default async function Stage4SettingsPage({
 
   const initial: Stage4SettingsValues = {
     "registrations.ttlDays": settings["registrations.ttlDays"],
+    "registrations.pendingTtlDays": settings["registrations.pendingTtlDays"],
     "registrations.vehicleChannelId": settings["registrations.vehicleChannelId"],
     "registrations.uniformChannelId": settings["registrations.uniformChannelId"],
     "registrations.coordinatorRoleIds": settings["registrations.coordinatorRoleIds"],
     "transfers.channelId": settings["transfers.channelId"],
     "transfers.pingRoleIds": settings["transfers.pingRoleIds"],
     "transfers.approvalDmText": settings["transfers.approvalDmText"] ?? "",
+    "transfers.pendingTtlDays": settings["transfers.pendingTtlDays"],
     "webhooks.notifyChannelId": settings["webhooks.notifyChannelId"],
     "feedback.notifyChannelId": settings["feedback.notifyChannelId"],
     "icBlacklist.enabled": settings["icBlacklist.enabled"],

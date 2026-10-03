@@ -1,4 +1,4 @@
-import { listActiveFactions, updateFactionDeliverySettings } from "@mirror/core";
+import { listActiveFactions, updateFactionDeliverySettings, wakeDeferredJobs } from "@mirror/core";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
 import { dashboardAuditContext } from "@/lib/audit-context";
@@ -52,6 +52,7 @@ export async function PUT(request: Request) {
       },
       ctx,
     );
+    await wakeDeferredJobs();
     return Response.json({
       code: updated.code,
       settings: updated.settings,

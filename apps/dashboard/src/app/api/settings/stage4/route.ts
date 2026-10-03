@@ -14,6 +14,7 @@ import {
   publishTokenReceive,
   setSetting,
   setWebhookRequestStatus,
+  wakeDeferredJobs,
   type SettingKey,
 } from "@mirror/core";
 import { prisma, RecordStatus, type WebhookRequestStatus } from "@mirror/db";
@@ -24,12 +25,14 @@ import { requireSystemSettings } from "@/lib/session";
 
 const settingKeys = [
   "registrations.ttlDays",
+  "registrations.pendingTtlDays",
   "registrations.vehicleChannelId",
   "registrations.uniformChannelId",
   "registrations.coordinatorRoleIds",
   "transfers.channelId",
   "transfers.pingRoleIds",
   "transfers.approvalDmText",
+  "transfers.pendingTtlDays",
   "webhooks.notifyChannelId",
   "feedback.notifyChannelId",
   "icBlacklist.enabled",
@@ -176,6 +179,7 @@ export async function POST(request: Request) {
       updated[key] = await setSetting(key as SettingKey, value as never, context);
     }
 
+    await wakeDeferredJobs();
     return Response.json({ settings: updated });
   } catch (error) {
     return jsonError(error);

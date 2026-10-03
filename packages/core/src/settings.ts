@@ -159,6 +159,26 @@ export const settingDefinitions = {
     null,
     "Канал на сервере ЧП для логов синхронизации ролей",
   ),
+  "cp.maxKickPercent": defineSetting(
+    z.number().min(0).max(100),
+    10,
+    "Предохранитель синхронизации ЧП: если полная сверка хочет исключить больше этой доли участников (но не меньше трёх человек), исключения не выполняются",
+  ),
+  "cp.dryRun": defineSetting(
+    z.boolean(),
+    false,
+    "Сухой прогон синхронизации ЧП: бот только пишет в лог-канал, что сделал бы, и ничего не меняет",
+  ),
+  "registrations.pendingTtlDays": defineSetting(
+    z.number().int().positive(),
+    14,
+    "Через сколько дней нерассмотренная заявка на регистрацию закрывается автоматически",
+  ),
+  "transfers.pendingTtlDays": defineSetting(
+    z.number().int().positive(),
+    14,
+    "Через сколько дней нерассмотренная заявка на перевод закрывается автоматически",
+  ),
 };
 
 export type SettingKey = keyof typeof settingDefinitions;

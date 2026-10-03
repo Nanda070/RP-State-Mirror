@@ -36,28 +36,28 @@ export function enqueueJob(job: EnqueueJob, db: Db = prisma) {
 /**
  * Atomically takes the next due job. `FOR UPDATE SKIP LOCKED` guarantees that
  * concurrent workers never receive the same job.
+ *
+ * One statement, no interactive transaction: the idle poll runs every couple of seconds and must
+ * not wait for a transaction slot when the connection pool is busy (that surfaced as P2028).
  */
-export function claimNextJob(workerId: string): Promise<Job | null> {
-  return prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<{ id: string }[]>`
+export async function claimNextJob(workerId: string): Promise<Job | null> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    UPDATE jobs SET
+      status = 'RUNNING'::"JobStatus",
+      locked_at = (now() AT TIME ZONE 'UTC'),
+      locked_by = ${workerId},
+      attempts = attempts + 1,
+      updated_at = (now() AT TIME ZONE 'UTC')
+    WHERE id = (
       SELECT id FROM jobs
       WHERE status = 'PENDING' AND available_at <= (now() AT TIME ZONE 'UTC')
       ORDER BY available_at, created_at
       LIMIT 1
-      FOR UPDATE SKIP LOCKED`;
-    const id = rows[0]?.id;
-    if (!id) return null;
-
-    return tx.job.update({
-      where: { id },
-      data: {
-        status: JobStatus.RUNNING,
-        lockedAt: new Date(),
-        lockedBy: workerId,
-        attempts: { increment: 1 },
-      },
-    });
-  });
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id`;
+  const id = rows[0]?.id;
+  return id ? prisma.job.findUnique({ where: { id } }) : null;
 }
 
 export async function completeJob(jobId: string, workerId: string, result?: unknown): Promise<boolean> {
@@ -111,6 +111,57 @@ export async function failJob(
           },
     });
   });
+}
+
+/** How often a job waiting for configuration is looked at again. */
+export const DEFER_RETRY_MS = 5 * 60_000;
+/** After this long without the missing setting the job is given up on. */
+export const DEFER_MAX_AGE_MS = 7 * 24 * 3_600_000;
+
+/**
+ * Puts a job back because it cannot run *yet* — typically the target channel is not configured.
+ * It is tried again every few minutes, so «отправится после настройки» is literally true, and the
+ * wait does not use up retry attempts. A job that has waited longer than a week fails for good.
+ */
+export async function deferJob(
+  jobId: string,
+  workerId: string,
+  reason: string,
+  options: { retryInMs?: number; maxAgeMs?: number } = {},
+): Promise<Job | null> {
+  return prisma.$transaction(async (tx) => {
+    const job = await tx.job.findFirst({ where: { id: jobId, status: JobStatus.RUNNING, lockedBy: workerId } });
+    if (!job) return null;
+
+    const message = `Отложено: ${reason}`.slice(0, MAX_ERROR_LENGTH);
+    const expired = Date.now() - job.createdAt.getTime() > (options.maxAgeMs ?? DEFER_MAX_AGE_MS);
+    return tx.job.update({
+      where: { id: jobId },
+      data: expired
+        ? { status: JobStatus.FAILED, completedAt: new Date(), lastError: message }
+        : {
+            status: JobStatus.PENDING,
+            availableAt: new Date(Date.now() + (options.retryInMs ?? DEFER_RETRY_MS)),
+            lockedAt: null,
+            lockedBy: null,
+            lastError: message,
+            // Waiting is not a failed attempt.
+            attempts: Math.max(job.attempts - 1, 0),
+          },
+    });
+  });
+}
+
+/**
+ * Makes jobs that wait for configuration run right away. Called when settings are saved,
+ * so the admin sees the effect immediately instead of after the next retry window.
+ */
+export async function wakeDeferredJobs(): Promise<number> {
+  const { count } = await prisma.job.updateMany({
+    where: { status: JobStatus.PENDING, lastError: { startsWith: "Отложено:" }, availableAt: { gt: new Date() } },
+    data: { availableAt: new Date() },
+  });
+  return count;
 }
 
 /**

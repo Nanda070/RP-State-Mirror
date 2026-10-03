@@ -10,6 +10,8 @@ export function SettingsCpForm({
   initialEnabled,
   initialExcludedRoleIds,
   initialLogChannelId,
+  initialMaxKickPercent,
+  initialDryRun,
   incidentGuildId,
   channels,
   roles,
@@ -17,6 +19,8 @@ export function SettingsCpForm({
   initialEnabled: boolean;
   initialExcludedRoleIds: string[];
   initialLogChannelId: string | null;
+  initialMaxKickPercent: number;
+  initialDryRun: boolean;
   incidentGuildId: string | null;
   channels: ChannelOption[];
   roles: RoleOption[];
@@ -24,6 +28,8 @@ export function SettingsCpForm({
   const [enabled, setEnabled] = useState(initialEnabled);
   const [excluded, setExcluded] = useState<string[]>(initialExcludedRoleIds);
   const [logChannelId, setLogChannelId] = useState(initialLogChannelId ?? "");
+  const [maxKickPercent, setMaxKickPercent] = useState(String(initialMaxKickPercent));
+  const [dryRun, setDryRun] = useState(initialDryRun);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -45,6 +51,8 @@ export function SettingsCpForm({
           "cp.syncEnabled": enabled,
           "cp.excludedRoleIds": excluded,
           "cp.logChannelId": logChannelId.trim() || null,
+          "cp.maxKickPercent": Math.min(100, Math.max(0, Number(maxKickPercent) || 0)),
+          "cp.dryRun": dryRun,
         }),
       });
       const data = await res.json();
@@ -75,6 +83,29 @@ export function SettingsCpForm({
         onChange={setEnabled}
         label="Синхронизация включена"
       />
+      <ToggleRow
+        id="cpDryRun"
+        checked={dryRun}
+        onChange={setDryRun}
+        label="Сухой прогон: только писать в лог-канал, что было бы сделано"
+      />
+      <div className="field">
+        <label htmlFor="cpMaxKick">Предел исключений за одну сверку, % участников</label>
+        <input
+          id="cpMaxKick"
+          type="number"
+          min={0}
+          max={100}
+          step={1}
+          value={maxKickPercent}
+          onChange={(e) => setMaxKickPercent(e.target.value)}
+        />
+        <span className="field-hint">
+          Если полная сверка хочет исключить больше этой доли (но не меньше трёх человек), бот никого не
+          исключает и пишет предупреждение в лог-канал. Это защита от ошибки в привязках ролей и от сбоя
+          Discord.
+        </span>
+      </div>
       <div className="field">
         <label htmlFor="cpLog">Канал логов</label>
         <ChannelSelect

@@ -1,7 +1,8 @@
 /**
  * Bot job handlers: Discord delivery for Stage 3 modules.
  * Prefer channel send via bot; fall back to webhook URL from settings.
- * Unconfigured targets succeed as deferred (no infinite retries).
+ * A handler that returns `{ status: "deferred" }` (target not configured yet) is put back by the worker
+ * and tried again every few minutes — see `deferJob`.
  */
 import {
   MessageFlags,
@@ -9,7 +10,7 @@ import {
   type Client,
   type TextChannel,
 } from "discord.js";
-import { prisma, RecordStatus } from "@mirror/db";
+import { prisma, RecordStatus, type Job } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
   PERSONNEL_AUDIT_META,
@@ -63,6 +64,7 @@ import {
 import { classicToEmbed, embedSpecToMessageOptions } from "./embed-payload.js";
 import {
   buildRegistrationReview,
+  buildTransferReview,
   editStoredReviewMessage,
   fetchReviewChannel,
   loadRegistration,
@@ -76,7 +78,46 @@ type EmbedSendResult =
   | { status: "sent"; messageId: string; channelId: string; guildId: string; spec: EmbedSpec }
   | { status: "deferred"; reason: string };
 
+type StepResult = Record<string, unknown>;
+
+function savedSteps(job: Job): Record<string, StepResult> {
+  const result = job.result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return {};
+  const steps = (result as { steps?: unknown }).steps;
+  return steps && typeof steps === "object" && !Array.isArray(steps) ? (steps as Record<string, StepResult>) : {};
+}
+
+/**
+ * Runs a side effect that must not repeat when the job is retried — a Discord post.
+ * Its outcome is written to the job row as soon as it happens, so a retry after a later failure
+ * (a database hiccup, a second target that is down) finds it and skips the step instead of posting again.
+ */
+async function runOnce<T extends StepResult>(job: Job, key: string, log: Logger, run: () => Promise<T>): Promise<T> {
+  const steps = savedSteps(job);
+  const saved = steps[key];
+  if (saved) return saved as T;
+
+  const value = await run();
+  const next = { steps: { ...steps, [key]: value } };
+  job.result = next as unknown as Job["result"];
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await prisma.job.update({ where: { id: job.id }, data: { result: toJsonValue(next) } });
+      break;
+    } catch (error) {
+      if (attempt === 3) {
+        log.error({ err: error, step: key }, "could not checkpoint a finished step; a retry may repeat it");
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      }
+    }
+  }
+  return value;
+}
+
 type SendEmbedOptions = {
+  /** Makes the post happen once per job: `key` names the step inside the job. */
+  once?: { job: Job; key: string };
   content?: string | null;
   /** Role snowflakes allowed to ping (parsed from content mentions). */
   mentionRoleIds?: readonly string[];
@@ -99,6 +140,24 @@ async function sendEmbed(
   if (target.kind === "unconfigured") {
     return { status: "deferred", reason: target.reason };
   }
+  if (!options.once) return postEmbed(client, target, classic, log, options);
+
+  const { job, key } = options.once;
+  const posted = await runOnce(job, key, log, async () => {
+    const result = await postEmbed(client, target, classic, log, options);
+    if (result.status !== "sent") throw new Error("unexpected deferred send");
+    return { messageId: result.messageId, channelId: result.channelId, guildId: result.guildId };
+  });
+  return { status: "sent", ...posted, spec: classicEmbedToSpec(classic) };
+}
+
+async function postEmbed(
+  client: Client,
+  target: Exclude<DeliveryTarget, { kind: "unconfigured" }>,
+  classic: ClassicEmbed,
+  log: Logger,
+  options: SendEmbedOptions,
+): Promise<EmbedSendResult> {
 
   const content = options.content?.trim() || undefined;
   const mentionRoleIds = [...new Set(options.mentionRoleIds ?? [])].filter((id) =>
@@ -185,17 +244,18 @@ async function persistSend(
     messageDiscordId: result.messageId,
     spec: result.spec,
   });
-  await prisma.sentMessageLink.create({
-    data: {
-      sentMessageId: sent.id,
-      documentId: link.documentId ?? null,
-      responseId: link.responseId ?? null,
-      wantedId: link.wantedId ?? null,
-      fineId: link.fineId ?? null,
-      personnelId: link.personnelId ?? null,
-      icBlacklistId: link.icBlacklistId ?? null,
-    },
-  });
+  const data = {
+    sentMessageId: sent.id,
+    documentId: link.documentId ?? null,
+    responseId: link.responseId ?? null,
+    wantedId: link.wantedId ?? null,
+    fineId: link.fineId ?? null,
+    personnelId: link.personnelId ?? null,
+    icBlacklistId: link.icBlacklistId ?? null,
+  };
+  // A retried job reaches this point again for a message it already linked.
+  const existing = await prisma.sentMessageLink.findFirst({ where: data, select: { id: true } });
+  if (!existing) await prisma.sentMessageLink.create({ data });
   return sent;
 }
 
@@ -239,7 +299,7 @@ async function resolveAuthor(
   }
 }
 
-const documentSend: JobHandler = async (payload, { client, log }) => {
+const documentSend: JobHandler = async (payload, { client, log, job }) => {
   const documentId = String(payload.documentId ?? "");
   const doc = await prisma.document.findUnique({ where: { id: documentId } });
   if (!doc) throw new Error(`Document ${documentId} not found`);
@@ -265,6 +325,7 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
     : "Новый документ из правительства.";
 
   const result = await sendEmbed(client, target, classic, log, {
+    once: { job, key: "post" },
     content,
     mentionRoleIds: pingRoleId ? [pingRoleId] : [],
   });
@@ -273,7 +334,7 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", documentNumber: doc.number, messageId: result.messageId };
 };
 
-const documentResponseSend: JobHandler = async (payload, { client, log }) => {
+const documentResponseSend: JobHandler = async (payload, { client, log, job }) => {
   const responseId = String(payload.responseId ?? "");
   const sourceGuildDiscordId =
     typeof payload.sourceGuildDiscordId === "string" ? payload.sourceGuildDiscordId : null;
@@ -300,6 +361,7 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   });
 
   const govResult = await sendEmbed(client, govTarget, classic, log, {
+    once: { job, key: "gov" },
     content: `<@${authorId}>`,
     mentionUserIds: [authorId],
   });
@@ -320,6 +382,7 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
       `Ответил: <@${responderId}>`,
     ].join(" · ");
     const localResult = await sendEmbed(client, localTarget, classic, log, {
+      once: { job, key: "local" },
       content: localContent,
       mentionUserIds: [authorId, responderId],
     });
@@ -343,7 +406,7 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   };
 };
 
-const wantedPublish: JobHandler = async (payload, { client, log }) => {
+const wantedPublish: JobHandler = async (payload, { client, log, job }) => {
   const wantedId = String(payload.wantedId ?? "");
   const wanted = await prisma.wanted.findUnique({ where: { id: wantedId } });
   if (!wanted) throw new Error(`Wanted ${wantedId} not found`);
@@ -367,6 +430,7 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
   });
 
   const result = await sendEmbed(client, target, classic, log, {
+    once: { job, key: "post" },
     ...(content ? { content } : {}),
     mentionRoleIds: pingRoleIds,
   });
@@ -375,7 +439,7 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", wantedNumber: wanted.number, messageId: result.messageId };
 };
 
-const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
+const wantedEditClosed: JobHandler = async (payload, { client, log, job }) => {
   const wantedId = String(payload.wantedId ?? "");
   const wanted = await prisma.wanted.findUnique({ where: { id: wantedId } });
   if (!wanted) throw new Error(`Wanted ${wantedId} not found`);
@@ -428,6 +492,7 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
           },
           doneEmbed,
           log,
+          { once: { job, key: "done" } },
         );
         if (doneResult.status === "sent") {
           await persistSend(doneResult, { wantedId: wanted.id });
@@ -444,17 +509,17 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
   }
 
   const target = await resolveWantedDelivery();
-  const result = await sendEmbed(client, target, classic, log);
+  const result = await sendEmbed(client, target, classic, log, { once: { job, key: "closed" } });
   if (result.status === "deferred") return result;
   await persistSend(result, { wantedId: wanted.id });
-  const doneResult = await sendEmbed(client, target, doneEmbed, log);
+  const doneResult = await sendEmbed(client, target, doneEmbed, log, { once: { job, key: "done" } });
   if (doneResult.status === "sent") {
     await persistSend(doneResult, { wantedId: wanted.id });
   }
   return { status: "sent", wantedNumber: wanted.number, messageId: result.messageId };
 };
 
-const icBlacklistPublish: JobHandler = async (payload, { client, log }) => {
+const icBlacklistPublish: JobHandler = async (payload, { client, log, job }) => {
   const entryId = String(payload.entryId ?? "");
   const entry = await prisma.icBlacklistEntry.findUnique({ where: { id: entryId } });
   if (!entry) throw new Error(`IC blacklist ${entryId} not found`);
@@ -470,13 +535,13 @@ const icBlacklistPublish: JobHandler = async (payload, { client, log }) => {
     forumLink: entry.forumLink,
     number: entry.number,
   });
-  const result = await sendEmbed(client, target, classic, log);
+  const result = await sendEmbed(client, target, classic, log, { once: { job, key: "post" } });
   if (result.status === "deferred") return result;
   await persistSend(result, { icBlacklistId: entry.id });
   return { status: "sent", number: entry.number, messageId: result.messageId };
 };
 
-const icBlacklistEditClosed: JobHandler = async (payload, { client, log }) => {
+const icBlacklistEditClosed: JobHandler = async (payload, { client, log, job }) => {
   const entryId = String(payload.entryId ?? "");
   const entry = await prisma.icBlacklistEntry.findUnique({ where: { id: entryId } });
   if (!entry) throw new Error(`IC blacklist ${entryId} not found`);
@@ -518,13 +583,13 @@ const icBlacklistEditClosed: JobHandler = async (payload, { client, log }) => {
   }
 
   const target = await resolveIcBlacklistDelivery();
-  const result = await sendEmbed(client, target, classic, log);
+  const result = await sendEmbed(client, target, classic, log, { once: { job, key: "closed" } });
   if (result.status === "deferred") return result;
   await persistSend(result, { icBlacklistId: entry.id });
   return { status: "sent", number: entry.number, messageId: result.messageId };
 };
 
-const finePublish: JobHandler = async (payload, { client, log }) => {
+const finePublish: JobHandler = async (payload, { client, log, job }) => {
   const fineId = String(payload.fineId ?? "");
   const fine = await prisma.fine.findUnique({ where: { id: fineId } });
   if (!fine) throw new Error(`Fine ${fineId} not found`);
@@ -551,6 +616,7 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
     : "Новый штраф из правительства.";
 
   const result = await sendEmbed(client, target, classic, log, {
+    once: { job, key: "post" },
     content,
     mentionRoleIds: pingRoleId ? [pingRoleId] : [],
   });
@@ -559,7 +625,7 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
 };
 
-const fineEditPaid: JobHandler = async (payload, { client, log }) => {
+const fineEditPaid: JobHandler = async (payload, { client, log, job }) => {
   const fineId = String(payload.fineId ?? "");
   const fine = await prisma.fine.findUnique({ where: { id: fineId } });
   if (!fine) throw new Error(`Fine ${fineId} not found`);
@@ -594,13 +660,13 @@ const fineEditPaid: JobHandler = async (payload, { client, log }) => {
 
   // Paid notice → GOV documents channel (same place as /ответ), not ЧП.
   const target = await resolveFinePaidDelivery();
-  const result = await sendEmbed(client, target, classic, log);
+  const result = await sendEmbed(client, target, classic, log, { once: { job, key: "notice" } });
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
 };
 
-const personnelPublish: JobHandler = async (payload, { client, log }) => {
+const personnelPublish: JobHandler = async (payload, { client, log, job }) => {
   const personnelEventId = String(payload.personnelEventId ?? "");
   const event = await prisma.personnelEvent.findUnique({ where: { id: personnelEventId } });
   if (!event) throw new Error(`Personnel event ${personnelEventId} not found`);
@@ -631,13 +697,13 @@ const personnelPublish: JobHandler = async (payload, { client, log }) => {
   });
 
   const target = await resolveFactionPersonnelDelivery(event.factionCode);
-  const result = await sendEmbed(client, target, classic, log);
+  const result = await sendEmbed(client, target, classic, log, { once: { job, key: "post" } });
   if (result.status === "deferred") return result;
   await persistSend(result, { personnelId: event.id });
   return { status: "sent", personnelEventId: event.id, messageId: result.messageId };
 };
 
-const messageDesignSend: JobHandler = async (payload, { client, log }) => {
+const messageDesignSend: JobHandler = async (payload, { client, log, job }) => {
   const designId = String(payload.designId ?? "");
   const guildDiscordId = String(payload.guildDiscordId ?? "");
   const channelDiscordId = String(payload.channelDiscordId ?? "");
@@ -660,7 +726,7 @@ const messageDesignSend: JobHandler = async (payload, { client, log }) => {
     throw new Error(`Канал ${channelDiscordId} недоступен`);
   }
 
-  const message = await channel.send(options);
+  const message = await runOnce(job, "post", log, async () => ({ id: (await channel.send(options)).id }));
   await recordSentMessage({
     guildDiscordId: guild.id,
     channelDiscordId: channel.id,
@@ -726,7 +792,7 @@ const messageDesignResend: JobHandler = async (payload, { client, log }) => {
   }
 };
 
-const registrationReview: JobHandler = async (payload, { client, log }) => {
+const registrationReview: JobHandler = async (payload, { client, log, job }) => {
   const registrationId = String(payload.registrationId ?? "");
   const registration = await loadRegistration(registrationId);
   if (!registration) throw new Error(`Registration ${registrationId} not found`);
@@ -746,14 +812,18 @@ const registrationReview: JobHandler = async (payload, { client, log }) => {
   const channel = await fetchReviewChannel(client, target.guildDiscordId, target.channelDiscordId);
   const photo = registration.evidenceFileIds[0] ? await readMediaFile(registration.evidenceFileIds[0]) : null;
   const pingRoleIds = await getSetting("registrations.coordinatorRoleIds");
-  const message = await channel.send({
-    ...renderRegistrationReview(registration, {
-      imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
-    }),
-    ...(pingRoleIds.length > 0 ? { content: formatRoleMentions(pingRoleIds) } : {}),
-    allowedMentions: { parse: [], roles: [...pingRoleIds] },
-    files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
+  const posted = await runOnce(job, "post", log, async () => {
+    const sentMessage = await channel.send({
+      ...renderRegistrationReview(registration, {
+        imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
+      }),
+      ...(pingRoleIds.length > 0 ? { content: formatRoleMentions(pingRoleIds) } : {}),
+      allowedMentions: { parse: [], roles: [...pingRoleIds] },
+      files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
+    });
+    return { id: sentMessage.id };
   });
+  const message = await channel.messages.fetch(posted.id);
   await setRegistrationReviewMessage(registrationId, {
     guildId: target.guildDiscordId,
     channelId: channel.id,
@@ -806,11 +876,18 @@ const registrationDecided: JobHandler = async (payload, { client, log }) => {
   if (!registration) throw new Error(`Registration ${registrationId} not found`);
   const what = `регистрацию ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""}`;
   const who = `статик ${registration.staticId}`;
+  // Buttons already update the card; an automatic close (nobody reviewed in time) reaches it only here.
+  if (registration.decision !== "PENDING") {
+    await editStoredReviewMessage(client, registration, await buildRegistrationReview(registration)).catch(
+      (error: unknown) => log.warn({ err: error, registrationId }, "failed to refresh registration card"),
+    );
+  }
   if (registration.decision === "REJECTED") {
+    const decidedBy = registration.decidedByDiscordId ? `<@${registration.decidedByDiscordId}>` : "автоматически";
     const thread = await postToThread(
       client,
       registration.reviewThreadId,
-      `**Отказ.** Решение принял: <@${registration.decidedByDiscordId}>\n**Причина:** ${registration.rejectionReason ?? "—"}`,
+      `**Отказ.** Решение принял: ${decidedBy}\n**Причина:** ${registration.rejectionReason ?? "—"}`,
       log,
     );
     const dm = await sendDirectMessage(
@@ -859,7 +936,7 @@ const registrationExpired: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", edited, dm };
 };
 
-const transferReview: JobHandler = async (payload, { client, log }) => {
+const transferReview: JobHandler = async (payload, { client, log, job }) => {
   const transferId = String(payload.transferId ?? "");
   const transfer = await loadTransfer(transferId);
   if (!transfer) throw new Error(`Transfer ${transferId} not found`);
@@ -873,13 +950,16 @@ const transferReview: JobHandler = async (payload, { client, log }) => {
   const channel = await fetchReviewChannel(client, guildId, channelId);
   const photo = transfer.documentFileIds[0] ? await readMediaFile(transfer.documentFileIds[0]) : null;
   const pingRoleIds = await resolveTransferPingRoleIds(guildId);
-  const message = await channel.send({
-    ...renderTransferReview(transfer, {
-      imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
-    }),
-    ...(pingRoleIds.length > 0 ? { content: formatRoleMentions(pingRoleIds) } : {}),
-    allowedMentions: { parse: [], roles: pingRoleIds },
-    files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
+  const message = await runOnce(job, "post", log, async () => {
+    const sentMessage = await channel.send({
+      ...renderTransferReview(transfer, {
+        imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
+      }),
+      ...(pingRoleIds.length > 0 ? { content: formatRoleMentions(pingRoleIds) } : {}),
+      allowedMentions: { parse: [], roles: pingRoleIds },
+      files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
+    });
+    return { id: sentMessage.id };
   });
   await setTransferReviewMessage(transferId, { guildId, channelId: channel.id, messageId: message.id });
   if (pingRoleIds.length === 0) {
@@ -892,6 +972,18 @@ const transferDecided: JobHandler = async (payload, { client, log }) => {
   const transferId = String(payload.transferId ?? "");
   const transfer = await loadTransfer(transferId);
   if (!transfer) throw new Error(`Transfer ${transferId} not found`);
+  if (transfer.status === "CLOSED") {
+    await editStoredReviewMessage(client, transfer, await buildTransferReview(transfer)).catch((error: unknown) =>
+      log.warn({ err: error, transferId }, "failed to refresh transfer card"),
+    );
+    const dm = await sendDirectMessage(
+      client,
+      transfer.createdByDiscordId,
+      `Заявка на перевод **${transfer.fromFactionCode} → ${transfer.toFactionCode}** (статик ${transfer.character.staticId}) закрыта.\n**Причина:** ${transfer.rejectionReason ?? "—"}`,
+      log,
+    );
+    return { status: "sent", decision: "CLOSED", dm };
+  }
   if (transfer.status === "REJECTED") {
     const dm = await sendDirectMessage(
       client,
@@ -1305,7 +1397,7 @@ const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", dm, requestId, requestStatus: request.status };
 };
 
-const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
+const formSubmissionDeliver: JobHandler = async (payload, { client, log, job }) => {
   const submissionId = String(payload.submissionId ?? "");
   const submission = await prisma.formSubmission.findUnique({
     where: { id: submissionId },
@@ -1355,7 +1447,9 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
     if (!channel || !channel.isTextBased() || !("send" in channel)) {
       throw new Error(`Канал доставки формы ${form.deliveryChannelId} недоступен`);
     }
-    const message = await channel.send({ embeds: [classicToEmbed(classic)] });
+    const message = await runOnce(job, "channel", log, async () => ({
+      id: (await channel.send({ embeds: [classicToEmbed(classic)] })).id,
+    }));
     results.push({ via: "channel", status: "sent", messageId: message.id });
   }
 
@@ -1366,7 +1460,7 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
       channelDiscordId: form.deliveryChannelId,
       guildDiscordId: null,
     };
-    const sent = await sendEmbed(client, target, classic, log);
+    const sent = await sendEmbed(client, target, classic, log, { once: { job, key: "webhook" } });
     results.push({
       via: "webhook",
       status: sent.status,

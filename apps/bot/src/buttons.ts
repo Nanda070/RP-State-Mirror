@@ -71,11 +71,20 @@ function cooldownKey(userId: string, actionId: string) {
   return `${userId}:${actionId}`;
 }
 
+const COOLDOWN_SWEEP_SIZE = 500;
+
 function underCooldown(userId: string, actionId: string): boolean {
   const key = cooldownKey(userId, actionId);
+  const now = Date.now();
   const last = recentClicks.get(key) ?? 0;
-  if (Date.now() - last < COOLDOWN_MS) return true;
-  recentClicks.set(key, Date.now());
+  if (now - last < COOLDOWN_MS) return true;
+  // Entries are useless once their cooldown has passed; sweep them so the map stays small.
+  if (recentClicks.size >= COOLDOWN_SWEEP_SIZE) {
+    for (const [entry, at] of recentClicks) {
+      if (now - at >= COOLDOWN_MS) recentClicks.delete(entry);
+    }
+  }
+  recentClicks.set(key, now);
   return false;
 }
 

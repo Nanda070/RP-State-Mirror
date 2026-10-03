@@ -1,11 +1,13 @@
 import { hostname } from "node:os";
-import { Client, Events, GatewayIntentBits, Partials, type Role } from "discord.js";
+import { Client, Events, GatewayIntentBits, Partials, type Guild, type Role } from "discord.js";
 import { prisma } from "@mirror/db";
 import {
   botEnvSchema,
   createLogger,
   expireDocuments,
   expireIcBlacklistEntries,
+  expirePendingRegistrations,
+  expirePendingTransfers,
   expireRegistrations,
   markGuildUnavailable,
   markMemberLeft,
@@ -41,13 +43,18 @@ let maintenanceTimer: NodeJS.Timeout | undefined;
 
 /** Time-based status transitions; side effects (card edits, DMs) go through jobs. */
 async function runMaintenance() {
-  const [registrations, documents, blacklist] = await Promise.all([
+  const [registrations, documents, blacklist, unreviewedRegistrations, unreviewedTransfers] = await Promise.all([
     expireRegistrations(),
     expireDocuments(),
     expireIcBlacklistEntries(),
+    expirePendingRegistrations(),
+    expirePendingTransfers(),
   ]);
-  if (registrations + documents + blacklist > 0) {
-    log.info({ registrations, documents, blacklist }, "maintenance: records expired");
+  if (registrations + documents + blacklist + unreviewedRegistrations + unreviewedTransfers > 0) {
+    log.info(
+      { registrations, documents, blacklist, unreviewedRegistrations, unreviewedTransfers },
+      "maintenance: records expired",
+    );
   }
 }
 
@@ -86,7 +93,11 @@ process.on("unhandledRejection", (error) => {
   log.error({ err: error }, "unhandledRejection");
 });
 process.on("uncaughtException", (error) => {
-  log.fatal({ err: error }, "uncaughtException");
+  // After an uncaught exception the process state is unknown: stop cleanly and let the supervisor
+  // (Docker restart policy) start a fresh one, instead of limping on.
+  log.fatal({ err: error }, "uncaughtException — shutting down");
+  process.exitCode = 1;
+  void shutdown("uncaughtException");
 });
 
 client.on(Events.InteractionCreate, (interaction) => {
@@ -143,8 +154,31 @@ client.on(Events.GuildDelete, (guild) => {
   guarded("guildDelete", () => markGuildUnavailable(guild.id));
 });
 
-function resyncRoles(event: string, role: Role) {
-  guarded(event, () => syncGuildRoles(role.guild.id, guildRoles(role.guild)));
+const RESYNC_DEBOUNCE_MS = 2_000;
+const pendingResyncs = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Moving one role or channel makes Discord send an update for every item whose position shifted.
+ * Each used to trigger a full resync of the guild; now a burst collapses into one resync per guild.
+ */
+function debounceResync(kind: "roles" | "channels", guild: Guild) {
+  const key = `${kind}:${guild.id}`;
+  clearTimeout(pendingResyncs.get(key));
+  pendingResyncs.set(
+    key,
+    setTimeout(() => {
+      pendingResyncs.delete(key);
+      guarded(`${kind}Resync`, () =>
+        kind === "roles"
+          ? syncGuildRoles(guild.id, guildRoles(guild))
+          : syncGuildChannels(guild.id, guildChannels(guild)),
+      );
+    }, RESYNC_DEBOUNCE_MS),
+  );
+}
+
+function resyncRoles(_event: string, role: Role) {
+  debounceResync("roles", role.guild);
 }
 client.on(Events.GuildRoleCreate, (role) => resyncRoles("guildRoleCreate", role));
 client.on(Events.GuildRoleUpdate, (_old, role) => resyncRoles("guildRoleUpdate", role));
@@ -152,16 +186,16 @@ client.on(Events.GuildRoleDelete, (role) => resyncRoles("guildRoleDelete", role)
 
 client.on(Events.ChannelCreate, (channel) => {
   if (!channel.isDMBased() && channel.guild) {
-    guarded("channelCreate", () => syncGuildChannels(channel.guild.id, guildChannels(channel.guild)));
+    debounceResync("channels", channel.guild);
   }
 });
 client.on(Events.ChannelUpdate, (_old, channel) => {
   if (!("guild" in channel) || !channel.guild) return;
-  guarded("channelUpdate", () => syncGuildChannels(channel.guild.id, guildChannels(channel.guild)));
+  debounceResync("channels", channel.guild);
 });
 client.on(Events.ChannelDelete, (channel) => {
   if (!("guild" in channel) || !channel.guild) return;
-  guarded("channelDelete", () => syncGuildChannels(channel.guild.id, guildChannels(channel.guild)));
+  debounceResync("channels", channel.guild);
 });
 
 client.on(Events.GuildMemberAdd, (member) => {
@@ -197,10 +231,11 @@ async function shutdown(signal: string) {
   log.info({ signal }, "shutting down");
   clearInterval(reconcileTimer);
   clearInterval(maintenanceTimer);
+  for (const timer of pendingResyncs.values()) clearTimeout(timer);
   await worker.stop();
   await client.destroy();
   await prisma.$disconnect();
-  process.exit(0);
+  process.exit(process.exitCode ?? 0);
 }
 
 process.once("SIGINT", () => void shutdown("SIGINT"));

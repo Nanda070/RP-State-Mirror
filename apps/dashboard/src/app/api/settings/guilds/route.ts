@@ -1,4 +1,4 @@
-import { getSetting, setMainAndIncidentGuilds, snowflakeSchema } from "@mirror/core";
+import { getSetting, setMainAndIncidentGuilds, snowflakeSchema, wakeDeferredJobs } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
@@ -36,6 +36,7 @@ export async function PUT(request: Request) {
     const ctx = await dashboardAuditContext(session.user.id);
 
     const result = await setMainAndIncidentGuilds(body.mainGuildId, body.incidentGuildId, ctx);
+    await wakeDeferredJobs();
     return Response.json(result);
   } catch (error) {
     return jsonError(error);

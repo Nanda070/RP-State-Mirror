@@ -738,18 +738,13 @@ function isActiveBlacklistEntry(entry: { status: RecordStatus; expiresAt: Date |
   return entry.status === RecordStatus.ACTIVE && (!entry.expiresAt || entry.expiresAt > now);
 }
 
-/** Next system number BL-001, BL-002, … */
+/**
+ * Next system number BL-001, BL-002, … Taken from a database sequence, so concurrent calls never
+ * get the same number (a gap appears if the surrounding transaction rolls back — that is fine).
+ */
 export async function nextIcBlacklistNumber(db: Db = prisma): Promise<string> {
-  const last = await db.icBlacklistEntry.findFirst({
-    orderBy: { createdAt: "desc" },
-    select: { number: true },
-  });
-  let seq = 1;
-  if (last) {
-    const n = Number.parseInt(last.number.replace(/^BL-/i, ""), 10);
-    if (Number.isFinite(n)) seq = n + 1;
-  }
-  return `BL-${String(seq).padStart(3, "0")}`;
+  const rows = await db.$queryRaw<{ value: bigint }[]>`SELECT nextval('ic_blacklist_number_seq') AS value`;
+  return `BL-${String(rows[0]?.value ?? 1n).padStart(3, "0")}`;
 }
 
 export async function createIcBlacklistEntry(input: z.input<typeof createBlacklistSchema>, context: AuditContext) {

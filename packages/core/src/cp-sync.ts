@@ -41,11 +41,20 @@ export interface PlanCpSyncInput {
   links: readonly CpFactionLink[];
   /** All managed target role ids on the incident guild. */
   managedTargetRoleIds: readonly string[];
+  /**
+   * Faction guilds whose membership could not be read (guild unavailable, request failed).
+   * «Could not read» is not «is not a member»: with any unknown the member is left alone,
+   * because the missing guild might be the only one that gives them access.
+   */
+  unknownGuildIds?: readonly string[];
 }
 
 export function planCpSync(input: PlanCpSyncInput): CpSyncPlan {
   if (input.isBot) return { kind: "skip", reason: "bot" };
   if (input.isOwner) return { kind: "skip", reason: "owner" };
+  if (input.unknownGuildIds && input.unknownGuildIds.length > 0) {
+    return { kind: "skip", reason: "membership_unknown" };
+  }
 
   const incidentRoles = new Set(input.incidentRoleIds);
   if (input.excludedRoleIds.some((id) => incidentRoles.has(id))) {
@@ -150,12 +159,26 @@ export async function isCpSyncEnabled(): Promise<boolean> {
   return getSetting("cp.syncEnabled");
 }
 
+/** A full pass may always kick this many members, whatever the percentage says. */
+export const CP_KICK_FLOOR = 3;
+
+/**
+ * Most members one full pass may kick. A pass that wants to kick more is almost certainly looking
+ * at broken input (a mapping removed by mistake, a faction guild that dropped out), so its kicks
+ * are held back for a human to confirm.
+ */
+export function cpKickLimit(memberCount: number, maxKickPercent: number): number {
+  return Math.max(CP_KICK_FLOOR, Math.floor((memberCount * maxKickPercent) / 100));
+}
+
 export async function getCpSyncConfig() {
-  const [enabled, incidentGuildId, excludedRoleIds, logChannelId] = await Promise.all([
+  const [enabled, incidentGuildId, excludedRoleIds, logChannelId, maxKickPercent, dryRun] = await Promise.all([
     getSetting("cp.syncEnabled"),
     getSetting("core.incidentGuildId"),
     getSetting("cp.excludedRoleIds"),
     getSetting("cp.logChannelId"),
+    getSetting("cp.maxKickPercent"),
+    getSetting("cp.dryRun"),
   ]);
-  return { enabled, incidentGuildId, excludedRoleIds, logChannelId };
+  return { enabled, incidentGuildId, excludedRoleIds, logChannelId, maxKickPercent, dryRun };
 }

@@ -20,6 +20,8 @@ export default async function SettingsSystemPage() {
       "cp.syncEnabled",
       "cp.excludedRoleIds",
       "cp.logChannelId",
+      "cp.maxKickPercent",
+      "cp.dryRun",
     ] as const),
     getActiveChannelOptions(),
   ]);
@@ -63,6 +65,8 @@ export default async function SettingsSystemPage() {
         initialEnabled={settings["cp.syncEnabled"]}
         initialExcludedRoleIds={settings["cp.excludedRoleIds"]}
         initialLogChannelId={settings["cp.logChannelId"]}
+        initialMaxKickPercent={settings["cp.maxKickPercent"]}
+        initialDryRun={settings["cp.dryRun"]}
         incidentGuildId={settings["core.incidentGuildId"]}
         channels={channels.map((c) => ({
           discordId: c.discordId,

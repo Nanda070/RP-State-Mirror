@@ -2,6 +2,7 @@ import {
   getSetting,
   isSettingKey,
   setSetting,
+  wakeDeferredJobs,
   snowflakeSchema,
   type SettingKey,
 } from "@mirror/core";
@@ -22,6 +23,8 @@ const bodySchema = z.object({
   "cp.syncEnabled": z.boolean().optional(),
   "cp.excludedRoleIds": z.array(snowflakeSchema).optional(),
   "cp.logChannelId": snowflakeSchema.nullable().optional(),
+  "cp.maxKickPercent": z.number().min(0).max(100).optional(),
+  "cp.dryRun": z.boolean().optional(),
 });
 
 export async function GET() {
@@ -82,6 +85,8 @@ export async function PUT(request: Request) {
       if (!isSettingKey(key)) continue;
       updated[key] = await setSetting(key as SettingKey, value as never, ctx);
     }
+    // A channel may just have been configured: deliveries that waited for it go out now.
+    await wakeDeferredJobs();
     return Response.json(updated);
   } catch (error) {
     return jsonError(error);
