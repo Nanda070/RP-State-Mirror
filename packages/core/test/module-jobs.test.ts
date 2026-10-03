@@ -13,6 +13,7 @@ import {
   formatRoleMentions,
   markFinePaid,
   MODULE_JOB_TYPES,
+  resolveDocumentResponseDelivery,
   resolveFactionDocumentDelivery,
   resolveFactionSeniorRoleId,
   resolveFineDelivery,
@@ -65,6 +66,7 @@ describe("stage 3 delivery + job enqueue", () => {
 
     const doc = await createDocument(
       {
+        number: "LSPD-001",
         factionCode: "LSPD",
         authorDiscordId: "1",
         subject: "A",
@@ -80,6 +82,7 @@ describe("stage 3 delivery + job enqueue", () => {
 
     const wanted = await createWanted(
       {
+        number: "W-001",
         staticId: "100",
         characterName: "Test",
         reason: "theft",
@@ -98,6 +101,7 @@ describe("stage 3 delivery + job enqueue", () => {
 
     const fine = await createFine(
       {
+        number: "F-001",
         staticId: "100",
         characterName: "Test",
         amount: 5000,
@@ -145,6 +149,46 @@ describe("stage 3 delivery + job enqueue", () => {
       guildDiscordId: "200000000000000010",
       channelDiscordId: "300000000000000010",
     });
+  });
+
+  it("routes /ответ delivery to GOV documents channel, not the target faction", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    const govGuild = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000020",
+        name: "GOV Guild",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    const lspdGuild = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000021",
+        name: "LSPD Guild",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await prisma.faction.update({
+      where: { code: "GOV" },
+      data: {
+        guildId: govGuild.id,
+        settings: { documentsChannelId: "300000000000000020" },
+      },
+    });
+    await prisma.faction.update({
+      where: { code: "LSPD" },
+      data: {
+        guildId: lspdGuild.id,
+        settings: { documentsChannelId: "300000000000000021" },
+      },
+    });
+
+    const replyTarget = await resolveDocumentResponseDelivery();
+    expect(replyTarget).toEqual({
+      kind: "channel",
+      guildDiscordId: "200000000000000020",
+      channelDiscordId: "300000000000000020",
+    });
+    expect(replyTarget).not.toEqual(await resolveFactionDocumentDelivery("LSPD"));
   });
 
   it("stores and resolves seniorRoleId from faction delivery settings", async () => {

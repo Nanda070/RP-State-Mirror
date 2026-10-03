@@ -1,22 +1,24 @@
 /**
  * Federal wanted module: /объявить-розыск and /розыск-исполнено.
  *
- * Wanted numbers are sequential global counters: W-001, W-002, …
+ * Wanted numbers are user-provided (legacy «номер»), unique globally.
  * Closing a wanted stores who closed it and the evidence text,
- * then the bot edits the original webhook message via a job.
+ * then the bot edits the original Discord message via a job.
  *
- * Legacy fields: фио, паспорт, статья, срок, ссылка_на_форум, доказательства.
+ * Legacy fields: номер, фио, паспорт, статья, срок, ссылка_на_форум, доказательства.
  */
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { type Db } from "./db.js";
+import { recordNumberSchema } from "./text.js";
 
 // ──────────────────────────────────────────────────────────────
 // Input schemas
 // ──────────────────────────────────────────────────────────────
 
 export const createWantedSchema = z.object({
+  number: recordNumberSchema,
   /** Паспорт / статик */
   staticId: z.string().min(1).max(32),
   /** ФИО */
@@ -38,10 +40,11 @@ export const closeWantedSchema = z.object({
 export type CloseWantedInput = z.infer<typeof closeWantedSchema>;
 
 // ──────────────────────────────────────────────────────────────
-// Number generation
+// Number helpers (unused by /объявить-розыск; kept for optional flows)
 // ──────────────────────────────────────────────────────────────
 
-async function nextWantedNumber(db: Db): Promise<string> {
+/** @deprecated /объявить-розыск uses a user-provided number. */
+export async function nextWantedNumber(db: Db = prisma): Promise<string> {
   const last = await db.wanted.findFirst({
     orderBy: { createdAt: "desc" },
     select: { number: true },
@@ -62,10 +65,17 @@ export async function createWanted(input: CreateWantedInput, context: AuditConte
   const data = createWantedSchema.parse(input);
 
   return auditedMutation(context, "wanted.created", "wanted", async (tx) => {
-    const number = await nextWantedNumber(tx);
+    const existing = await tx.wanted.findUnique({ where: { number: data.number } });
+    if (existing) {
+      if (existing.status === RecordStatus.ACTIVE) {
+        throw new Error("Открытый розыск с таким номером уже существует.");
+      }
+      throw new Error("Розыск с таким номером уже существует.");
+    }
+
     const wanted = await tx.wanted.create({
       data: {
-        number,
+        number: data.number,
         staticId: data.staticId,
         characterName: data.characterName,
         reason: data.reason,

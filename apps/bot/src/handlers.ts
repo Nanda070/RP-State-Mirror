@@ -23,6 +23,7 @@ import {
   normalizeLinkOrText,
   spoilerLink,
   recordSentMessage,
+  resolveDocumentResponseDelivery,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFactionSeniorRoleId,
@@ -53,6 +54,8 @@ type SendEmbedOptions = {
   content?: string | null;
   /** Role snowflakes allowed to ping (parsed from content mentions). */
   mentionRoleIds?: readonly string[];
+  /** User snowflakes allowed to ping (e.g. document author on /ответ). */
+  mentionUserIds?: readonly string[];
 };
 
 async function sendEmbed(
@@ -68,6 +71,9 @@ async function sendEmbed(
 
   const content = options.content?.trim() || undefined;
   const mentionRoleIds = [...new Set(options.mentionRoleIds ?? [])].filter((id) =>
+    /^\d{17,20}$/.test(id),
+  );
+  const mentionUserIds = [...new Set(options.mentionUserIds ?? [])].filter((id) =>
     /^\d{17,20}$/.test(id),
   );
 
@@ -99,7 +105,7 @@ async function sendEmbed(
     const message = await channel.send({
       ...(content ? { content } : {}),
       embeds: [embed],
-      allowedMentions: { parse: [], roles: mentionRoleIds, users: [] },
+      allowedMentions: { parse: [], roles: mentionRoleIds, users: mentionUserIds },
     });
     return {
       status: "sent",
@@ -118,7 +124,7 @@ async function sendEmbed(
     body: JSON.stringify({
       ...(content ? { content } : {}),
       embeds: [embed.toJSON()],
-      allowed_mentions: { parse: [], roles: mentionRoleIds, users: [] },
+      allowed_mentions: { parse: [], roles: mentionRoleIds, users: mentionUserIds },
     }),
   });
   if (!response.ok) {
@@ -256,10 +262,12 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
   });
   if (!response) throw new Error(`Document response ${responseId} not found`);
 
-  const target = await resolveFactionDocumentDelivery(response.document.factionCode);
+  // Legacy RESPONSE_WEBHOOK → GOV documents channel (not the target faction).
+  const target = await resolveDocumentResponseDelivery();
   const { username } = await resolveAuthorNames(client, response.authorDiscordId);
+  const authorId = response.document.authorDiscordId;
 
-  // Match legacy make_response_embed
+  // Match legacy make_response_embed; content pings original /пост author.
   const description = [
     `**Личное дело:** ${normalizeLinkOrText(response.personalFile)}`,
     `**Видеофиксация:** ${normalizeLinkOrText(response.video)}`,
@@ -273,7 +281,10 @@ const documentResponseSend: JobHandler = async (payload, { client, log }) => {
     .setAuthor({ name: `Автор ответа: ${username}`.slice(0, 256) })
     .setTimestamp(response.createdAt);
 
-  const result = await sendEmbed(client, target, embed, log);
+  const result = await sendEmbed(client, target, embed, log, {
+    content: `<@${authorId}>`,
+    mentionUserIds: [authorId],
+  });
   if (result.status === "deferred") return result;
   await persistSend(result, { responseId: response.id, documentId: response.documentId });
   return { status: "sent", documentNumber: response.document.number, messageId: result.messageId };

@@ -37,6 +37,13 @@ export const postCommand = factionOption(
   { required: true, description: "Фракция-получатель" },
 )
   .addStringOption((o) =>
+    o
+      .setName("номер")
+      .setDescription("Номер документа, например LSPD-042")
+      .setRequired(true)
+      .setMaxLength(64),
+  )
+  .addStringOption((o) =>
     o.setName("описание").setDescription("Краткое описание документа").setRequired(true).setMaxLength(3900),
   )
   .addStringOption((o) =>
@@ -96,6 +103,13 @@ export const wantedCommand = new SlashCommandBuilder()
   .setName("объявить-розыск")
   .setDescription("Объявить федеральный розыск")
   .addStringOption((o) =>
+    o
+      .setName("номер")
+      .setDescription("Номер розыска, например W-042")
+      .setRequired(true)
+      .setMaxLength(64),
+  )
+  .addStringOption((o) =>
     o.setName("фио").setDescription("ФИО разыскиваемого").setRequired(true).setMaxLength(128),
   )
   .addStringOption((o) =>
@@ -141,6 +155,13 @@ export const fineCommand = factionOption(
   new SlashCommandBuilder().setName("штраф").setDescription("Выписать штраф"),
   { required: true, description: "Уведомляемая фракция" },
 )
+  .addStringOption((o) =>
+    o
+      .setName("номер")
+      .setDescription("Номер штрафа, например F-042")
+      .setRequired(true)
+      .setMaxLength(64),
+  )
   .addStringOption((o) =>
     o.setName("фио").setDescription("ФИО гражданина").setRequired(true).setMaxLength(128),
   )

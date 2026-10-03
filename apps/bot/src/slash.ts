@@ -32,6 +32,7 @@ import {
   markFinePaid,
   PERSONNEL_EVENT_LABELS_RU,
   PERSONNEL_EVENT_TYPES,
+  resolveDocumentResponseDelivery,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFineDelivery,
@@ -200,6 +201,7 @@ async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHa
   }
 
   const factionCode = await requireActiveFaction(interaction.options.getString("фракция", true));
+  const number = interaction.options.getString("номер", true);
   const description = interaction.options.getString("описание", true);
   const notifiedPerson = interaction.options.getString("уведомляемое_лицо", true);
   const forumLink = interaction.options.getString("ссылка_на_форум", true);
@@ -209,6 +211,7 @@ async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHa
 
   const doc = await createDocument(
     {
+      number,
       factionCode,
       authorDiscordId: interaction.user.id,
       subject,
@@ -257,7 +260,8 @@ async function handleReply(interaction: ChatInputCommandInteraction, ctx: SlashH
     auditFromInteraction(interaction),
   );
   await enqueueDocumentResponseSend(result.response.id, result.document.id);
-  const target = await resolveFactionDocumentDelivery(result.document.factionCode);
+  // Legacy: replies go to GOV documents channel (RESPONSE_WEBHOOK), not the target faction.
+  const target = await resolveDocumentResponseDelivery();
   await interaction.editReply(
     `Ответ на **${result.document.number}** сохранён.\n${deliveryDeferredMessage(target)}`,
   );
@@ -277,6 +281,7 @@ async function handleWantedCreate(interaction: ChatInputCommandInteraction, ctx:
 
   const wanted = await createWanted(
     {
+      number: interaction.options.getString("номер", true),
       characterName: interaction.options.getString("фио", true),
       staticId: interaction.options.getString("паспорт", true),
       reason: interaction.options.getString("статья", true),
@@ -330,6 +335,7 @@ async function handleFineCreate(interaction: ChatInputCommandInteraction, ctx: S
 
   const fine = await createFine(
     {
+      number: interaction.options.getString("номер", true),
       characterName: interaction.options.getString("фио", true),
       staticId: interaction.options.getString("паспорт", true),
       reason: interaction.options.getString("статья", true),

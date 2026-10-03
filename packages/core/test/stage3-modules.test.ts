@@ -20,10 +20,11 @@ afterAll(() => prisma.$disconnect());
 const ctx = { actorType: AuditActorType.SYSTEM, source: "test" } as const;
 
 describe("stage 3 modules", () => {
-  it("creates sequential document numbers per faction inside an audited transaction", async () => {
+  it("creates documents with user-provided numbers and rejects duplicates", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     const first = await createDocument(
       {
+        number: "lspd-042",
         factionCode: "LSPD",
         authorDiscordId: "1",
         subject: "A",
@@ -37,6 +38,7 @@ describe("stage 3 modules", () => {
     );
     const second = await createDocument(
       {
+        number: "LSPD-043",
         factionCode: "LSPD",
         authorDiscordId: "1",
         subject: "B",
@@ -48,17 +50,52 @@ describe("stage 3 modules", () => {
       },
       ctx,
     );
-    expect(first.number).toBe("LSPD-001");
-    expect(second.number).toBe("LSPD-002");
+    expect(first.number).toBe("LSPD-042");
+    expect(second.number).toBe("LSPD-043");
     expect(first.forumLink).toBe("https://forum.example/a");
     expect(first.notifiedPerson).toBe("Officer");
     expect(await prisma.auditLog.count({ where: { action: "document.created" } })).toBe(2);
+
+    await expect(
+      createDocument(
+        {
+          number: "LSPD-042",
+          factionCode: "LSPD",
+          authorDiscordId: "1",
+          subject: "Dup",
+          content: "body",
+          notifiedPerson: "Officer",
+          forumLink: "https://forum.example/dup",
+          leaderText: "Leader",
+          deputyText: "Deputy",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/уже существует/);
+
+    await expect(
+      createDocument(
+        {
+          number: "bad number!",
+          factionCode: "LSPD",
+          authorDiscordId: "1",
+          subject: "Bad",
+          content: "body",
+          notifiedPerson: "Officer",
+          forumLink: "https://forum.example/bad",
+          leaderText: "Leader",
+          deputyText: "Deputy",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow();
   });
 
   it("stores legacy /ответ fields on document responses", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     const doc = await createDocument(
       {
+        number: "LSPD-001",
         factionCode: "LSPD",
         authorDiscordId: "1",
         subject: "A",
@@ -87,9 +124,10 @@ describe("stage 3 modules", () => {
     expect(normalizeLinkOrText("plain")).toBe("plain");
   });
 
-  it("creates and closes wanted records with W- numbers and legacy fields", async () => {
+  it("creates and closes wanted records with user-provided numbers", async () => {
     const wanted = await createWanted(
       {
+        number: "w-042",
         staticId: "100",
         characterName: "Test",
         reason: "theft",
@@ -99,9 +137,25 @@ describe("stage 3 modules", () => {
       },
       ctx,
     );
-    expect(wanted.number).toBe("W-001");
+    expect(wanted.number).toBe("W-042");
     expect(wanted.termText).toBe("10 лет");
     expect(wanted.forumLink).toBe("https://forum.example/w");
+
+    await expect(
+      createWanted(
+        {
+          number: "W-042",
+          staticId: "101",
+          characterName: "Other",
+          reason: "theft",
+          termText: "5 лет",
+          forumLink: "https://forum.example/w2",
+          issuedByDiscordId: "9",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/Открытый розыск/);
+
     const closed = await closeWanted(
       { wantedNumber: wanted.number, closedByDiscordId: "8", evidence: "photo" },
       ctx,
@@ -109,10 +163,11 @@ describe("stage 3 modules", () => {
     expect(closed.status).toBe(RecordStatus.CLOSED);
   });
 
-  it("creates fines with payment deadline and marks them paid", async () => {
+  it("creates fines with user-provided numbers, payment deadline, and marks them paid", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     const fine = await createFine(
       {
+        number: "f-007",
         staticId: "100",
         characterName: "Test",
         amount: 5000,
@@ -123,9 +178,26 @@ describe("stage 3 modules", () => {
       },
       ctx,
     );
-    expect(fine.number).toBe("F-001");
+    expect(fine.number).toBe("F-007");
     expect(fine.paymentDeadlineText).toBe("24h");
     expect(fine.dueAt).not.toBeNull();
+
+    await expect(
+      createFine(
+        {
+          number: "F-007",
+          staticId: "101",
+          characterName: "Other",
+          amount: 1000,
+          reason: "parking",
+          issuedByDiscordId: "9",
+          factionCode: "LSPD",
+          paymentDeadlineText: "1m",
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/Штраф уже есть/);
+
     const paid = await markFinePaid({ fineNumber: fine.number, paidByDiscordId: "8" }, ctx);
     expect(paid.status).toBe(RecordStatus.CLOSED);
     expect(paid.paidAt).not.toBeNull();

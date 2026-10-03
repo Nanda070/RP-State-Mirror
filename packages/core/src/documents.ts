@@ -1,11 +1,11 @@
 /**
  * Document module: /пост and /ответ.
  *
- * Document numbers are per-faction, auto-incremented by finding the max
- * existing number for that faction. The TTL is read from system settings.
+ * Document numbers are user-provided (legacy /пост «номер»), unique globally.
+ * The TTL is read from system settings.
  *
  * Slash/field names match the legacy Python bot (main.py / embeds.py):
- * уведомляемое_лицо, ссылка_на_форум, ответственный_лидер, ответственный_зам;
+ * номер, уведомляемое_лицо, ссылка_на_форум, ответственный_лидер, ответственный_зам;
  * for replies: личное_дело, видеофиксация, комментарий.
  */
 import { RecordStatus, prisma } from "@mirror/db";
@@ -13,12 +13,14 @@ import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { type Db } from "./db.js";
 import { getSetting } from "./settings.js";
+import { recordNumberSchema } from "./text.js";
 
 // ──────────────────────────────────────────────────────────────
 // Input schemas
 // ──────────────────────────────────────────────────────────────
 
 export const createDocumentSchema = z.object({
+  number: recordNumberSchema,
   factionCode: z.string().min(1).max(32),
   authorDiscordId: z.string().min(1),
   subject: z.string().min(1).max(256),
@@ -41,10 +43,11 @@ export const createDocumentResponseSchema = z.object({
 export type CreateDocumentResponseInput = z.infer<typeof createDocumentResponseSchema>;
 
 // ──────────────────────────────────────────────────────────────
-// Number generation
+// Number helpers (unused by /пост; kept for optional future flows)
 // ──────────────────────────────────────────────────────────────
 
-async function nextDocumentNumber(factionCode: string, db: Db): Promise<string> {
+/** @deprecated /пост uses a user-provided number; kept for other flows if needed. */
+export async function nextDocumentNumber(factionCode: string, db: Db = prisma): Promise<string> {
   const prefix = `${factionCode}-`;
   const last = await db.document.findFirst({
     where: { number: { startsWith: prefix } },
@@ -69,10 +72,14 @@ export async function createDocument(input: CreateDocumentInput, context: AuditC
   const expiresAt = new Date(Date.now() + ttlHours * 3_600_000);
 
   return auditedMutation(context, "document.created", "document", async (tx) => {
-    const number = await nextDocumentNumber(data.factionCode, tx);
+    const existing = await tx.document.findUnique({ where: { number: data.number } });
+    if (existing) {
+      throw new Error("Документ уже существует.");
+    }
+
     const doc = await tx.document.create({
       data: {
-        number,
+        number: data.number,
         factionCode: data.factionCode,
         authorDiscordId: data.authorDiscordId,
         subject: data.subject,

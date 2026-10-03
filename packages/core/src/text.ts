@@ -1,9 +1,22 @@
 /**
  * Shared text helpers ported from the legacy Python bot (utils.py).
  */
+import { z } from "zod";
 
 const LINK_RE = /^https?:\/\//i;
 const DURATION_RE = /^(\d+)([mhd])$/i;
+
+/**
+ * User-entered record numbers for /пост, /штраф, /объявить-розыск (legacy «номер»).
+ * Letters/digits plus `. _ -`, normalized to uppercase — e.g. LSPD-042, W-12, F-7.
+ */
+export const recordNumberSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "Некорректный номер")
+  .transform((value) => value.toUpperCase());
 
 /** Render a URL as a Discord markdown link, or pass plain text through. */
 export function normalizeLinkOrText(value: string | null | undefined): string {

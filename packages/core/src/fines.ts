@@ -1,15 +1,16 @@
 /**
  * Fines module: /штраф and /штраф-оплачено.
  *
- * Fine numbers: F-001, F-002, … (global sequential).
+ * Fine numbers are user-provided (legacy «номер»), unique globally.
  * Due date is parsed from legacy-style срок_оплаты (1m / 24h / 14d).
  *
- * Legacy fields: фракция, фио, паспорт, статья, сумма, срок_оплаты.
+ * Legacy fields: фракция, номер, фио, паспорт, статья, сумма, срок_оплаты.
  */
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { type Db } from "./db.js";
+import { recordNumberSchema } from "./text.js";
 
 // ──────────────────────────────────────────────────────────────
 // Duration helper (legacy utils.parse_duration + days)
@@ -36,6 +37,7 @@ export function parsePaymentDeadline(value: string): { ms: number; text: string 
 // ──────────────────────────────────────────────────────────────
 
 export const createFineSchema = z.object({
+  number: recordNumberSchema,
   /** Паспорт / статик */
   staticId: z.string().min(1).max(32),
   /** ФИО */
@@ -57,10 +59,11 @@ export const markFinePaidSchema = z.object({
 export type MarkFinePaidInput = z.infer<typeof markFinePaidSchema>;
 
 // ──────────────────────────────────────────────────────────────
-// Number generation
+// Number helpers (unused by /штраф; kept for optional flows)
 // ──────────────────────────────────────────────────────────────
 
-async function nextFineNumber(db: Db): Promise<string> {
+/** @deprecated /штраф uses a user-provided number. */
+export async function nextFineNumber(db: Db = prisma): Promise<string> {
   const last = await db.fine.findFirst({
     orderBy: { createdAt: "desc" },
     select: { number: true },
@@ -83,10 +86,14 @@ export async function createFine(input: CreateFineInput, context: AuditContext) 
   const dueAt = new Date(Date.now() + deadline.ms);
 
   return auditedMutation(context, "fine.created", "fine", async (tx) => {
-    const number = await nextFineNumber(tx);
+    const existing = await tx.fine.findUnique({ where: { number: data.number } });
+    if (existing) {
+      throw new Error("Штраф уже есть.");
+    }
+
     const fine = await tx.fine.create({
       data: {
-        number,
+        number: data.number,
         staticId: data.staticId,
         characterName: data.characterName,
         amount: data.amount,

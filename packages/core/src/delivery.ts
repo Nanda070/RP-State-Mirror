@@ -97,6 +97,22 @@ export async function resolveFactionDocumentDelivery(factionCode: string): Promi
   };
 }
 
+/**
+ * Legacy RESPONSE_WEBHOOK: `/ответ` is delivered to GOV's documents channel
+ * (same destination as GOV faction `documentsChannelId` / webhook), not the
+ * target faction of the original `/пост`.
+ */
+export async function resolveDocumentResponseDelivery(): Promise<DeliveryTarget> {
+  const target = await resolveFactionDocumentDelivery("GOV");
+  if (target.kind === "unconfigured") {
+    return {
+      kind: "unconfigured",
+      reason: "Канал или вебхук документов GOV ещё не настроен (сюда уходят ответы /ответ)",
+    };
+  }
+  return target;
+}
+
 export async function resolveFactionPersonnelDelivery(factionCode: string): Promise<DeliveryTarget> {
   const faction = await factionWithGuild(factionCode);
   if (!faction) {
