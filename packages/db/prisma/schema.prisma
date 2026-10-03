@@ -81,6 +81,8 @@ enum FeedbackTicketStatus {
 model User {
   id            String     @id @default(cuid())
   discordId     String     @unique @map("discord_id")
+  /// Kinds of direct messages the player switched off (see DM_KINDS in core).
+  dmMuted       String[]   @default([]) @map("dm_muted")
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
   auditEvents   AuditLog[] @relation("AuditActor")

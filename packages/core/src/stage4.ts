@@ -937,6 +937,9 @@ export async function archiveRolePanel(id: string, context: AuditContext) {
   });
 }
 
+/** One person cannot hold more open tickets than this: a new one waits until an old one is closed. */
+export const MAX_OPEN_FEEDBACK_TICKETS = 5;
+
 export async function createFeedbackTicket(input: {
   authorDiscordId: string;
   category: string;
@@ -946,6 +949,12 @@ export async function createFeedbackTicket(input: {
   const category = nonEmptyText(64).parse(input.category);
   const content = nonEmptyText(4000).parse(input.content);
   return auditedMutation(context, "feedback_ticket.created", "feedback_ticket", async (tx) => {
+    const open = await tx.feedbackTicket.count({
+      where: { authorDiscordId: input.authorDiscordId, status: { not: FeedbackTicketStatus.CLOSED } },
+    });
+    if (open >= MAX_OPEN_FEEDBACK_TICKETS) {
+      throw new UserError(`У вас уже ${open} открытых обращений. Дождитесь ответа или допишите в одно из них.`);
+    }
     const ticket = await tx.feedbackTicket.create({
       data: {
         authorDiscordId: input.authorDiscordId,
@@ -993,6 +1002,37 @@ export async function listFeedbackTickets() {
     include: { messages: { orderBy: { createdAt: "asc" } } },
     orderBy: { updatedAt: "desc" },
     take: 100,
+  });
+}
+
+/** The player's own tickets, for «Мои обращения» in the dashboard. */
+export async function listOwnFeedbackTickets(authorDiscordId: string) {
+  return prisma.feedbackTicket.findMany({
+    where: { authorDiscordId },
+    include: { messages: { orderBy: { createdAt: "asc" } } },
+    orderBy: { updatedAt: "desc" },
+    take: 50,
+  });
+}
+
+/**
+ * Sets or clears who answers for the ticket. Whether that person may handle tickets at all is
+ * checked by the caller, which knows the identities. An open ticket with an assignee is in work.
+ */
+export async function assignFeedbackTicket(id: string, assigneeDiscordId: string | null, context: AuditContext) {
+  return auditedMutation(context, "feedback_ticket.assigned", "feedback_ticket", async (tx) => {
+    const current = await tx.feedbackTicket.findUnique({ where: { id } });
+    if (!current || current.status === FeedbackTicketStatus.CLOSED) throw new UserError("Тикет закрыт или не найден.");
+    const ticket = await tx.feedbackTicket.update({
+      where: { id },
+      data: {
+        assignedToDiscordId: assigneeDiscordId,
+        ...(assigneeDiscordId && current.status === FeedbackTicketStatus.OPEN
+          ? { status: FeedbackTicketStatus.IN_PROGRESS }
+          : {}),
+      },
+    });
+    return { entityId: id, before: current, after: ticket, result: ticket };
   });
 }
 

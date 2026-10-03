@@ -56,6 +56,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/overview", label: "Главная", group: "Главная", match: "exact", icon: "home" },
   { href: "/profile", label: "Профиль", group: "Главная", match: "exact", icon: "user" },
+  { href: "/support", label: "Мои обращения", group: "Главная", match: "prefix", icon: "feedback" },
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "catalog" },
   { href: "/calculator", label: "Калькулятор", group: "Игрокам", match: "prefix", icon: "calculator" },
   { href: "/faq", label: "FAQ", group: "Игрокам", match: "prefix", icon: "faq" },

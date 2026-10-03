@@ -24,6 +24,7 @@ export * from "./media.js";
 export * from "./message-designs.js";
 export * from "./module-jobs.js";
 export * from "./monitoring.js";
+export * from "./notifications.js";
 export * from "./pending-expiry.js";
 export * from "./personnel.js";
 export * from "./profile.js";

@@ -1,7 +1,9 @@
 import {
+  DM_KINDS,
   PERSONNEL_EVENT_LABELS_RU,
   buildStatusBadge,
   formatMoney,
+  getMutedDmKinds,
   getPlayerProfile,
   getSetting,
   listAuditLogPage,
@@ -12,6 +14,7 @@ import { RecordStatus, RegistrationKind, prisma } from "@mirror/db";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { DmPreferencesForm } from "@/components/dm-preferences-form";
 import { SessionsList } from "@/components/sessions-list";
 import { getFactionColors } from "@/lib/catalog";
 import { formatMoscow, formatMoscowShort } from "@/lib/moscow";
@@ -31,6 +34,7 @@ const TABS = [
   { key: "records", label: "Штрафы и розыск" },
   { key: "servers", label: "Фракции и серверы" },
   { key: "history", label: "История" },
+  { key: "notifications", label: "Уведомления" },
   { key: "sessions", label: "Сессии" },
 ] as const;
 
@@ -403,6 +407,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const positions = await getSetting("admins.positions");
   const badge = buildStatusBadge(identity, positions.find((row) => row.discordId === session.user.discordId)?.title);
   const sessions = tab === "sessions" ? await listSessionsForUser(session.user.id) : [];
+  const mutedDm = tab === "notifications" ? await getMutedDmKinds(session.user.discordId) : [];
   const [history, personnel] =
     tab === "history"
       ? await Promise.all([
@@ -608,6 +613,17 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             )}
           </div>
         </>
+      ) : null}
+
+      {tab === "notifications" ? (
+        <div className="panel">
+          <h2 className="panel-title">Личные сообщения от бота</h2>
+          <p className="muted u-mt0 u-mb4">
+            Отметьте, о чём бот может писать вам в личные сообщения Discord. Ответы администрации на ваши
+            обращения приходят всегда.
+          </p>
+          <DmPreferencesForm kinds={DM_KINDS.map(({ key, label }) => ({ key, label }))} initialMuted={mutedDm} />
+        </div>
       ) : null}
 
       {tab === "sessions" ? (

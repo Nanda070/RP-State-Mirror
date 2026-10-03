@@ -24,6 +24,7 @@ type PaletteItem = {
 const ITEMS: PaletteItem[] = [
   { href: "/overview", label: "Главная", group: "Главная" },
   { href: "/profile", label: "Профиль", group: "Главная" },
+  { href: "/support", label: "Мои обращения", group: "Главная" },
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам" },
   { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам" },
   { href: "/faq", label: "FAQ и документация", group: "Игрокам" },
