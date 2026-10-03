@@ -35,6 +35,7 @@ const patchSchema = z.discriminatedUnion("op", [
     designId: z.string().min(1),
     guildDiscordId: z.string().regex(/^\d{17,20}$/),
     channelDiscordId: z.string().regex(/^\d{17,20}$/),
+    variables: z.record(z.string().max(1000)).optional(),
   }),
   z.object({ op: z.literal("resend"), sentMessageId: z.string().min(1) }),
   z.object({ op: z.literal("archive_sent"), id: z.string().min(1) }),
@@ -98,6 +99,7 @@ export async function PATCH(request: Request) {
         designId: body.designId,
         guildDiscordId: body.guildDiscordId,
         channelDiscordId: body.channelDiscordId,
+        ...(body.variables ? { variables: body.variables } : {}),
       });
       return Response.json({ jobId: job.id });
     }

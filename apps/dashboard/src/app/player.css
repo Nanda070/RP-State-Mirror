@@ -1577,3 +1577,98 @@ a.metric-card[data-alert] .metric-value {
 .profile-discord-badge {
   margin-left: 0;
 }
+
+/* ——— Stage 7: message editor ——— */
+.spec-block {
+  margin-bottom: 0.9rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.spec-block > summary,
+.spec-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.spec-block:not([open]) > summary {
+  margin-bottom: 0;
+}
+
+.spec-subblock {
+  margin-bottom: 0.8rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.spec-block-tools {
+  display: inline-flex;
+  gap: 0.15rem;
+}
+
+.spec-block-tools .btn {
+  height: 1.8rem;
+  padding: 0 0.5rem;
+  font-size: var(--fs-xs);
+}
+
+.spec-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto;
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.spec-field-row > .toggle-row,
+.spec-field-row > .btn {
+  margin-bottom: 0.9rem;
+}
+
+.spec-row {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.spec-button {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.spec-button-wide {
+  grid-column: 1 / 4;
+}
+
+.spec-remove {
+  margin-bottom: 0.9rem;
+}
+
+.spec-block input[type="color"] {
+  width: 4rem;
+  padding: 0.2rem;
+  cursor: pointer;
+}
+
+@media (max-width: 800px) {
+  .spec-field-row,
+  .spec-button {
+    grid-template-columns: 1fr;
+  }
+
+  .spec-button-wide {
+    grid-column: auto;
+  }
+}

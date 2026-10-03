@@ -1,27 +1,24 @@
-import {
-  isButtonPanelSpec,
-  listMessageDesigns,
-  listSentMessages,
-  type EmbedSpec,
-} from "@mirror/core";
+import { listMessageDesigns, listSentMessages, type EmbedSpec } from "@mirror/core";
+import { RecordStatus, prisma } from "@mirror/db";
 import { EmbedManager } from "@/components/embed-manager";
-import {
-  getActiveChannelOptions,
-  getActiveGuildOptions,
-} from "@/lib/catalog";
+import { getActiveChannelOptions, getActiveGuildOptions, getActiveRoleOptions } from "@/lib/catalog";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsEmbedsPage() {
   await requireSystemSettingsPage();
 
-  const [designs, sent, guilds, channels] = await Promise.all([
+  const [embedDesigns, sent, guilds, channels, roles, forms] = await Promise.all([
     listMessageDesigns(false),
     listSentMessages(40),
     getActiveGuildOptions(),
     getActiveChannelOptions(),
+    getActiveRoleOptions(),
+    prisma.discordForm.findMany({
+      where: { status: RecordStatus.ACTIVE },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
-
-  const embedDesigns = designs.filter((d) => !isButtonPanelSpec(d.spec));
   const embedDesignIds = new Set(embedDesigns.map((d) => d.id));
   // Only deliveries tied to embed templates — not ad-hoc module notifications.
   const embedSent = sent.filter((s) => Boolean(s.designId && embedDesignIds.has(s.designId)));
@@ -55,6 +52,10 @@ export default async function SettingsEmbedsPage() {
           name: c.name,
           guildDiscordId: c.guild.discordId,
         }))}
+        roles={roles
+          .filter((role) => role.name !== "@everyone")
+          .map((role) => ({ discordId: role.discordId, name: role.name, guildName: role.guild.name }))}
+        forms={forms}
       />
     </div>
   );

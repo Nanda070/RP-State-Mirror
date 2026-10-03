@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import type { EmbedSpec } from "@mirror/core/embeds";
-import { isButtonPanelSpec, stripButtonComponents } from "@mirror/core/embeds";
+import { BUILT_IN_VARIABLES, extractVariables } from "@mirror/core/embeds";
+import { MessageSpecEditor, type EditorForm, type EditorRole } from "./message-spec-editor";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { EmbedPreview } from "./embed-preview";
 
@@ -47,11 +48,7 @@ function asSpec(raw: unknown): EmbedSpec {
   }
   const version = (raw as { version?: unknown }).version;
   if (version === 1 || version === 2) {
-    try {
-      return stripButtonComponents(raw as EmbedSpec);
-    } catch {
-      return version === 2 ? structuredClone(EMPTY_V2) : structuredClone(EMPTY_V1);
-    }
+    return raw as EmbedSpec;
   }
   return structuredClone(EMPTY_V1);
 }
@@ -90,12 +87,17 @@ export function EmbedManager({
   initialSent,
   guilds,
   channels,
+  roles,
+  forms,
 }: {
   initialDesigns: Design[];
   initialSent: Sent[];
   guilds: Guild[];
   channels: ChannelOption[];
+  roles: EditorRole[];
+  forms: EditorForm[];
 }) {
+  const [variables, setVariables] = useState<Record<string, string>>({});
   const [designs, setDesigns] = useState(initialDesigns);
   const [sent, setSent] = useState(initialSent);
   const [selectedId, setSelectedId] = useState<string | null>(initialDesigns[0]?.id ?? null);
@@ -133,7 +135,7 @@ export function EmbedManager({
   async function save() {
     setPending(true);
     setMessage(null);
-    const cleanSpec = stripButtonComponents(spec);
+    const cleanSpec = spec;
     try {
       if (selectedId) {
         const res = await fetch("/api/settings/embeds", {
@@ -217,19 +219,16 @@ export function EmbedManager({
           designId: selectedId,
           guildDiscordId: guildId,
           channelDiscordId: channelId,
+          variables: Object.fromEntries(customVariables.map((name) => [name, variables[name] ?? ""])),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка отправки");
-      setMessage(`Отправка поставлена в очередь (job ${data.jobId.slice(0, 8)}…)`);
+      setMessage("Отправка поставлена в очередь");
       const refresh = await fetch("/api/settings/embeds");
       if (refresh.ok) {
         const body = await refresh.json();
-        const designIds = new Set(
-          (body.designs as Design[])
-            .filter((d) => !isButtonPanelSpec(d.spec))
-            .map((d) => d.id),
-        );
+        const designIds = new Set((body.designs as Design[]).map((d) => d.id));
         setSent(
           (body.sent as (Sent & { designId?: string | null })[]).filter((s) =>
             Boolean(s.designId && designIds.has(s.designId)),
@@ -253,7 +252,7 @@ export function EmbedManager({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка");
-      setMessage(`Переотправка в очереди (${data.jobId.slice(0, 8)}…)`);
+      setMessage("Переотправка поставлена в очередь");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Ошибка");
     } finally {
@@ -261,36 +260,12 @@ export function EmbedManager({
     }
   }
 
-  function updateClassic(patch: {
-    title?: string;
-    description?: string;
-    color?: number;
-    footerText?: string | null;
-  }) {
-    if (spec.version !== 1) return;
-    const current = spec.embeds[0]!;
-    const { footer: _prevFooter, ...rest } = current;
-    const embed: (typeof spec.embeds)[number] = {
-      ...rest,
-      type: "embed",
-      ...(patch.title !== undefined ? { title: patch.title } : {}),
-      ...(patch.description !== undefined ? { description: patch.description } : {}),
-      ...(patch.color !== undefined ? { color: patch.color } : {}),
-    };
-    if (patch.footerText !== undefined) {
-      if (patch.footerText) embed.footer = { text: patch.footerText };
-    } else if (_prevFooter) {
-      embed.footer = _prevFooter;
-    }
-    setSpec({ version: 1, embeds: [embed, ...spec.embeds.slice(1)] });
-  }
-
   function setVersion(version: 1 | 2) {
     setSpec(version === 1 ? structuredClone(EMPTY_V1) : structuredClone(EMPTY_V2));
   }
 
-  const classic = spec.version === 1 ? (spec.embeds[0] ?? null) : null;
-  const colorHex = `#${(classic?.color ?? 0xff6a1a).toString(16).padStart(6, "0")}`;
+  // Placeholders the admin fills in before sending; the built-in ones the bot fills itself.
+  const customVariables = extractVariables(spec).filter((name) => !(BUILT_IN_VARIABLES as readonly string[]).includes(name));
 
   return (
     <div className="embed-manager">
@@ -344,7 +319,7 @@ export function EmbedManager({
             <input id="designName" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="designDesc">Описание</label>
+            <label htmlFor="designDesc">Заметка для себя</label>
             <input
               id="designDesc"
               value={description}
@@ -358,86 +333,12 @@ export function EmbedManager({
               value={spec.version}
               onChange={(e) => setVersion(Number(e.target.value) as 1 | 2)}
             >
-              <option value={1}>Classic embeds</option>
+              <option value={1}>Классические эмбеды</option>
               <option value={2}>Components V2</option>
             </select>
           </div>
 
-          {classic ? (
-            <>
-              <div className="field">
-                <label htmlFor="embTitle">Заголовок</label>
-                <input
-                  id="embTitle"
-                  value={classic.title ?? ""}
-                  onChange={(e) => updateClassic({ title: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="embDesc">Описание</label>
-                <textarea
-                  id="embDesc"
-                  rows={5}
-                  value={classic.description ?? ""}
-                  onChange={(e) => updateClassic({ description: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="embColor">Цвет</label>
-                <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
-                  <input
-                    id="embColorPicker"
-                    type="color"
-                    value={colorHex}
-                    onChange={(e) => {
-                      const hex = e.target.value.replace("#", "");
-                      updateClassic({ color: Number.parseInt(hex, 16) });
-                    }}
-                    style={{ width: "3rem", padding: "0.2rem", cursor: "pointer" }}
-                  />
-                  <input
-                    id="embColor"
-                    value={colorHex}
-                    onChange={(e) => {
-                      const hex = e.target.value.replace("#", "");
-                      if (/^[0-9a-fA-F]{6}$/.test(hex)) {
-                        updateClassic({ color: Number.parseInt(hex, 16) });
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="embFooter">Подвал</label>
-                <input
-                  id="embFooter"
-                  value={classic.footer?.text ?? ""}
-                  onChange={(e) => updateClassic({ footerText: e.target.value || null })}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="field">
-              <label htmlFor="v2text">Текст контейнера</label>
-              <textarea
-                id="v2text"
-                rows={6}
-                value={
-                  spec.version === 2 && spec.components[0]?.components[0]?.type === "text_display"
-                    ? spec.components[0].components[0].content
-                    : ""
-                }
-                onChange={(e) => {
-                  if (spec.version !== 2) return;
-                  const container = {
-                    ...spec.components[0]!,
-                    components: [{ type: "text_display" as const, content: e.target.value }],
-                  };
-                  setSpec({ version: 2, components: [container] });
-                }}
-              />
-            </div>
-          )}
+          <MessageSpecEditor spec={spec} onChange={setSpec} roles={roles} forms={forms} />
 
           <div className="row" style={{ marginTop: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
             <button type="button" className="btn btn-primary" disabled={pending} onClick={() => void save()}>
@@ -483,6 +384,23 @@ export function EmbedManager({
               emptyLabel="Выберите канал"
             />
           </div>
+          {customVariables.map((name) => (
+            <div key={name} className="field">
+              <label htmlFor={`var-${name}`}>
+                Переменная <code>{`{${name}}`}</code>
+              </label>
+              <input
+                id={`var-${name}`}
+                maxLength={1000}
+                value={variables[name] ?? ""}
+                onChange={(e) => setVariables((prev) => ({ ...prev, [name]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <p className="field-hint">
+            В тексте можно писать <code>{"{server}"}</code>, <code>{"{channel}"}</code>, <code>{"{date}"}</code>,{" "}
+            <code>{"{time}"}</code> — бот подставит их сам. Любое другое имя в фигурных скобках станет полем выше.
+          </p>
           <button type="button" className="btn btn-primary" disabled={pending} onClick={() => void send()}>
             Отправить ботом
           </button>

@@ -142,3 +142,23 @@ describe("embed buttons + designs", () => {
     expect(await prisma.auditLog.count({ where: { action: "message_design.created" } })).toBe(1);
   });
 });
+
+describe("template variables", () => {
+  it("fills placeholders safely and leaves unknown ones as written", async () => {
+    const { extractVariables, substituteVariables } = await import("@mirror/core");
+    const spec = {
+      version: 1 as const,
+      embeds: [{ type: "embed" as const, title: "Привет, {name}", description: "Сервер {server}. {unknown}" }],
+    };
+    expect(extractVariables(spec)).toEqual(["name", "server", "unknown"]);
+
+    // Quotes, backslashes and line breaks in a value must not break the message.
+    const filled = substituteVariables(spec, { name: 'Иван "Ваня" \ Петров\nвторая строка', server: "Mirror" });
+    expect(filled).toEqual({
+      version: 1,
+      embeds: [
+        { type: "embed", title: 'Привет, Иван "Ваня" \ Петров\nвторая строка', description: "Сервер Mirror. {unknown}" },
+      ],
+    });
+  });
+});

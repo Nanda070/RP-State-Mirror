@@ -106,7 +106,7 @@ export const v2ActionRowSchema = z.object({
 });
 export type V2ActionRow = z.infer<typeof v2ActionRowSchema>;
 
-const roleSnowflake = z.string().regex(/^d{17,20}$/);
+const roleSnowflake = z.string().regex(/^\d{17,20}$/);
 
 /**
  * Dropdown of self-assignable roles. Picking a set replaces the member's current roles from this list:
@@ -197,8 +197,19 @@ export function extractVariables(spec: EmbedSpec): string[] {
   return [...vars].sort();
 }
 
+/** Variables every send fills in by itself; the rest are asked for in the dashboard. */
+export const BUILT_IN_VARIABLES = ["server", "channel", "date", "time"] as const;
+
+/**
+ * Replaces `{name}` in every text of the message. Works on the JSON text, so the value is escaped
+ * as a JSON string first: quotes and line breaks in a value cannot break the message.
+ * Unknown names stay as written.
+ */
 export function substituteVariables(spec: EmbedSpec, vars: Record<string, string>): EmbedSpec {
-  const json = JSON.stringify(spec).replaceAll(VAR_REGEX, (_, name: string) => vars[name] ?? `{${name}}`);
+  const json = JSON.stringify(spec).replaceAll(VAR_REGEX, (placeholder, name: string) => {
+    const value = vars[name];
+    return value === undefined ? placeholder : JSON.stringify(value).slice(1, -1);
+  });
   return JSON.parse(json) as EmbedSpec;
 }
 

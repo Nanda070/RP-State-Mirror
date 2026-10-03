@@ -131,3 +131,18 @@ describe("role panel creation", () => {
     expect(await prisma.job.count()).toBe(0);
   });
 });
+
+describe("role dropdown schema", () => {
+  it("accepts real Discord role ids and rejects anything else", async () => {
+    const { embedSpecSchema } = await import("@mirror/core");
+    const spec = (roleDiscordId: string) => ({
+      version: 1 as const,
+      embeds: [{ type: "embed" as const, title: "Роли" }],
+      components: [{ type: "role_select" as const, options: [{ label: "Отдел", roleDiscordId }] }],
+    });
+    // A panel is validated with this schema right before the bot publishes it.
+    expect(embedSpecSchema.safeParse(spec("890000000000000300")).success).toBe(true);
+    expect(embedSpecSchema.safeParse(spec("dddddddddddddddddd")).success).toBe(false);
+    expect(embedSpecSchema.safeParse(spec("123")).success).toBe(false);
+  });
+});

@@ -244,8 +244,10 @@ export const sendMessageDesignSchema = z.object({
   designId: z.string().min(1),
   guildDiscordId: z.string().regex(/^\d{17,20}$/),
   channelDiscordId: z.string().regex(/^\d{17,20}$/),
+  /** Values for `{name}` placeholders of the template. */
+  variables: z.record(z.string().max(1000)).optional(),
 });
-export type SendMessageDesignInput = z.infer<typeof sendMessageDesignSchema>;
+export type SendMessageDesignInput = z.input<typeof sendMessageDesignSchema>;
 
 export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db?: Db) {
   const data = sendMessageDesignSchema.parse(input);
@@ -258,6 +260,7 @@ export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db
         designId: data.designId,
         guildDiscordId: data.guildDiscordId,
         channelDiscordId: data.channelDiscordId,
+        ...(data.variables ? { variables: data.variables } : {}),
       },
     },
     db,

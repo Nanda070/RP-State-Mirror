@@ -25,6 +25,7 @@ import {
   formatRoleMentions,
   makeFineOverdueEmbed,
   parseCustomId,
+  substituteVariables,
   writeAuditEvent,
   createButtonAction,
   getSetting,
@@ -861,19 +862,30 @@ const messageDesignSend: JobHandler = async (payload, { client, log, job }) => {
     throw new Error(`Design ${designId} not found`);
   }
 
-  const parsed = embedSpecSchema.parse(design.spec);
+  const guild = await client.guilds.fetch(guildDiscordId);
+  const channel = (await guild.channels.fetch(channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) {
+    throw new Error(`Канал ${channelDiscordId} недоступен`);
+  }
+
+  const now = new Date();
+  const custom =
+    payload.variables && typeof payload.variables === "object" && !Array.isArray(payload.variables)
+      ? Object.fromEntries(Object.entries(payload.variables).map(([key, value]) => [key, String(value)]))
+      : {};
+  const parsed = substituteVariables(embedSpecSchema.parse(design.spec), {
+    ...custom,
+    server: guild.name,
+    channel: `<#${channel.id}>`,
+    date: now.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }),
+    time: now.toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" }),
+  });
   const violations = checkDiscordLimits(parsed);
   if (violations.length > 0) {
     throw new Error(violations.map((v) => v.message).join("; "));
   }
   const ready = await materializeEmbedSpecButtons(parsed);
   const options = embedSpecToMessageOptions(ready);
-
-  const guild = await client.guilds.fetch(guildDiscordId);
-  const channel = (await guild.channels.fetch(channelDiscordId)) as TextChannel | null;
-  if (!channel?.isTextBased()) {
-    throw new Error(`Канал ${channelDiscordId} недоступен`);
-  }
 
   const message = await runOnce(job, "post", log, async () => ({ id: (await channel.send(options)).id }));
   await recordSentMessage({
