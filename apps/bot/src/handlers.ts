@@ -1637,6 +1637,8 @@ const vehicleRequestSend: JobHandler = async (payload, { client, log, job }) => 
     throw new Error(`Канал запросов ТС ${channelId} недоступен`);
   }
   const roleIds = await getSetting("vehicleRequests.pingRoleIds");
+  const requester = await resolveAuthor(client, request.requesterDiscordId);
+  const server = request.factionCodes.length > 0 ? `${request.factionCodes.join(", ")} · ${request.guildName}` : request.guildName;
   const embed: ClassicEmbed = {
     type: "embed",
     title: "Запрос на спавн транспорта",
@@ -1644,7 +1646,11 @@ const vehicleRequestSend: JobHandler = async (payload, { client, log, job }) => 
     fields: [
       { name: "Модель", value: `\`${request.model}\` · ${request.category}`, inline: true },
       { name: "Время", value: request.time, inline: true },
-      { name: "Заявитель", value: `<@${request.requesterDiscordId}>`, inline: true },
+      { name: "Сервер", value: server, inline: true },
+      {
+        name: "Запросил",
+        value: `<@${request.requesterDiscordId}> — ${requester.displayName} (${request.requesterDiscordId})`,
+      },
       { name: "Причина", value: request.reason },
     ],
     timestamp: true,

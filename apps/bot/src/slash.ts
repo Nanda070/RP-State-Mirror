@@ -551,14 +551,11 @@ async function handleTransfer(interaction: ChatInputCommandInteraction, ctx: Sla
 async function handleVehicleRequest(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!isStaff(identity)) {
-    await interaction.editReply("Запрос транспорта доступен сотрудникам фракций и администраторам.");
-    return;
-  }
   const request = await createVehicleRequest(
     {
       requesterDiscordId: interaction.user.id,
       guildDiscordId: interaction.guildId,
+      requesterIsStaff: isStaff(identity),
       model: interaction.options.getString("модель", true),
       reason: interaction.options.getString("причина", true),
       time: interaction.options.getString("время", true),
