@@ -47,4 +47,5 @@ export * from "./registry-actions.js";
 export * from "./read-cache.js";
 export * from "./search.js";
 export * from "./legal.js";
+export * from "./faq-docs.js";
 export * from "./privacy.js";

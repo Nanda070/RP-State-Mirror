@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/lib/confirm";
 import { useMemo, useState } from "react";
 import { markdownText } from "@/lib/markdown";
 import { Markdown } from "./markdown";
@@ -269,13 +270,11 @@ export function FaqBrowser({ sections: initial, canEdit }: { sections: FaqSectio
                       className="btn btn-ghost"
                       disabled={pending}
                       onClick={() => {
-                        if (
-                          window.confirm(
-                            `Убрать раздел «${section.title}» и его статьи (${allItems.length}) в архив?`,
-                          )
-                        ) {
-                          void call({ action: "archive-section", id: section.id });
-                        }
+                        void confirmDialog(`Убрать раздел «${section.title}» и его статьи (${allItems.length}) в архив?`, {
+                          confirmLabel: "В архив",
+                        }).then((ok) => {
+                          if (ok) void call({ action: "archive-section", id: section.id });
+                        });
                       }}
                     >
                       В архив
@@ -364,9 +363,9 @@ export function FaqBrowser({ sections: initial, canEdit }: { sections: FaqSectio
                             className="btn btn-ghost"
                             disabled={pending}
                             onClick={() => {
-                              if (window.confirm(`Убрать статью «${item.title}» в архив?`)) {
-                                void call({ action: "archive-item", id: item.id });
-                              }
+                              void confirmDialog(`Убрать статью «${item.title}» в архив?`, { confirmLabel: "В архив" }).then((ok) => {
+                                if (ok) void call({ action: "archive-item", id: item.id });
+                              });
                             }}
                           >
                             В архив

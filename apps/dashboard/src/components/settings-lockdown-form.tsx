@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/lib/confirm";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -22,7 +23,12 @@ export function SettingsLockdownForm({
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function apply(next: boolean) {
-    if (next && !window.confirm("Закрыть бота и сайт для всех, кроме главных администраторов?")) return;
+    if (
+      next &&
+      !(await confirmDialog("Закрыть бота и сайт для всех, кроме главных администраторов?", { confirmLabel: "Включить блокировку" }))
+    ) {
+      return;
+    }
     setPending(true);
     setMessage(null);
     try {

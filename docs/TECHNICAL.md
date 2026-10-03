@@ -98,7 +98,11 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `registry-actions.ts` | действия над записями реестров из дашборда, списки с поиском и страницами |
 | `exports.ts` | выгрузка реестров в CSV |
 | `lockdown.ts`, `tech-bans.ts`, `sessions.ts` | аварийная блокировка, технические баны, сессии |
-| `admin-roles.ts`, `admin-stats.ts` | глобальные admin-роли, статистика администрации |
+| `admin-roles.ts` | глобальные роли администрации |
+| `search.ts` | поиск по записям для Ctrl+K |
+| `legal.ts`, `privacy.ts` | редакции юридических текстов и согласия; обезличивание по запросу |
+| `faq-docs.ts` | встроенная справка: статьи FAQ, создаваемые один раз |
+| `read-cache.ts` | кэш фракций и привязок ролей для бота |
 | `monitoring.ts` | сигнал «жив», статус служб, оповещение об отключении бота |
 | `media.ts` | файлы в S3 |
 | `errors.ts` | `UserError`, `formatUserError` |
@@ -195,6 +199,8 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | `sessions` | сессии дашборда и журнал входов |
 | `admin_role_operations` | выдача admin-ролей и отчёт по серверам |
 | `service_heartbeats` | сигнал «жив» бота и результат последней резервной копии |
+| `legal_documents` | редакции юридических текстов (одна действующая на страницу) |
+| `legal_consents` | кто и какую редакцию условий принял |
 
 ### 5.2 Перечисления
 
@@ -213,6 +219,7 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | `20261003140000_drop_account_recovery`, `…150000_drop_form_antispam` | удаление отменённых функций |
 | `20261003160000_ic_blacklist_number_sequence` | последовательность номеров IC ЧС |
 | `20261003170000_stage6_admin_reliability` | баны, сессии, операции admin-ролей, сигналы служб |
+| `20261003180000_stage7_profile_legal` | значки и рамка аватара в снимке участников; `legal_documents`, `legal_consents` |
 
 Новую таблицу нужно добавить и в список `TABLES` в `test/db.ts`, иначе тесты не будут её очищать.
 
@@ -231,9 +238,9 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | Регистрации | `registrations.ttlDays` (31), `registrations.pendingTtlDays` (14), `registrations.vehicleChannelId`, `registrations.uniformChannelId`, `registrations.coordinatorRoleIds` |
 | Переводы | `transfers.channelId`, `transfers.pingRoleIds`, `transfers.approvalDmText`, `transfers.pendingTtlDays` (14) |
 | IC ЧС | `icBlacklist.enabled`, `icBlacklist.channelId`, `icBlacklist.managerRoleIds`, `icBlacklist.searchRoleIds` |
-| Обратная связь, вебхуки, приглашения | `feedback.notifyChannelId`, `feedback.openMessage`, `webhooks.notifyChannelId`, `invites.guildIds`, `invites.defaultMaxAgeSeconds` |
+| Обратная связь, вебхуки, приглашения | `feedback.categories`, `feedback.notifyChannelId`, `feedback.openMessage`, `webhooks.notifyChannelId`, `invites.guildIds`, `invites.defaultMaxAgeSeconds` |
 | Синхронизация ЧП | `cp.syncEnabled`, `cp.excludedRoleIds`, `cp.logChannelId`, `cp.maxKickPercent` (10), `cp.dryRun` |
-| Admin-роли | `adminRoles.byGuild` — для каждого сервера наборы ролей по четырём уровням |
+| Администрация | `adminRoles.byGuild` — для каждого сервера наборы ролей по четырём уровням; `admins.positions` — должности для профиля |
 | Надёжность | `system.lockdown`, `monitoring.errorChannelId`, `monitoring.alertWebhookUrl`, `monitoring.botDownAlertedAt` (служебная), `audit.archiveAfterDays` (365) |
 
 **Кэш.** Бот включает кэш строк настроек на 5 секунд (`enableSettingsCache`): одна команда читает несколько настроек, и одни и те же читаются при каждом взаимодействии. Перед каждой задачей очереди кэш сбрасывается, чтение внутри транзакции кэш не использует, запись через `setSetting` сбрасывает ключ. Дашборд и тесты кэш не включают. Следствие: настройка, изменённая в дашборде, начинает действовать для команд бота не позже чем через 5 секунд.
@@ -276,10 +283,10 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 - **Откладывание:** обработчик возвращает `{ status: "deferred", reason }`, если цель не настроена (нет канала). Задача возвращается в очередь на 5 минут без расхода попыток; при сохранении настроек в дашборде такие задачи запускаются сразу (`wakeDeferredJobs`); через 7 дней ожидания — `FAILED`.
 - **Зависшие:** `RUNNING` дольше 5 минут возвращаются в очередь.
 - **Ровно одна отправка:** `runOnce(job, key, …)` записывает результат шага в `job.result.steps` сразу после отправки; повтор задачи находит запись и не публикует сообщение второй раз.
-- **Воркер бота:** опрос раз в 2 секунды, до 20 задач за такт.
+- **Воркер бота:** опрос раз в 2 секунды, до 20 задач за такт, до трёх задач одновременно. Задачи одной записи (общий `…Id` в данных задачи) выполняются строго по очереди. Задачу, поставленную самим ботом, воркер берёт сразу: `onJobEnqueued` будит его без ожидания опроса.
 - **Управление:** страница `/jobs` — повторить упавшую или отменённую, отменить ожидающую.
 
-Типы задач (`MODULE_JOB_TYPES`): `document.send`, `document.response.send`, `wanted.publish`, `wanted.edit_closed`, `fine.publish`, `fine.edit_paid`, `fine.overdue`, `cp.reconcile`, `personnel.publish`, `message_design.send`, `message_design.resend`, `registration.review`, `registration.decided`, `registration.expired`, `transfer.review`, `transfer.decided`, `role_panel.publish`, `role_panel.archive`, `feedback.ticket_notify`, `feedback.reply_send`, `feedback.closed_send`, `feedback.open_publish`, `form.submission_deliver`, `form.open_publish`, `token.receive_publish`, `webhook_request.notify`, `ic_blacklist.publish`, `ic_blacklist.edit_closed`, `admin_roles.apply`.
+Типы задач (`MODULE_JOB_TYPES`): `document.send`, `document.response.send`, `wanted.publish`, `wanted.edit_closed`, `fine.publish`, `fine.edit_paid`, `fine.overdue`, `fine.refresh`, `cp.reconcile`, `personnel.publish`, `personnel.kick`, `message_design.send`, `message_design.resend`, `registration.review`, `registration.decided`, `registration.expired`, `transfer.review`, `transfer.decided`, `role_panel.publish`, `role_panel.archive`, `feedback.ticket_notify`, `feedback.reply_send`, `feedback.closed_send`, `feedback.open_publish`, `form.submission_deliver`, `form.open_publish`, `token.receive_publish`, `webhook_request.notify`, `ic_blacklist.publish`, `ic_blacklist.edit_closed`, `admin_roles.apply`.
 
 ## 10. Бот
 
@@ -317,7 +324,7 @@ discord.js 14. Интенты: `Guilds`, `GuildMembers` (в Developer Portal в�
 
 ### 10.3 Кнопки и формы
 
-`custom_id` кнопки — `mirror:<действие>:<id>`; id указывает на строку `button_actions` с параметрами. Действия: `role.toggle`, `role.select`, `form.open`, `form.step`, `form.submit`, `registration.approve|reject`, `transfer.approve|reject` (по сторонам), `feedback.open`, `token.receive`, `personnel.kick`, `callback`. От повторных нажатий защищает кулдаун на пару «пользователь + кнопка».
+`custom_id` кнопки — `mirror:<действие>:<id>`; id указывает на строку `button_actions` с параметрами. Действия: `role.toggle`, `role.select`, `form.open`, `form.step`, `form.submit`, `registration.approve|reject`, `transfer.approve|reject` (по сторонам), `feedback.open`, `feedback.category`, `feedback.reply`, `token.receive`, `personnel.kick`, `callback`. От повторных нажатий защищает кулдаун на пару «пользователь + кнопка».
 
 Форма с пятью и менее полями — одно модальное окно; больше пяти — несколько шагов с черновиком в `form_drafts`. Поля, которых нет в Discord (выбор из списка, дата, флажок), делают форму веб-формой: кнопка ведёт на `PUBLIC_BASE_URL/f/<адрес>`.
 
@@ -348,9 +355,9 @@ Next.js 15 (App Router), React 19, Auth.js v5. Серверные компоне
 |---|---|
 | Публичные | `/` (вход), `/terms`, `/privacy`, `/cookies`, `/f/<адрес>` (форма), `/s/<токен>` (запись по ссылке), `/denied`, `/maintenance`, 404, ошибка |
 | Игрокам | `/overview`, `/profile`, `/catalog`, `/calculator`, `/faq`, `/ic-blacklist` |
-| Реестры (хелпер и выше) | `/documents`, `/wanted`, `/fines`, `/personnel`, `/registrations/vehicles`, `/registrations/uniforms`, `/transfers`, `/tokens`, `/feedback`, `/status` |
-| Администраторам | `/bans`, `/stats` |
-| Главному администратору | `/settings` и его разделы (`system`, `roles`, `factions`, `stage4`, `documents`, `wanted`, `fines`, `embeds`, `buttons`, `forms`, `webhooks`, `admin-roles`, `sessions`), `/audit`, `/jobs` |
+| Реестры (хелпер и выше) | `/documents`, `/wanted`, `/fines`, `/personnel`, `/registrations/vehicles`, `/registrations/uniforms`, `/transfers`, `/tokens`, `/feedback` |
+| Администраторам | `/bans` |
+| Главному администратору | `/settings` (вкладки: серверы и синхронизация; защита и мониторинг; тексты и данные), `/settings/factions` (роли; роли администрации; каналы фракций; права команд), `/settings/modules` (вкладка на каждый модуль), `/settings/sessions` (сессии; журнал аудита), `/settings/embeds`, `/settings/buttons`, `/settings/forms`, `/settings/webhooks` (запросы; архив форм), `/jobs` |
 
 Реестры устроены одинаково: поиск и фильтр по статусу (обычная GET-форма, адрес можно скопировать), страницы по 50 записей, «Скачать CSV», действия с подтверждением в диалоге (`RegistryActions`).
 
@@ -368,13 +375,15 @@ Next.js 15 (App Router), React 19, Auth.js v5. Серверные компоне
 | `/api/public/forms/[slug]` | приём ответа публичной формы (без входа) |
 | `/api/share` | публичные ссылки |
 | `/api/registrations`, `/api/discord/channels` | вспомогательные |
-| `/api/settings/*` | `guilds`, `role-mappings`, `factions`, `modules`, `stage4`, `embeds`, `role-panels`, `lockdown`, `admin-roles`, `cp-sync` |
+| `/api/settings/*` | `guilds`, `role-mappings`, `factions`, `modules`, `stage4`, `embeds`, `role-panels`, `lockdown`, `admin-roles`, `cp-sync`, `legal`, `privacy` |
+| `/api/personnel`, `/api/search`, `/api/notifications` | создание кадрового события; поиск для Ctrl+K; что ждёт решения пользователя |
+| `/api/legal/version`, `/api/legal/consent` | действующая редакция условий; принятие её пользователем |
 
 Ошибки приводит к ответу `lib/api.ts → jsonError`: `UserError` и ошибки проверки — 400 с текстом, нет входа — 401, нет прав — 403, остальное — 500 без подробностей.
 
 ### 11.4 Стили
 
-`globals.css` — общая тема; `player.css` подключается после него и содержит стили разделов этапов 5–7. Служебные страницы (нет доступа, 404, ошибка, техработы) собраны компонентом `NoticePage` из блоков страницы входа.
+`globals.css` — общая тема; `player.css` подключается после него и содержит стили разделов этапов 5–7 и слой дизайн-системы: одна шкала шрифта (13 / 14 / 15 / 17 / 26 px, переменные `--fs-*`), одна высота кнопок и полей (`--control-h`, 40 px; в строках таблиц — 32 px), вкладки `.settings-tabs`, переключатели `.toggle-row`. Вкладки страниц хранятся в адресе (`?tab=`) и рисуются компонентом `PageTabs`. Подтверждения — собственный диалог (`lib/confirm.ts`, `RegistryActions`), браузерный `confirm` не используется. Служебные страницы (нет доступа, 404, ошибка, техработы) собраны компонентом `NoticePage` из блоков страницы входа.
 
 ## 12. Хранилище файлов
 
@@ -395,7 +404,7 @@ S3-совместимое (локально и на сервере — SeaweedFS
 
 ## 14. Надёжность и наблюдение
 
-- **Статус** (`/status`, `getSystemStatus`): база, бот (сигнал свежее 90 с), очередь (нет задач, ждущих дольше 5 минут), хранилище, резервные копии (не старше 26 часов).
+- **Состояние служб** (`getSystemStatus`): база, бот (сигнал свежее 90 с), очередь (нет задач, ждущих дольше 5 минут), хранилище, резервные копии (не старше 26 часов). Смотрится командой `update.sh status` (`scripts/maintenance.mjs status`); отдельной страницы в дашборде нет — о неответившем боте и упавших задачах сообщает колокольчик.
 - **Ошибки бота** — в канал `monitoring.errorChannelId`.
 - **«Бот не отвечает»** — сторож в процессе дашборда (`instrumentation-node.ts`) раз в минуту проверяет сигнал и шлёт одно сообщение на вебхук за отключение; неудачная отправка повторяется.
 - **Резервные копии** — контейнер `backup`: `backup.sh`, `verify.sh`, `restore.sh` (см. DEPLOYMENT.md).
@@ -432,7 +441,7 @@ pnpm dashboard:dev              # http://localhost:3000
 
 ## 16. Тесты
 
-Vitest, интеграционные: настоящая PostgreSQL (`docker-compose.test.yml`, порт 55432), миграции применяются перед запуском, база очищается перед каждым тестом. 30 файлов, 232 теста:
+Vitest, интеграционные: настоящая PostgreSQL (`docker-compose.test.yml`, порт 55432), миграции применяются перед запуском, база очищается перед каждым тестом. 31 файл, тестов — см. вывод `pnpm test`:
 
 | Область | Файлы |
 |---|---|
@@ -440,8 +449,9 @@ Vitest, интеграционные: настоящая PostgreSQL (`docker-com
 | модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules` |
 | надёжность бота | `bot-reliability` |
 | разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `stage5-forms`, `stage5-share-links`, `stage5-role-panels` |
-| администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, статистика, экспорт, архив) |
-| действия и реестры | `stage7-registry` |
+| администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, экспорт, архив) |
+| действия и реестры | `stage7-registry` (действия, списки, поиск, кэш настроек) |
+| тексты и данные | `stage7-legal-privacy` (редакции текстов, согласия, обезличивание, встроенная справка) |
 | дашборд | `markdown`, `settings-access` |
 
 CI (`.github/workflows/ci.yml`): install, generate, validate, lint, build, check, test.
@@ -468,8 +478,7 @@ CI (`.github/workflows/ci.yml`): install, generate, validate, lint, build, check
 
 Перечень того, что не сделано или сделано не до конца, ведётся в PLAN.md, раздел 16. Главное с технической стороны:
 
-- кэшируются только настройки; фракции и привязки ролей бот читает из базы при каждом обращении;
-- воркер опрашивает очередь раз в 2 секунды, а не будится при постановке задачи;
-- обезличивание данных по запросу пользователя выполняется вручную, инструмента в дашборде нет;
-- юридические тексты редактируются в коде, а не в дашборде;
-- страницы за входом не проверены автоматическими тестами интерфейса.
+- задачу, поставленную дашбордом, воркер увидит при следующем опросе (до 2 секунд): пробуждение работает только внутри процесса бота;
+- ограничение частоты запросов хранится в памяти процесса дашборда и рассчитано на один экземпляр сайта;
+- статус «в сети» в профиле не показывается: для него боту нужен привилегированный интент присутствия;
+- страницы за входом не покрыты автоматическими тестами интерфейса.

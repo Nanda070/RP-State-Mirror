@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/lib/confirm";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
@@ -92,7 +93,7 @@ export function VehicleCatalog({ models, canEdit }: { models: CatalogModel[]; ca
   }
 
   async function archive(model: CatalogModel) {
-    if (!window.confirm(`Убрать «${model.name}» из каталога? Запись уйдёт в архив.`)) return;
+    if (!(await confirmDialog(`Убрать «${model.name}» из каталога? Запись уйдёт в архив.`, { confirmLabel: "В архив" }))) return;
     setPending(true);
     setError(null);
     try {

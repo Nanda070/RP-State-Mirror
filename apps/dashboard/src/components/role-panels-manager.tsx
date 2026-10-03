@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/lib/confirm";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
@@ -123,7 +124,9 @@ export function RolePanelsManager({
   async function act(id: string, action: "archive" | "republish") {
     if (
       action === "archive" &&
-      !window.confirm("Убрать панель в архив? Кнопки и список исчезнут из сообщения, выданные роли останутся.")
+      !(await confirmDialog("Убрать панель в архив? Кнопки и список исчезнут из сообщения, выданные роли останутся.", {
+        confirmLabel: "В архив",
+      }))
     ) {
       return;
     }

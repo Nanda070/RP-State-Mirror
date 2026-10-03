@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/lib/confirm";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -92,8 +93,9 @@ export function DiscordFormsManager({
     action: "disable-form" | "enable-form" | "archive-form",
   ) {
     if (action === "archive-form") {
-      const ok = window.confirm(
+      const ok = await confirmDialog(
         "Убрать форму в архив? Кнопка в Discord и публичная страница перестанут работать. Ответы сохранятся.",
+        { confirmLabel: "В архив" },
       );
       if (!ok) return;
     }

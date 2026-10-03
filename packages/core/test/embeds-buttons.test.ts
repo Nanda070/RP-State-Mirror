@@ -153,11 +153,11 @@ describe("template variables", () => {
     expect(extractVariables(spec)).toEqual(["name", "server", "unknown"]);
 
     // Quotes, backslashes and line breaks in a value must not break the message.
-    const filled = substituteVariables(spec, { name: 'Иван "Ваня" \ Петров\nвторая строка', server: "Mirror" });
+    const filled = substituteVariables(spec, { name: 'Иван "Ваня" \\ Петров\nвторая строка', server: "Mirror" });
     expect(filled).toEqual({
       version: 1,
       embeds: [
-        { type: "embed", title: 'Привет, Иван "Ваня" \ Петров\nвторая строка', description: "Сервер Mirror. {unknown}" },
+        { type: "embed", title: 'Привет, Иван "Ваня" \\ Петров\nвторая строка', description: "Сервер Mirror. {unknown}" },
       ],
     });
   });

@@ -165,3 +165,23 @@ describe("data erasure", () => {
     expect(Object.values(again.tables).reduce((sum, value) => sum + value, 0)).toBe(0);
   });
 });
+
+describe("built-in documentation", () => {
+  it("fills an empty FAQ once and never overwrites what the administration wrote", async () => {
+    const { FAQ_DOCS, listFaq, seedFaqDocs } = await import("@mirror/core");
+    const expected = FAQ_DOCS.reduce((sum, section) => sum + section.items.length, 0);
+    expect(await seedFaqDocs()).toBe(expected);
+    const faq = await listFaq();
+    expect(faq.map((section) => section.title)).toEqual(FAQ_DOCS.map((section) => section.title));
+    expect(faq[0]?.items[0]?.title).toBe(FAQ_DOCS[0]?.items[0]?.title);
+    // Every article fits the limits the editor enforces.
+    for (const section of FAQ_DOCS) {
+      for (const item of section.items) {
+        expect(item.title.length).toBeLessThanOrEqual(200);
+        expect(item.body.length).toBeGreaterThan(40);
+      }
+    }
+    expect(await seedFaqDocs()).toBe(0);
+    expect(await prisma.faqItem.count()).toBe(expected);
+  });
+});

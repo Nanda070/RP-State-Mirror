@@ -1,5 +1,6 @@
 "use client";
 
+import { confirmDialog } from "@/lib/confirm";
 import { useState } from "react";
 
 type ShareLink = { id: string; token: string };
@@ -54,7 +55,7 @@ export function ShareButton({
   }
 
   async function revoke() {
-    if (!link || !window.confirm("Отозвать ссылку? По ней больше ничего не откроется.")) return;
+    if (!link || !(await confirmDialog("Отозвать ссылку? По ней больше ничего не откроется.", { confirmLabel: "Отозвать" }))) return;
     setPending(true);
     setNote(null);
     try {
