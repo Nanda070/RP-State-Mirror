@@ -6,8 +6,9 @@ type FeedbackTicket = {
   id: string;
   category: string;
   status: string;
-  authorDiscordId: string;
-  messages: Array<{ authorDiscordId: string; content: string }>;
+  /** «Ник (Discord ID)», resolved on the server. */
+  authorLabel: string;
+  messages: Array<{ authorLabel: string; content: string }>;
 };
 
 const STATUS_RU: Record<string, string> = {
@@ -20,9 +21,12 @@ const STATUS_RU: Record<string, string> = {
 export function FeedbackInbox({
   initial,
   canReply,
+  replyAuthorLabel,
 }: {
   initial: FeedbackTicket[];
   canReply: boolean;
+  /** Label of the signed-in admin, shown on a reply before the page reloads. */
+  replyAuthorLabel: string;
 }) {
   const [tickets, setTickets] = useState(initial);
   const [reply, setReply] = useState<Record<string, string>>({});
@@ -55,7 +59,7 @@ export function FeedbackInbox({
           ticket.id === id
             ? {
                 ...ticket,
-                messages: [...ticket.messages, { authorDiscordId: "админ", content }],
+                messages: [...ticket.messages, { authorLabel: replyAuthorLabel, content }],
               }
             : ticket,
         ),
@@ -83,14 +87,13 @@ export function FeedbackInbox({
             <strong>{ticket.category}</strong>
             <span className="muted">
               {" "}
-              · {STATUS_RU[ticket.status] ?? ticket.status} · автор{" "}
-              <code>{ticket.authorDiscordId}</code>
+              · {STATUS_RU[ticket.status] ?? ticket.status} · автор {ticket.authorLabel}
             </span>
           </div>
           <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
             {ticket.messages.map((item, idx) => (
               <li key={idx}>
-                <strong>{item.authorDiscordId}:</strong> {item.content}
+                <strong>{item.authorLabel}:</strong> {item.content}
               </li>
             ))}
           </ul>

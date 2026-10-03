@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { FeedbackInbox } from "@/components/feedback-inbox";
 import { FeedbackPublish } from "@/components/feedback-publish";
 import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
+import { resolveAuthorLabels } from "@/lib/discord-names";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 export default async function FeedbackPage() {
@@ -18,6 +19,11 @@ export default async function FeedbackPage() {
   const canPublish = canManageSystemSettings(identity);
   const tickets = await listFeedbackTickets();
   const canReply = canPublish;
+  const authorLabels = await resolveAuthorLabels([
+    session.user.discordId,
+    ...tickets.flatMap((ticket) => [ticket.authorDiscordId, ...ticket.messages.map((m) => m.authorDiscordId)]),
+  ]);
+  const label = (id: string) => authorLabels.get(id) ?? id;
 
   const [channels, guilds, openMessage] = canPublish
     ? await Promise.all([
@@ -52,13 +58,14 @@ export default async function FeedbackPage() {
 
       <FeedbackInbox
         canReply={canReply}
+        replyAuthorLabel={label(session.user.discordId)}
         initial={tickets.map((ticket) => ({
           id: ticket.id,
           category: ticket.category,
           status: ticket.status,
-          authorDiscordId: ticket.authorDiscordId,
+          authorLabel: label(ticket.authorDiscordId),
           messages: ticket.messages.map((m) => ({
-            authorDiscordId: m.authorDiscordId,
+            authorLabel: label(m.authorDiscordId),
             content: m.content,
           })),
         }))}
