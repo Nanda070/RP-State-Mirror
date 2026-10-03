@@ -1,33 +1,25 @@
 import {
-  canManageSystemSettings,
   isButtonPanelSpec,
-  listActiveChannels,
   listMessageDesigns,
   listSentMessages,
+  type EmbedSpec,
 } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { EmbedManager } from "@/components/embed-manager";
-import { resolveFreshIdentity } from "@/lib/session";
-import type { EmbedSpec } from "@mirror/core";
+import { EmbedManagerLazy } from "@/components/embed-manager-lazy";
+import {
+  getActiveChannelOptions,
+  getActiveGuildOptions,
+} from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsEmbedsPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
   const [designs, sent, guilds, channels] = await Promise.all([
     listMessageDesigns(false),
     listSentMessages(40),
-    prisma.guild.findMany({
-      where: { status: RecordStatus.ACTIVE },
-      orderBy: { name: "asc" },
-      select: { discordId: true, name: true },
-    }),
-    listActiveChannels(),
+    getActiveGuildOptions(),
+    getActiveChannelOptions(),
   ]);
 
   const embedDesigns = designs.filter((d) => !isButtonPanelSpec(d.spec as EmbedSpec));
@@ -61,7 +53,7 @@ export default async function SettingsEmbedsPage() {
         </div>
       </div>
 
-      <EmbedManager
+      <EmbedManagerLazy
         initialDesigns={embedDesigns.map((d) => ({
           id: d.id,
           name: d.name,
@@ -77,7 +69,7 @@ export default async function SettingsEmbedsPage() {
           design: s.design,
           createdAt: s.createdAt.toISOString(),
         }))}
-        guilds={guilds}
+        guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         channels={channels.map((c) => ({
           discordId: c.discordId,
           name: c.name,

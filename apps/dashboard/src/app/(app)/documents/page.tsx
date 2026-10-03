@@ -5,9 +5,8 @@ import {
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { formatMoscow } from "@/lib/moscow";
-import { resolveFreshIdentity } from "@/lib/session";
+import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 const STATUS_RU: Record<string, string> = {
   ACTIVE: "Активен",
@@ -18,8 +17,7 @@ const STATUS_RU: Record<string, string> = {
 };
 
 export default async function DocumentsRegistryPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
+  const session = await requireSignedIn();
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canViewModules(identity)) redirect("/overview");
 

@@ -1,46 +1,31 @@
-import {
-  canManageSystemSettings,
-  getSetting,
-  listActiveChannels,
-} from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
+import { getSettings } from "@mirror/core";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { SettingsCpForm } from "@/components/settings-cp-form";
 import { SettingsGuildForm } from "@/components/settings-guild-form";
-import { resolveFreshIdentity } from "@/lib/session";
+import {
+  getActiveChannelOptions,
+  getActiveGuildOptions,
+  getRolesForGuild,
+} from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsSystemPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
-  const [guilds, mainGuildId, incidentGuildId, cpEnabled, cpExcluded, cpLogChannelId, channels] =
-    await Promise.all([
-      prisma.guild.findMany({
-        where: { status: RecordStatus.ACTIVE },
-        orderBy: { name: "asc" },
-        select: { discordId: true, name: true, iconUrl: true, lastSyncedAt: true },
-      }),
-      getSetting("core.mainGuildId"),
-      getSetting("core.incidentGuildId"),
-      getSetting("cp.syncEnabled"),
-      getSetting("cp.excludedRoleIds"),
-      getSetting("cp.logChannelId"),
-      listActiveChannels(),
-    ]);
+  const [guilds, settings, channels] = await Promise.all([
+    getActiveGuildOptions(),
+    getSettings([
+      "core.mainGuildId",
+      "core.incidentGuildId",
+      "cp.syncEnabled",
+      "cp.excludedRoleIds",
+      "cp.logChannelId",
+    ] as const),
+    getActiveChannelOptions(),
+  ]);
 
-  const incidentRoles = incidentGuildId
-    ? await prisma.discordRole.findMany({
-        where: {
-          status: RecordStatus.ACTIVE,
-          guild: { discordId: incidentGuildId, status: RecordStatus.ACTIVE },
-        },
-        orderBy: { name: "asc" },
-        select: { discordId: true, name: true },
-      })
+  const incidentRoles = settings["core.incidentGuildId"]
+    ? await getRolesForGuild(settings["core.incidentGuildId"])
     : [];
 
   return (
@@ -66,17 +51,19 @@ export default async function SettingsSystemPage() {
       </div>
       <SettingsGuildForm
         guilds={guilds.map((g) => ({
-          ...g,
+          discordId: g.discordId,
+          name: g.name,
+          iconUrl: g.iconUrl,
           lastSyncedAt: g.lastSyncedAt?.toISOString() ?? null,
         }))}
-        initialMain={mainGuildId}
-        initialIncident={incidentGuildId}
+        initialMain={settings["core.mainGuildId"]}
+        initialIncident={settings["core.incidentGuildId"]}
       />
       <SettingsCpForm
-        initialEnabled={cpEnabled}
-        initialExcludedRoleIds={cpExcluded}
-        initialLogChannelId={cpLogChannelId}
-        incidentGuildId={incidentGuildId}
+        initialEnabled={settings["cp.syncEnabled"]}
+        initialExcludedRoleIds={settings["cp.excludedRoleIds"]}
+        initialLogChannelId={settings["cp.logChannelId"]}
+        incidentGuildId={settings["core.incidentGuildId"]}
         channels={channels.map((c) => ({
           discordId: c.discordId,
           name: c.name,

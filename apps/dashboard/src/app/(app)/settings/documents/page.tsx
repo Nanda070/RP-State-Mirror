@@ -1,16 +1,11 @@
-import { canManageSystemSettings, getSetting } from "@mirror/core";
+import { getSetting } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { SettingsDocumentsForm } from "@/components/settings-module-form";
-import { resolveFreshIdentity } from "@/lib/session";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsDocumentsPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
   const [ttlHours, docCount, factionsWithChannel] = await Promise.all([
     getSetting("documents.ttlHours"),

@@ -1,39 +1,21 @@
-import { canManageSystemSettings, listActiveRoleMappings } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
+import { listActiveRoleMappings } from "@mirror/core";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { SettingsRolesForm } from "@/components/settings-roles-form";
-import { resolveFreshIdentity } from "@/lib/session";
+import {
+  getActiveFactionOptions,
+  getActiveGuildOptions,
+  getActiveRoleOptions,
+} from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsRolesPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
   const [mappings, guilds, factions, roles] = await Promise.all([
     listActiveRoleMappings(),
-    prisma.guild.findMany({
-      where: { status: RecordStatus.ACTIVE },
-      orderBy: { name: "asc" },
-      select: { discordId: true, name: true },
-    }),
-    prisma.faction.findMany({
-      where: { status: RecordStatus.ACTIVE },
-      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-      select: { code: true, name: true, color: true },
-    }),
-    prisma.discordRole.findMany({
-      where: { status: RecordStatus.ACTIVE, guild: { status: RecordStatus.ACTIVE } },
-      orderBy: [{ position: "desc" }, { name: "asc" }],
-      select: {
-        discordId: true,
-        name: true,
-        color: true,
-        guild: { select: { discordId: true, name: true } },
-      },
-    }),
+    getActiveGuildOptions(),
+    getActiveFactionOptions(),
+    getActiveRoleOptions(),
   ]);
 
   return (
@@ -56,7 +38,7 @@ export default async function SettingsRolesPage() {
           guild: m.guild,
           faction: m.faction,
         }))}
-        guilds={guilds}
+        guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         factions={factions}
         roles={roles}
       />

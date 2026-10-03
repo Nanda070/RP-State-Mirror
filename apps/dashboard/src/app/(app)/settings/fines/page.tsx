@@ -1,37 +1,26 @@
-import { canManageSystemSettings, getSetting, listActiveChannels } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
+import { getSettings } from "@mirror/core";
+import { prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { SettingsFinesForm } from "@/components/settings-module-form";
-import { resolveFreshIdentity } from "@/lib/session";
+import { getActiveChannelOptions, getRolesForGuild } from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsFinesPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
-  const [dueDays, channelId, pingRoleIds, incidentGuildId, fineCount, channels] =
-    await Promise.all([
-      getSetting("fines.dueDays"),
-      getSetting("fines.channelId"),
-      getSetting("fines.pingRoleIds"),
-      getSetting("core.incidentGuildId"),
-      prisma.fine.count(),
-      listActiveChannels(),
-    ]);
+  const [settings, fineCount, channels] = await Promise.all([
+    getSettings([
+      "fines.dueDays",
+      "fines.channelId",
+      "fines.pingRoleIds",
+      "core.incidentGuildId",
+    ] as const),
+    prisma.fine.count(),
+    getActiveChannelOptions(),
+  ]);
 
-  const incidentRoles = incidentGuildId
-    ? await prisma.discordRole.findMany({
-        where: {
-          status: RecordStatus.ACTIVE,
-          guild: { discordId: incidentGuildId, status: RecordStatus.ACTIVE },
-        },
-        orderBy: { name: "asc" },
-        select: { discordId: true, name: true },
-      })
-    : [];
+  const incidentGuildId = settings["core.incidentGuildId"];
+  const incidentRoles = incidentGuildId ? await getRolesForGuild(incidentGuildId) : [];
 
   return (
     <div className="stack">
@@ -67,9 +56,9 @@ export default async function SettingsFinesPage() {
             <strong>{incidentGuildId ? "задан" : "не задан"}</strong>
           </li>
           <li>
-            <span className="status-dot" data-ok={Boolean(channelId)} />
+            <span className="status-dot" data-ok={Boolean(settings["fines.channelId"])} />
             Канал штрафов
-            <strong>{channelId ? "задан" : "не задан"}</strong>
+            <strong>{settings["fines.channelId"] ? "задан" : "не задан"}</strong>
           </li>
           <li>
             <span className="status-dot" data-ok />
@@ -80,9 +69,9 @@ export default async function SettingsFinesPage() {
       </div>
 
       <SettingsFinesForm
-        initialDueDays={dueDays}
-        initialChannelId={channelId}
-        initialPingRoleIds={pingRoleIds}
+        initialDueDays={settings["fines.dueDays"]}
+        initialChannelId={settings["fines.channelId"]}
+        initialPingRoleIds={settings["fines.pingRoleIds"]}
         incidentGuildId={incidentGuildId}
         channels={channels.map((c) => ({
           discordId: c.discordId,

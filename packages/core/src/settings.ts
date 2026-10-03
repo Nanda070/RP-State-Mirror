@@ -76,9 +76,12 @@ export function isSettingKey(key: string): key is SettingKey {
   return Object.hasOwn(settingDefinitions, key);
 }
 
-export async function getSetting<K extends SettingKey>(key: K, db: Db = prisma): Promise<SettingValue<K>> {
+async function readSettingValue<K extends SettingKey>(
+  key: K,
+  row: { key: string; value: unknown } | null | undefined,
+  db: Db,
+): Promise<SettingValue<K>> {
   const definition = settingDefinitions[key];
-  const row = await db.systemSetting.findUnique({ where: { key } });
   if (!row) return definition.defaultValue as SettingValue<K>;
 
   const decoded = fromJsonValue(row.value);
@@ -96,6 +99,32 @@ export async function getSetting<K extends SettingKey>(key: K, db: Db = prisma):
   }
 
   return parsed.data as SettingValue<K>;
+}
+
+export async function getSetting<K extends SettingKey>(key: K, db: Db = prisma): Promise<SettingValue<K>> {
+  const row = await db.systemSetting.findUnique({ where: { key } });
+  return readSettingValue(key, row, db);
+}
+
+/** Load many settings in one query (request-friendly for settings hubs). */
+export async function getSettings<const K extends readonly SettingKey[]>(
+  keys: K,
+  db: Db = prisma,
+): Promise<{ [P in K[number]]: SettingValue<P> }> {
+  const uniqueKeys = [...new Set(keys)];
+  const rows =
+    uniqueKeys.length === 0
+      ? []
+      : await db.systemSetting.findMany({ where: { key: { in: uniqueKeys } } });
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+
+  const result = {} as { [P in K[number]]: SettingValue<P> };
+  await Promise.all(
+    uniqueKeys.map(async (key) => {
+      (result as Record<string, unknown>)[key] = await readSettingValue(key, byKey.get(key), db);
+    }),
+  );
+  return result;
 }
 
 const DISTINCT_GUILD_KEYS: readonly SettingKey[] = ["core.mainGuildId", "core.incidentGuildId"];

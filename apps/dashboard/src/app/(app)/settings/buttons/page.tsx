@@ -1,38 +1,27 @@
 import {
-  canManageSystemSettings,
   isButtonPanelSpec,
-  listActiveChannels,
   listMessageDesigns,
   listSentMessages,
+  type EmbedSpec,
 } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { ButtonManager } from "@/components/button-manager";
-import { resolveFreshIdentity } from "@/lib/session";
-import type { EmbedSpec } from "@mirror/core";
+import { ButtonManagerLazy } from "@/components/button-manager-lazy";
+import {
+  getActiveChannelOptions,
+  getActiveGuildOptions,
+  getActiveRoleOptions,
+} from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsButtonsPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
   const [designs, sent, guilds, channels, roles] = await Promise.all([
     listMessageDesigns(false),
     listSentMessages(40),
-    prisma.guild.findMany({
-      where: { status: RecordStatus.ACTIVE },
-      orderBy: { name: "asc" },
-      select: { discordId: true, name: true },
-    }),
-    listActiveChannels(),
-    prisma.discordRole.findMany({
-      where: { status: RecordStatus.ACTIVE, guild: { status: RecordStatus.ACTIVE } },
-      include: { guild: { select: { discordId: true } } },
-      orderBy: { name: "asc" },
-    }),
+    getActiveGuildOptions(),
+    getActiveChannelOptions(),
+    getActiveRoleOptions(),
   ]);
 
   const buttonDesigns = designs.filter((d) => isButtonPanelSpec(d.spec as EmbedSpec));
@@ -66,7 +55,7 @@ export default async function SettingsButtonsPage() {
         </div>
       </div>
 
-      <ButtonManager
+      <ButtonManagerLazy
         initialDesigns={buttonDesigns.map((d) => ({
           id: d.id,
           name: d.name,
@@ -82,7 +71,7 @@ export default async function SettingsButtonsPage() {
           design: s.design,
           createdAt: s.createdAt.toISOString(),
         }))}
-        guilds={guilds}
+        guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         channels={channels.map((c) => ({
           discordId: c.discordId,
           name: c.name,

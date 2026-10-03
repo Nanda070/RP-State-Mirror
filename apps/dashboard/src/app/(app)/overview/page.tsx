@@ -1,29 +1,27 @@
 import { buildStatusBadge, canManageSystemSettings } from "@mirror/core";
 import { JobStatus, RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { resolveFreshIdentity } from "@/lib/session";
+import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 function formatCount(n: number): string {
   return new Intl.NumberFormat("ru-RU").format(n);
 }
 
 export default async function OverviewPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
+  const session = await requireSignedIn();
 
-  const identity = await resolveFreshIdentity(session.user.discordId);
+  const [identity, guildCount, memberCount, mappingCount, roleCount, pendingJobs] =
+    await Promise.all([
+      resolveFreshIdentity(session.user.discordId),
+      prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
+      prisma.guildMember.count({ where: { isPresent: true } }),
+      prisma.roleMapping.count({ where: { status: RecordStatus.ACTIVE } }),
+      prisma.discordRole.count({ where: { status: RecordStatus.ACTIVE } }),
+      prisma.job.count({ where: { status: JobStatus.PENDING } }),
+    ]);
+
   const badge = buildStatusBadge(identity);
   const canSettings = canManageSystemSettings(identity);
-
-  const [guildCount, memberCount, mappingCount, roleCount, pendingJobs] = await Promise.all([
-    prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
-    prisma.guildMember.count({ where: { isPresent: true } }),
-    prisma.roleMapping.count({ where: { status: RecordStatus.ACTIVE } }),
-    prisma.discordRole.count({ where: { status: RecordStatus.ACTIVE } }),
-    prisma.job.count({ where: { status: JobStatus.PENDING } }),
-  ]);
 
   const displayName = session.user.name ?? session.user.username ?? "пользователь";
 

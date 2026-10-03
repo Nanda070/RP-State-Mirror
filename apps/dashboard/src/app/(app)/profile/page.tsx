@@ -1,27 +1,26 @@
 import { buildStatusBadge } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import Image from "next/image";
-import { redirect } from "next/navigation";
 import type { CSSProperties } from "react";
-import { auth } from "@/auth";
 import { formatMoscow } from "@/lib/moscow";
-import { resolveFreshIdentity } from "@/lib/session";
+import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 export default async function ProfilePage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
+  const session = await requireSignedIn();
 
-  const identity = await resolveFreshIdentity(session.user.discordId);
+  const [identity, memberships] = await Promise.all([
+    resolveFreshIdentity(session.user.discordId),
+    prisma.guildMember.findMany({
+      where: {
+        userDiscordId: session.user.discordId,
+        isPresent: true,
+        guild: { status: RecordStatus.ACTIVE },
+      },
+      include: { guild: true },
+      orderBy: { guild: { name: "asc" } },
+    }),
+  ]);
   const badge = buildStatusBadge(identity);
-  const memberships = await prisma.guildMember.findMany({
-    where: {
-      userDiscordId: session.user.discordId,
-      isPresent: true,
-      guild: { status: RecordStatus.ACTIVE },
-    },
-    include: { guild: true },
-    orderBy: { guild: { name: "asc" } },
-  });
 
   const avatar =
     session.user.image ??

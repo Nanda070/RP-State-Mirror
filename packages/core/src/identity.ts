@@ -48,10 +48,18 @@ function isAdminLevel(value: string): value is AdminLevel {
 export async function resolveIdentity(discordUserId: string, options: ResolveIdentityOptions): Promise<Identity> {
   const isSuperAdmin = options.superAdminUserIds.includes(discordUserId);
 
-  const memberships = await prisma.guildMember.findMany({
-    where: { userDiscordId: discordUserId, isPresent: true, guild: { status: RecordStatus.ACTIVE } },
-    include: { guild: true },
-  });
+  // Memberships gate role mappings; settings + factions are independent of that lookup.
+  const [memberships, mainGuildId, factions] = await Promise.all([
+    prisma.guildMember.findMany({
+      where: { userDiscordId: discordUserId, isPresent: true, guild: { status: RecordStatus.ACTIVE } },
+      include: { guild: true },
+    }),
+    getSetting("core.mainGuildId"),
+    prisma.faction.findMany({
+      where: { status: RecordStatus.ACTIVE, guildId: { not: null } },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    }),
+  ]);
 
   const heldRoles = new Set(memberships.flatMap((m) => m.roleIds.map((roleId) => `${m.guildId}:${roleId}`)));
   const allRoleIds = [...new Set(memberships.flatMap((m) => m.roleIds))];
@@ -70,17 +78,11 @@ export async function resolveIdentity(discordUserId: string, options: ResolveIde
           })
         ).filter((m) => heldRoles.has(`${m.guildId}:${m.roleDiscordId}`));
 
-  const mainGuildId = await getSetting("core.mainGuildId");
   const mappedLevels = mappings
     .filter((m) => m.kind === RoleMappingKind.ADMIN_LEVEL && m.guild.discordId === mainGuildId)
     .map((m) => m.value)
     .filter(isAdminLevel);
   const adminLevel = isSuperAdmin ? AdminLevel.SUPER_ADMIN : highestLevel(mappedLevels);
-
-  const factions = await prisma.faction.findMany({
-    where: { status: RecordStatus.ACTIVE, guildId: { not: null } },
-    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
-  });
 
   const factionIdentities: FactionIdentity[] = [];
   for (const faction of factions) {

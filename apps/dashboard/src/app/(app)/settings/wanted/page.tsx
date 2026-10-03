@@ -1,37 +1,26 @@
-import { canManageSystemSettings, getSetting, listActiveChannels } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
+import { getSettings } from "@mirror/core";
+import { prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { SettingsWantedForm } from "@/components/settings-module-form";
-import { resolveFreshIdentity } from "@/lib/session";
+import { getActiveChannelOptions, getRolesForGuild } from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsWantedPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
-  const [enabled, channelId, pingRoleIds, incidentGuildId, wantedCount, channels] =
-    await Promise.all([
-      getSetting("wanted.enabled"),
-      getSetting("wanted.channelId"),
-      getSetting("wanted.pingRoleIds"),
-      getSetting("core.incidentGuildId"),
-      prisma.wanted.count(),
-      listActiveChannels(),
-    ]);
+  const [settings, wantedCount, channels] = await Promise.all([
+    getSettings([
+      "wanted.enabled",
+      "wanted.channelId",
+      "wanted.pingRoleIds",
+      "core.incidentGuildId",
+    ] as const),
+    prisma.wanted.count(),
+    getActiveChannelOptions(),
+  ]);
 
-  const incidentRoles = incidentGuildId
-    ? await prisma.discordRole.findMany({
-        where: {
-          status: RecordStatus.ACTIVE,
-          guild: { discordId: incidentGuildId, status: RecordStatus.ACTIVE },
-        },
-        orderBy: { name: "asc" },
-        select: { discordId: true, name: true },
-      })
-    : [];
+  const incidentGuildId = settings["core.incidentGuildId"];
+  const incidentRoles = incidentGuildId ? await getRolesForGuild(incidentGuildId) : [];
 
   return (
     <div className="stack">
@@ -62,9 +51,9 @@ export default async function SettingsWantedPage() {
         </h2>
         <ul className="status-list">
           <li>
-            <span className="status-dot" data-ok={enabled} />
+            <span className="status-dot" data-ok={settings["wanted.enabled"]} />
             Модуль
-            <strong>{enabled ? "включён" : "выключен"}</strong>
+            <strong>{settings["wanted.enabled"] ? "включён" : "выключен"}</strong>
           </li>
           <li>
             <span className="status-dot" data-ok={Boolean(incidentGuildId)} />
@@ -72,9 +61,9 @@ export default async function SettingsWantedPage() {
             <strong>{incidentGuildId ? "задан" : "не задан"}</strong>
           </li>
           <li>
-            <span className="status-dot" data-ok={Boolean(channelId)} />
+            <span className="status-dot" data-ok={Boolean(settings["wanted.channelId"])} />
             Канал розыска
-            <strong>{channelId ? "задан" : "не задан"}</strong>
+            <strong>{settings["wanted.channelId"] ? "задан" : "не задан"}</strong>
           </li>
           <li>
             <span className="status-dot" data-ok />
@@ -85,9 +74,9 @@ export default async function SettingsWantedPage() {
       </div>
 
       <SettingsWantedForm
-        initialEnabled={enabled}
-        initialChannelId={channelId}
-        initialPingRoleIds={pingRoleIds}
+        initialEnabled={settings["wanted.enabled"]}
+        initialChannelId={settings["wanted.channelId"]}
+        initialPingRoleIds={settings["wanted.pingRoleIds"]}
         incidentGuildId={incidentGuildId}
         channels={channels.map((c) => ({
           discordId: c.discordId,

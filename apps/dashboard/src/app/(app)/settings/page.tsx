@@ -1,9 +1,7 @@
-import { canManageSystemSettings, getSetting, listActiveRoleMappings } from "@mirror/core";
+import { getSettings, listActiveRoleMappings } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { resolveFreshIdentity } from "@/lib/session";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 type ModuleCard = {
   href: string;
@@ -14,40 +12,43 @@ type ModuleCard = {
 };
 
 export default async function SettingsIndexPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
+
+  const [counts, settings, mappings] = await Promise.all([
+    Promise.all([
+      prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
+      prisma.document.count(),
+      prisma.wanted.count(),
+      prisma.fine.count(),
+      prisma.personnelEvent.count(),
+      prisma.messageDesign.count({ where: { status: RecordStatus.ACTIVE } }),
+      prisma.faction.count({ where: { status: RecordStatus.ACTIVE } }),
+    ]),
+    getSettings([
+      "core.mainGuildId",
+      "core.incidentGuildId",
+      "wanted.channelId",
+      "fines.channelId",
+      "cp.syncEnabled",
+    ] as const),
+    listActiveRoleMappings(),
+  ]);
 
   const [
     guildCount,
-    mainGuildId,
-    incidentGuildId,
-    mappings,
     docCount,
     wantedCount,
     fineCount,
     personnelCount,
     designCount,
-    wantedChannelId,
-    finesChannelId,
-    cpSyncEnabled,
     factionCount,
-  ] = await Promise.all([
-    prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
-    getSetting("core.mainGuildId"),
-    getSetting("core.incidentGuildId"),
-    listActiveRoleMappings(),
-    prisma.document.count(),
-    prisma.wanted.count(),
-    prisma.fine.count(),
-    prisma.personnelEvent.count(),
-    prisma.messageDesign.count({ where: { status: RecordStatus.ACTIVE } }),
-    getSetting("wanted.channelId"),
-    getSetting("fines.channelId"),
-    getSetting("cp.syncEnabled"),
-    prisma.faction.count({ where: { status: RecordStatus.ACTIVE } }),
-  ]);
+  ] = counts;
+
+  const mainGuildId = settings["core.mainGuildId"];
+  const incidentGuildId = settings["core.incidentGuildId"];
+  const wantedChannelId = settings["wanted.channelId"];
+  const finesChannelId = settings["fines.channelId"];
+  const cpSyncEnabled = settings["cp.syncEnabled"];
 
   const core: ModuleCard[] = [
     {

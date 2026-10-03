@@ -5,6 +5,8 @@ import {
   resolveIdentity,
   type Identity,
 } from "@mirror/core";
+import { redirect } from "next/navigation";
+import { cache } from "react";
 import { auth, type SessionIdentity } from "../auth";
 import { getDashboardEnv } from "../env";
 
@@ -26,9 +28,16 @@ export async function requireSession() {
   return session;
 }
 
-export async function resolveFreshIdentity(discordId: string): Promise<Identity> {
+/** One identity resolve per request (layout + page used to double-hit Prisma). */
+export const resolveFreshIdentity = cache(async (discordId: string): Promise<Identity> => {
   const env = getDashboardEnv();
   return resolveIdentity(discordId, { superAdminUserIds: env.SUPER_ADMIN_USER_IDS });
+});
+
+export async function requireSignedIn() {
+  const session = await auth();
+  if (!session?.user?.discordId) redirect("/");
+  return session;
 }
 
 export async function requireAdminArea() {
@@ -46,6 +55,14 @@ export async function requireSystemSettings() {
   if (!canManageSystemSettings(identity)) {
     throw new ForbiddenError("Системные настройки доступны только главному администратору");
   }
+  return { session, identity };
+}
+
+/** Page-level gate: redirect instead of throwing (for RSC pages). */
+export async function requireSystemSettingsPage() {
+  const session = await requireSignedIn();
+  const identity = await resolveFreshIdentity(session.user.discordId);
+  if (!canManageSystemSettings(identity)) redirect("/overview");
   return { session, identity };
 }
 

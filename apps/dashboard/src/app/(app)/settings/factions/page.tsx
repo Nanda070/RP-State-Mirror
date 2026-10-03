@@ -1,34 +1,21 @@
-import { canManageSystemSettings, listActiveChannels, listActiveFactions } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
+import { listActiveFactions } from "@mirror/core";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { SettingsFactionsForm } from "@/components/settings-factions-form";
-import { resolveFreshIdentity } from "@/lib/session";
+import {
+  getActiveChannelOptions,
+  getActiveGuildOptions,
+  getActiveRoleOptions,
+} from "@/lib/catalog";
+import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsFactionsPage() {
-  const session = await auth();
-  if (!session?.user?.discordId) redirect("/");
-  const identity = await resolveFreshIdentity(session.user.discordId);
-  if (!canManageSystemSettings(identity)) redirect("/overview");
+  await requireSystemSettingsPage();
 
   const [factions, guilds, channels, roles] = await Promise.all([
     listActiveFactions(),
-    prisma.guild.findMany({
-      where: { status: RecordStatus.ACTIVE },
-      orderBy: { name: "asc" },
-      select: { discordId: true, name: true },
-    }),
-    listActiveChannels(),
-    prisma.discordRole.findMany({
-      where: { status: RecordStatus.ACTIVE },
-      orderBy: { name: "asc" },
-      select: {
-        discordId: true,
-        name: true,
-        guild: { select: { discordId: true } },
-      },
-    }),
+    getActiveGuildOptions(),
+    getActiveChannelOptions(),
+    getActiveRoleOptions(),
   ]);
 
   return (
@@ -60,7 +47,7 @@ export default async function SettingsFactionsPage() {
           guildName: f.guild?.name ?? null,
           settings: f.settings,
         }))}
-        guilds={guilds}
+        guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         channels={channels.map((c) => ({
           discordId: c.discordId,
           name: c.name,
