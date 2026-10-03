@@ -1,12 +1,16 @@
 import { getSettings } from "@mirror/core";
 import Link from "next/link";
 import { SettingsCpForm } from "@/components/settings-cp-form";
+import { SettingsLockdownForm } from "@/components/settings-lockdown-form";
+import { SettingsMonitoringForm } from "@/components/settings-monitoring-form";
 import { SettingsGuildForm } from "@/components/settings-guild-form";
 import {
   getActiveChannelOptions,
   getActiveGuildOptions,
   getRolesForGuild,
 } from "@/lib/catalog";
+import { resolveAuthorLabels } from "@/lib/discord-names";
+import { formatMoscow } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsSystemPage() {
@@ -22,6 +26,10 @@ export default async function SettingsSystemPage() {
       "cp.logChannelId",
       "cp.maxKickPercent",
       "cp.dryRun",
+      "system.lockdown",
+      "monitoring.errorChannelId",
+      "monitoring.alertWebhookUrl",
+      "audit.archiveAfterDays",
     ] as const),
     getActiveChannelOptions(),
   ]);
@@ -29,6 +37,17 @@ export default async function SettingsSystemPage() {
   const incidentRoles = settings["core.incidentGuildId"]
     ? await getRolesForGuild(settings["core.incidentGuildId"])
     : [];
+
+  const lockdown = settings["system.lockdown"];
+  const lockdownBy = lockdown.byDiscordId
+    ? ((await resolveAuthorLabels([lockdown.byDiscordId])).get(lockdown.byDiscordId) ?? lockdown.byDiscordId)
+    : null;
+  const channelOptions = channels.map((c) => ({
+    discordId: c.discordId,
+    name: c.name,
+    guildDiscordId: c.guild.discordId,
+    guildName: c.guild.name,
+  }));
 
   return (
     <div className="stack">
@@ -40,7 +59,8 @@ export default async function SettingsSystemPage() {
         </p>
         <h1>Система</h1>
         <p className="muted">
-          Главный сервер, сервер ЧП и синхронизация ролей. Изменения пишутся в журнал аудита.
+          Главный сервер, сервер ЧП, синхронизация ролей, аварийная блокировка и мониторинг. Изменения
+          пишутся в журнал аудита.
         </p>
         <div className="row" style={{ marginTop: "0.75rem" }}>
           <Link href="/settings/roles" className="btn btn-secondary">
@@ -49,8 +69,23 @@ export default async function SettingsSystemPage() {
           <Link href="/settings/factions" className="btn btn-secondary">
             Каналы фракций
           </Link>
+          <Link href="/settings/admin-roles" className="btn btn-secondary">
+            Admin-роли
+          </Link>
+          <Link href="/settings/sessions" className="btn btn-secondary">
+            Сессии
+          </Link>
+          <Link href="/status" className="btn btn-secondary">
+            Статус системы
+          </Link>
         </div>
       </div>
+      <SettingsLockdownForm
+        initialEnabled={lockdown.enabled}
+        initialReason={lockdown.reason}
+        changedBy={lockdownBy}
+        changedAt={lockdown.at ? formatMoscow(lockdown.at) : null}
+      />
       <SettingsGuildForm
         guilds={guilds.map((g) => ({
           discordId: g.discordId,
@@ -74,6 +109,12 @@ export default async function SettingsSystemPage() {
           guildDiscordId: c.guild.discordId,
         }))}
         roles={incidentRoles}
+      />
+      <SettingsMonitoringForm
+        initialErrorChannelId={settings["monitoring.errorChannelId"]}
+        initialAlertWebhookUrl={settings["monitoring.alertWebhookUrl"]}
+        initialArchiveAfterDays={settings["audit.archiveAfterDays"]}
+        channels={channelOptions}
       />
     </div>
   );

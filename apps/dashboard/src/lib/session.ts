@@ -2,6 +2,7 @@ import {
   canAccessAdminArea,
   canManageModules,
   canManageSystemSettings,
+  getLockdown,
   getSetting,
   resolveIdentity,
   type Identity,
@@ -21,10 +22,29 @@ export class ForbiddenError extends Error {
   status = 403;
 }
 
+/** One lockdown read per request (layout, page and helpers all ask). */
+export const currentLockdown = cache(() => getLockdown());
+
+/** True when the emergency lockdown shuts this visitor out. Super admins always pass. */
+export async function isLockedOut(identity: { isSuperAdmin: boolean } | null | undefined): Promise<boolean> {
+  if (identity?.isSuperAdmin) return false;
+  return (await currentLockdown()).enabled;
+}
+
+/** Lockdown check for pages that need no sign-in: a signed-in super admin still gets through. */
+export async function publicLockedOut(): Promise<boolean> {
+  if (!(await currentLockdown()).enabled) return false;
+  const session = await auth();
+  return !session?.identity?.isSuperAdmin;
+}
+
 export async function requireSession() {
   const session = await auth();
   if (!session?.user?.discordId || !session.identity) {
     throw new AuthRequiredError("Требуется вход через Discord");
+  }
+  if (await isLockedOut(session.identity)) {
+    throw new ForbiddenError("Идут технические работы. Попробуйте позже.");
   }
   return session;
 }
@@ -38,6 +58,7 @@ export const resolveFreshIdentity = cache(async (discordId: string): Promise<Ide
 export async function requireSignedIn() {
   const session = await auth();
   if (!session?.user?.discordId) redirect("/");
+  if (await isLockedOut(session.identity)) redirect("/maintenance");
   return session;
 }
 

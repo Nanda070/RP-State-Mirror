@@ -19,6 +19,8 @@ type NavItem = {
   requiresSystemSettings?: boolean;
   /** Hide unless «Хелпер» or above (`canViewModules`). */
   requiresStaff?: boolean;
+  /** Hide unless «Админ» or above (`canManageModules`). */
+  requiresAdmin?: boolean;
   icon:
     | "home"
     | "user"
@@ -39,7 +41,12 @@ type NavItem = {
     | "webhooks"
     | "modules"
     | "calculator"
-    | "faq";
+    | "faq"
+    | "ban"
+    | "stats"
+    | "status"
+    | "sessions"
+    | "audit";
 };
 
 const NAV: NavItem[] = [
@@ -77,6 +84,9 @@ const NAV: NavItem[] = [
     icon: "feedback",
     requiresStaff: true,
   },
+  { href: "/bans", label: "Тех. баны", group: "Администрирование", match: "prefix", icon: "ban", requiresAdmin: true },
+  { href: "/stats", label: "Статистика", group: "Администрирование", match: "prefix", icon: "stats", requiresAdmin: true },
+  { href: "/status", label: "Статус", group: "Администрирование", match: "prefix", icon: "status", requiresStaff: true },
   {
     href: "/settings/embeds",
     label: "Эмбеды",
@@ -139,6 +149,22 @@ const NAV: NavItem[] = [
     group: "Настройка Фракций",
     match: "prefix",
     icon: "factions",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/admin-roles",
+    label: "Admin-роли",
+    group: "Настройка Фракций",
+    match: "prefix",
+    icon: "roles",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/sessions",
+    label: "Сессии",
+    group: "Настройка Фракций",
+    match: "prefix",
+    icon: "sessions",
     requiresSystemSettings: true,
   },
   {
@@ -385,6 +411,38 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
           <path d="M12 16.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
       );
+    case "ban":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
+          <path d="m6.5 6.5 11 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "stats":
+      return (
+        <svg {...common}>
+          <path d="M5 19.5V11M12 19.5V5M19 19.5v-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case "status":
+      return (
+        <svg {...common}>
+          <path
+            d="M3.5 12h4l2.5-6 4 12 2.5-6h4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+    case "sessions":
+      return (
+        <svg {...common}>
+          <rect x="3.5" y="5" width="17" height="11" rx="1.6" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8.5 19.5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
     case "modules":
       return (
         <svg {...common}>
@@ -406,6 +464,7 @@ export function AppShell({
   avatarUrl,
   canManageSystemSettings = false,
   canViewModules = false,
+  canManageModules = false,
 }: {
   children: ReactNode;
   displayName: string;
@@ -413,12 +472,14 @@ export function AppShell({
   avatarUrl: string | null;
   canManageSystemSettings?: boolean;
   canViewModules?: boolean;
+  canManageModules?: boolean;
 }) {
   const pathname = usePathname();
   const visibleNav = NAV.filter(
     (item) =>
       (!item.requiresSystemSettings || canManageSystemSettings) &&
-      (!item.requiresStaff || canViewModules),
+      (!item.requiresStaff || canViewModules) &&
+      (!item.requiresAdmin || canManageModules),
   );
   const groups = [...new Set(visibleNav.map((item) => item.group))];
   const initial = (displayName.trim().charAt(0) || "?").toUpperCase();
@@ -548,6 +609,7 @@ export function AppShell({
       <CommandPalette
         canManageSystemSettings={canManageSystemSettings}
         canViewModules={canViewModules}
+        canManageModules={canManageModules}
       />
     </div>
   );

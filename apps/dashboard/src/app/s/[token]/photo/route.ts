@@ -1,9 +1,11 @@
 import { readMediaFile, resolveShareLink } from "@mirror/core";
+import { publicLockedOut } from "@/lib/session";
 
 type RouteContext = { params: Promise<{ token: string }> };
 
 /** The photo of a shared record: reachable only through a live link, never by file id. */
 export async function GET(_request: Request, { params }: RouteContext) {
+  if (await publicLockedOut()) return new Response("Service unavailable", { status: 503 });
   const { token } = await params;
   const card = await resolveShareLink(token);
   const media = card?.photoFileId ? await readMediaFile(card.photoFileId).catch(() => null) : null;

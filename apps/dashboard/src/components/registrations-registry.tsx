@@ -17,6 +17,8 @@ type Props = {
   items: RegistrationListItem[];
   /** ACTIVE public links by registration id; null hides the column (viewer cannot share). */
   shareLinks?: Map<string, { id: string; token: string }> | null;
+  /** Registry key for «Скачать CSV»; omitted — no export button. */
+  exportRegistry?: string;
 };
 
 function shortId(id: string): string {
@@ -32,6 +34,7 @@ export function RegistrationsRegistry({
   total,
   items,
   shareLinks = null,
+  exportRegistry,
 }: Props) {
   return (
     <div className="stack">
@@ -40,6 +43,11 @@ export function RegistrationsRegistry({
         <p className="muted">
           {description} Всего записей: {total.toLocaleString("ru-RU")}.
         </p>
+        {exportRegistry ? (
+          <a className="btn btn-secondary export-link" href={`/api/export/${exportRegistry}`} download>
+            Скачать CSV
+          </a>
+        ) : null}
       </div>
 
       <div className="panel">

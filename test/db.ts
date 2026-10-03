@@ -1,6 +1,10 @@
 import { prisma } from "@mirror/db";
 
 const TABLES = [
+  "service_heartbeats",
+  "admin_role_operations",
+  "sessions",
+  "tech_bans",
   "share_links",
   "faq_items",
   "faq_sections",

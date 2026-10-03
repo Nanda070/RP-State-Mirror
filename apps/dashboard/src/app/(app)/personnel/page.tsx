@@ -24,6 +24,9 @@ export default async function PersonnelRegistryPage() {
         <p className="muted">
           Реестр кадрового аудита. Всего записей: {total.toLocaleString("ru-RU")}.
         </p>
+        <a className="btn btn-secondary export-link" href="/api/export/personnel" download>
+          Скачать CSV
+        </a>
       </div>
 
       <div className="panel">

@@ -1,10 +1,11 @@
 import { resolveShareLink } from "@mirror/core";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
 import { SiteFooter } from "@/components/site-footer";
 import { formatMoscow } from "@/lib/moscow";
+import { publicLockedOut } from "@/lib/session";
 
 type PageProps = { params: Promise<{ token: string }> };
 
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
 };
 
 export default async function SharedRecordPage({ params }: PageProps) {
+  if (await publicLockedOut()) redirect("/maintenance");
   const { token } = await params;
   const card = await resolveShareLink(token);
   if (!card) notFound();

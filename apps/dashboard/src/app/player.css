@@ -566,3 +566,200 @@ a.metric-card .metric-value {
 .panel-option {
   margin-top: 1.25rem;
 }
+
+/* ——— Stage 6: service pages in the login style ——— */
+.notice-card {
+  max-width: 30rem;
+}
+
+.notice-code {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.notice-text {
+  display: grid;
+  gap: 0.55rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.notice-text p {
+  margin: 0;
+}
+
+.notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+/* ——— Stage 6: admin sections ——— */
+.registry-status[data-status="bad"] {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+}
+
+.registry-status[data-status="muted"] {
+  color: var(--ink-soft);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.export-link {
+  margin-top: 0.75rem;
+}
+
+.session-current {
+  margin-left: 0.5rem;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+}
+
+.lockdown-panel[data-active] {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 6%, var(--bg-2));
+}
+
+.lockdown-state {
+  margin: 0 0 0.9rem;
+}
+
+.status-summary[data-state="down"] {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.status-summary[data-state="ok"] {
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.9rem;
+}
+
+.status-card-head {
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.status-card-head .panel-title {
+  margin: 0;
+}
+
+.status-card p {
+  margin: 0.6rem 0 0;
+}
+
+.status-card[data-state="down"] {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.stats-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 9rem;
+  overflow-x: auto;
+  padding-bottom: 1.3rem;
+}
+
+.stats-bar {
+  position: relative;
+  flex: 1 0 0.6rem;
+  min-width: 0.6rem;
+  max-width: 2.2rem;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.stats-bar-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.stats-bar:hover .stats-bar-fill {
+  opacity: 1;
+}
+
+.stats-bar-label {
+  position: absolute;
+  bottom: -1.2rem;
+  left: 50%;
+  translate: -50% 0;
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-roles-guild {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.7rem;
+}
+
+.admin-roles-guild > summary {
+  cursor: pointer;
+}
+
+.admin-roles-guild[open] > summary {
+  margin-bottom: 0.8rem;
+}
+
+.admin-roles-levels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.8rem;
+}
+
+.admin-roles-level {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.admin-roles-level legend {
+  padding: 0 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.admin-roles-options {
+  display: grid;
+  gap: 0.25rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.admin-roles-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.admin-roles-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

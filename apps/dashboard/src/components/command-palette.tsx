@@ -16,6 +16,7 @@ type PaletteItem = {
   group: string;
   requiresSystemSettings?: boolean;
   requiresStaff?: boolean;
+  requiresAdmin?: boolean;
 };
 
 const ITEMS: PaletteItem[] = [
@@ -32,6 +33,9 @@ const ITEMS: PaletteItem[] = [
   { href: "/registrations/vehicles", label: "Регистрации ТС", group: "Информация", requiresStaff: true },
   { href: "/registrations/uniforms", label: "Регистрации форм", group: "Информация", requiresStaff: true },
   { href: "/feedback", label: "Обратная связь", group: "Администрирование", requiresStaff: true },
+  { href: "/bans", label: "Технические баны", group: "Администрирование", requiresAdmin: true },
+  { href: "/stats", label: "Статистика администрации", group: "Администрирование", requiresAdmin: true },
+  { href: "/status", label: "Статус системы", group: "Администрирование", requiresStaff: true },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", requiresSystemSettings: true },
   { href: "/settings/buttons", label: "Кнопки и роли", group: "Администрирование", requiresSystemSettings: true },
   { href: "/settings/forms", label: "Формы", group: "Администрирование", requiresSystemSettings: true },
@@ -84,6 +88,9 @@ const ITEMS: PaletteItem[] = [
     group: "Настройка Фракций",
     requiresSystemSettings: true,
   },
+  { href: "/settings/admin-roles", label: "Admin-роли на всех серверах", group: "Настройка Фракций", requiresSystemSettings: true },
+  { href: "/settings/sessions", label: "Сессии и входы", group: "Настройка Фракций", requiresSystemSettings: true },
+  { href: "/profile?tab=sessions", label: "Мои сессии", group: "Главная" },
   { href: "/terms", label: "Условия использования", group: "Прочее" },
   { href: "/privacy", label: "Конфиденциальность", group: "Прочее" },
   { href: "/cookies", label: "Cookie", group: "Прочее" },
@@ -92,9 +99,11 @@ const ITEMS: PaletteItem[] = [
 export function CommandPalette({
   canManageSystemSettings = false,
   canViewModules = false,
+  canManageModules = false,
 }: {
   canManageSystemSettings?: boolean;
   canViewModules?: boolean;
+  canManageModules?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -106,9 +115,10 @@ export function CommandPalette({
       ITEMS.filter(
         (item) =>
           (!item.requiresSystemSettings || canManageSystemSettings) &&
-          (!item.requiresStaff || canViewModules),
+          (!item.requiresStaff || canViewModules) &&
+          (!item.requiresAdmin || canManageModules),
       ),
-    [canManageSystemSettings, canViewModules],
+    [canManageSystemSettings, canViewModules, canManageModules],
   );
 
   const results = useMemo(() => {

@@ -37,6 +37,9 @@ export default async function DocumentsRegistryPage() {
         <p className="muted">
           Реестр отправленных документов. Всего записей: {total.toLocaleString("ru-RU")}.
         </p>
+        <a className="btn btn-secondary export-link" href="/api/export/documents" download>
+          Скачать CSV
+        </a>
       </div>
 
       <div className="panel">

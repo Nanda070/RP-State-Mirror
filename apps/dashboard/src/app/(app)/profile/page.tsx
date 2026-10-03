@@ -1,9 +1,17 @@
-import { buildStatusBadge, formatMoney, getPlayerProfile, type PlayerProfile } from "@mirror/core";
+import {
+  buildStatusBadge,
+  formatMoney,
+  getPlayerProfile,
+  listSessionsForUser,
+  type PlayerProfile,
+} from "@mirror/core";
 import { RecordStatus, RegistrationKind, prisma } from "@mirror/db";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { SessionsList } from "@/components/sessions-list";
 import { formatMoscow } from "@/lib/moscow";
+import { toSessionRows } from "@/lib/session-rows";
 import {
   REGISTRATION_DISPLAY_STATUS_RU,
   registrationDisplayStatus,
@@ -17,6 +25,7 @@ const TABS = [
   { key: "registrations", label: "Регистрации и переводы" },
   { key: "records", label: "Штрафы и розыск" },
   { key: "servers", label: "Фракции и серверы" },
+  { key: "sessions", label: "Сессии" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -339,6 +348,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
     getPlayerProfile(session.user.discordId),
   ]);
   const badge = buildStatusBadge(identity);
+  const sessions = tab === "sessions" ? await listSessionsForUser(session.user.id) : [];
 
   const avatar =
     session.user.image ??
@@ -472,6 +482,16 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       {tab === "characters" ? <CharactersTab profile={profile} /> : null}
       {tab === "registrations" ? <RegistrationsTab profile={profile} /> : null}
       {tab === "records" ? <RecordsTab profile={profile} /> : null}
+
+      {tab === "sessions" ? (
+        <div className="panel">
+          <h2 className="panel-title">Входы в дашборд</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Устройства, с которых выполнен вход в ваш аккаунт. Не узнаёте сессию — завершите её.
+          </p>
+          <SessionsList sessions={toSessionRows(sessions, session.sid)} allowRevokeOthers />
+        </div>
+      ) : null}
 
       {tab === "servers" ? (
         <>

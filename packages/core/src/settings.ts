@@ -159,6 +159,49 @@ export const settingDefinitions = {
     null,
     "Канал на сервере ЧП для логов синхронизации ролей",
   ),
+  "system.lockdown": defineSetting(
+    z.object({
+      enabled: z.boolean(),
+      reason: z.string().max(300),
+      byDiscordId: snowflakeSchema.nullable(),
+      at: z.string().nullable(),
+    }),
+    { enabled: false, reason: "", byDiscordId: null, at: null },
+    "Аварийная блокировка: команды и кнопки бота и дашборд закрыты для всех, кроме главных админов",
+  ),
+  "adminRoles.byGuild": defineSetting(
+    z.record(
+      snowflakeSchema,
+      z.object({
+        SUPER_ADMIN: z.array(snowflakeSchema).max(10).default([]),
+        SENIOR_ADMIN: z.array(snowflakeSchema).max(10).default([]),
+        ADMIN: z.array(snowflakeSchema).max(10).default([]),
+        HELPER: z.array(snowflakeSchema).max(10).default([]),
+      }),
+    ),
+    {},
+    "Глобальные admin-роли: для каждого сервера — роли, которые бот выдаёт админу соответствующего уровня",
+  ),
+  "monitoring.errorChannelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Служебный канал, куда бот пишет свои ошибки",
+  ),
+  "monitoring.alertWebhookUrl": defineSetting(
+    z.string().url().nullable(),
+    null,
+    "Вебхук Discord для оповещения, если бот перестал отвечать (отправляет дашборд)",
+  ),
+  "monitoring.botDownAlertedAt": defineSetting(
+    z.string().nullable(),
+    null,
+    "Служебное: когда было отправлено последнее оповещение об отключении бота",
+  ),
+  "audit.archiveAfterDays": defineSetting(
+    z.number().int().min(30),
+    365,
+    "Через сколько дней записи журнала аудита переносятся в архивную таблицу",
+  ),
   "cp.maxKickPercent": defineSetting(
     z.number().min(0).max(100),
     10,

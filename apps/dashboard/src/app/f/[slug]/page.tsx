@@ -1,10 +1,11 @@
 import { getPublicForm } from "@mirror/core";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BrandMark } from "@/components/brand-mark";
 import { PublicForm, type PublicFormField } from "@/components/public-form";
 import { SiteFooter } from "@/components/site-footer";
+import { publicLockedOut } from "@/lib/session";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -25,6 +26,7 @@ function numberOrNull(source: Record<string, unknown>, key: string): number | nu
 }
 
 export default async function PublicFormPage({ params }: PageProps) {
+  if (await publicLockedOut()) redirect("/maintenance");
   const { slug } = await params;
   const form = await getPublicForm(slug);
   if (!form) notFound();

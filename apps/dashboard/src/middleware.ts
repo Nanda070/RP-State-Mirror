@@ -15,6 +15,9 @@ const PROTECTED_PREFIXES = [
   "/catalog",
   "/calculator",
   "/faq",
+  "/bans",
+  "/stats",
+  "/status",
 ];
 
 function hasSessionCookie(req: NextRequest): boolean {
@@ -55,5 +58,8 @@ export const config = {
     "/catalog/:path*",
     "/calculator/:path*",
     "/faq/:path*",
+    "/bans/:path*",
+    "/stats/:path*",
+    "/status/:path*",
   ],
 };

@@ -72,6 +72,7 @@ import {
   renderRegistrationReview,
   renderTransferReview,
 } from "./stage4-review.js";
+import { adminRolesApply } from "./admin-roles.js";
 import type { JobHandler } from "./worker.js";
 
 type EmbedSendResult =
@@ -1511,5 +1512,6 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],
   [MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, icBlacklistPublish],
   [MODULE_JOB_TYPES.IC_BLACKLIST_EDIT_CLOSED, icBlacklistEditClosed],
+  [MODULE_JOB_TYPES.ADMIN_ROLES_APPLY, adminRolesApply],
 ]);
 

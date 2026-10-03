@@ -32,6 +32,9 @@ export default async function FinesRegistryPage() {
         <p className="muted">
           Реестр штрафов. Всего записей: {total.toLocaleString("ru-RU")}.
         </p>
+        <a className="btn btn-secondary export-link" href="/api/export/fines" download>
+          Скачать CSV
+        </a>
       </div>
 
       <div className="panel">

@@ -1,7 +1,10 @@
 import { hostname } from "node:os";
-import { Client, Events, GatewayIntentBits, Partials, type Guild, type Role } from "discord.js";
+import { Client, Events, GatewayIntentBits, Partials, type Guild, type Interaction, type Role } from "discord.js";
 import { prisma } from "@mirror/db";
 import {
+  BOT_SERVICE,
+  HEARTBEAT_INTERVAL_MS,
+  archiveOldAuditLog,
   botEnvSchema,
   createLogger,
   expireDocuments,
@@ -13,6 +16,7 @@ import {
   markMemberLeft,
   migrateLegacyRegistrationChannels,
   parseEnv,
+  recordHeartbeat,
   syncGuildChannels,
   syncGuildRoles,
   upsertGuild,
@@ -20,6 +24,7 @@ import {
 } from "@mirror/core";
 import { handleButtonInteraction, handleModalSubmit, handleSelectInteraction } from "./buttons.js";
 import { evaluateMemberCpAccess, isCpRelevantGuild, reconcileCpAccess } from "./cp-sync.js";
+import { refusalFor, refuse, reportError } from "./guard.js";
 import { jobHandlers } from "./handlers.js";
 import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
 import { guildChannels, guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
@@ -37,9 +42,12 @@ const client = new Client({
   partials: [Partials.GuildMember],
 });
 
-const worker = new JobWorker(client, jobHandlers, log.child({ component: "worker" }), `${hostname()}:${process.pid}`);
+const worker = new JobWorker(client, jobHandlers, log.child({ component: "worker" }), `${hostname()}:${process.pid}`, {
+  onPermanentFailure: (job, error) => void reportError(client, `задача ${job.type} (${job.id})`, error, log),
+});
 let reconcileTimer: NodeJS.Timeout | undefined;
 let maintenanceTimer: NodeJS.Timeout | undefined;
+let heartbeatTimer: NodeJS.Timeout | undefined;
 
 /** Time-based status transitions; side effects (card edits, DMs) go through jobs. */
 async function runMaintenance() {
@@ -50,6 +58,9 @@ async function runMaintenance() {
     expirePendingRegistrations(),
     expirePendingTransfers(),
   ]);
+  // Old audit rows move to the archive table a batch at a time; a backlog drains over several runs.
+  const archived = await archiveOldAuditLog();
+  if (archived > 0) log.info({ archived }, "maintenance: audit rows archived");
   if (registrations + documents + blacklist + unreviewedRegistrations + unreviewedTransfers > 0) {
     log.info(
       { registrations, documents, blacklist, unreviewedRegistrations, unreviewedTransfers },
@@ -59,7 +70,17 @@ async function runMaintenance() {
 }
 
 function guarded(name: string, fn: () => Promise<unknown>) {
-  fn().catch((error: unknown) => log.error({ err: error, event: name }, "event handler failed"));
+  fn().catch((error: unknown) => {
+    log.error({ err: error, event: name }, "event handler failed");
+    void reportError(client, name, error, log);
+  });
+}
+
+/** Sign of life for the status page and the «bot is down» alert. */
+function beat() {
+  recordHeartbeat(BOT_SERVICE, { guilds: client.guilds.cache.size, pingMs: Math.round(client.ws.ping) }).catch(
+    (error: unknown) => log.warn({ err: error }, "heartbeat was not recorded"),
+  );
 }
 
 client.once(Events.ClientReady, (ready) => {
@@ -71,6 +92,8 @@ client.once(Events.ClientReady, (ready) => {
     await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
     log.info({ commands: ALL_COMMANDS.length }, "slash commands registered");
     worker.start();
+    beat();
+    heartbeatTimer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     reconcileTimer = setInterval(
       () =>
         guarded("reconcile", async () => {
@@ -91,6 +114,7 @@ client.once(Events.ClientReady, (ready) => {
 
 process.on("unhandledRejection", (error) => {
   log.error({ err: error }, "unhandledRejection");
+  void reportError(client, "unhandledRejection", error, log);
 });
 process.on("uncaughtException", (error) => {
   // After an uncaught exception the process state is unknown: stop cleanly and let the supervisor
@@ -101,6 +125,18 @@ process.on("uncaughtException", (error) => {
 });
 
 client.on(Events.InteractionCreate, (interaction) => {
+  guarded("interaction", async () => {
+    // Lockdown and technical bans are checked once, before any command, button, modal or list.
+    const refusal = await refusalFor(interaction.user.id, env.SUPER_ADMIN_USER_IDS, log);
+    if (refusal) {
+      await refuse(interaction, refusal);
+      return;
+    }
+    routeInteraction(interaction);
+  });
+});
+
+function routeInteraction(interaction: Interaction) {
   if (interaction.isAutocomplete()) {
     guarded("autocomplete", () => handleFactionAutocomplete(interaction));
     return;
@@ -145,7 +181,7 @@ client.on(Events.InteractionCreate, (interaction) => {
       log: log.child({ component: "slash", command: interaction.commandName }),
     }),
   );
-});
+}
 
 client.on(Events.GuildCreate, (guild) => guarded("guildCreate", () => syncGuild(guild, log)));
 client.on(Events.GuildUpdate, (_old, guild) => guarded("guildUpdate", () => upsertGuild(toGuildSnapshot(guild))));
@@ -231,6 +267,7 @@ async function shutdown(signal: string) {
   log.info({ signal }, "shutting down");
   clearInterval(reconcileTimer);
   clearInterval(maintenanceTimer);
+  clearInterval(heartbeatTimer);
   for (const timer of pendingResyncs.values()) clearTimeout(timer);
   await worker.stop();
   await client.destroy();

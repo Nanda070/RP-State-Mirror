@@ -30,6 +30,7 @@ export default async function VehicleRegistrationsPage() {
         </>
       }
       showPlate
+      exportRegistry="registrations-vehicles"
       detailLabel="Модель"
       total={total}
       shareLinks={shareLinks}

@@ -30,6 +30,7 @@ import {
 } from "./module-jobs.js";
 import { embedSpecSchema } from "./embeds.js";
 import { getSetting } from "./settings.js";
+import { assertNotTechBanned } from "./tech-bans.js";
 
 const snowflakeLike = z.string().min(1).max(32);
 const snowflakeStrict = z.string().regex(/^\d{17,20}$/);
@@ -301,6 +302,7 @@ export type ReceiveTokenForStaticInput = z.infer<typeof receiveTokenForStaticSch
  */
 export async function receiveTokenForStatic(input: ReceiveTokenForStaticInput, context: AuditContext) {
   const data = receiveTokenForStaticSchema.parse(input);
+  await assertNotTechBanned({ staticId: data.staticId });
   let character = await getCharacterForUser(data.userId, data.staticId);
   let created = false;
   if (!character) {
@@ -419,6 +421,7 @@ export async function createRegistration(
   context: AuditContext,
 ) {
   const data = createRegistrationSchema.parse(input);
+  await assertNotTechBanned({ staticId: data.staticId });
   const plateFromPayload = typeof data.payload.plate === "string" ? data.payload.plate : "";
   const plate =
     data.kind === RegistrationKind.VEHICLE ? normalizePlate(data.plate ?? plateFromPayload) : null;
@@ -564,6 +567,8 @@ export async function createTransfer(input: z.input<typeof createTransferSchema>
     throw new Error("Фракции отправителя и получателя должны различаться.");
   }
   await assertTransferRanksAllowed(fromFactionCode, toFactionCode, data.fromRank, data.toRank);
+  const transferCharacter = await prisma.character.findUnique({ where: { id: data.characterId }, select: { staticId: true } });
+  await assertNotTechBanned({ staticId: transferCharacter?.staticId ?? null });
   return auditedMutation(context, "transfer.created", "transfer", async (tx) => {
     const pending = await tx.transfer.findFirst({
       where: { characterId: data.characterId, status: TransferStatus.PENDING },

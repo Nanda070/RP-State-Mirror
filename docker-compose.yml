@@ -28,6 +28,33 @@ services:
     volumes:
       - mirror-storage:/data
 
+  # Daily backup: database dump (kept BACKUP_KEEP_DAYS days) and a copy of the file storage,
+  # both on a separate volume. See docs/DEPLOYMENT.md for restore.
+  backup:
+    build: ./deploy/backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      storage:
+        condition: service_started
+    environment:
+      TZ: Europe/Moscow
+      PGHOST: postgres
+      PGDATABASE: mirror
+      PGUSER: mirror
+      PGPASSWORD: mirror_local_password
+      S3_ENDPOINT: http://storage:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: mirror
+      S3_ACCESS_KEY: mirror_local
+      S3_SECRET_KEY: mirror_local_password
+      BACKUP_AT: "04:00"
+      BACKUP_KEEP_DAYS: "14"
+    volumes:
+      - mirror-backups:/backups
+
 volumes:
   mirror-postgres:
   mirror-storage:
+  mirror-backups:

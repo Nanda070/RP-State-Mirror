@@ -859,3 +859,68 @@ model ShareLink {
   @@index([entityType, entityId, status])
   @@map("share_links")
 }
+
+/// Technical ban (§6): forbids using the bot and the dashboard. Not the IC blacklist.
+/// One ACTIVE ban per (kind, value) — partial index in SQL.
+model TechBan {
+  id                 String       @id @default(cuid())
+  /// DISCORD — a Discord account id; STATIC — a character static.
+  kind               String
+  value              String
+  reason             String
+  status             RecordStatus @default(ACTIVE)
+  createdByDiscordId String       @map("created_by_discord_id")
+  revokedByDiscordId String?      @map("revoked_by_discord_id")
+  revokedAt          DateTime?    @map("revoked_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  @@index([kind, value, status])
+  @@map("tech_bans")
+}
+
+/// One dashboard sign-in. The row is both the live session and the login history entry.
+model UserSession {
+  id                 String    @id @default(cuid())
+  userId             String    @map("user_id")
+  discordId          String    @map("discord_id")
+  ipAddress          String?   @map("ip_address")
+  userAgent          String?   @map("user_agent")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  lastSeenAt         DateTime  @default(now()) @map("last_seen_at")
+  /// Set when the session is ended: by its owner, by a super admin, or on sign-out.
+  revokedAt          DateTime? @map("revoked_at")
+  revokedByDiscordId String?   @map("revoked_by_discord_id")
+
+  @@index([userId, revokedAt])
+  @@index([discordId, createdAt])
+  @@index([createdAt])
+  @@map("sessions")
+}
+
+/// A request to grant or remove admin roles on every connected guild (§4.12), with the per-guild report.
+model AdminRoleOperation {
+  id                   String      @id @default(cuid())
+  targetDiscordId      String      @map("target_discord_id")
+  /// Level to grant; null removes every admin role.
+  level                AdminLevel?
+  /// PENDING | DONE | FAILED
+  status               String      @default("PENDING")
+  /// [{ guildDiscordId, guildName, outcome, added, removed, detail }]
+  report               Json        @default("[]")
+  requestedByDiscordId String      @map("requested_by_discord_id")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  completedAt          DateTime?   @map("completed_at")
+
+  @@index([targetDiscordId, createdAt])
+  @@index([createdAt])
+  @@map("admin_role_operations")
+}
+
+/// Last sign of life of a background service (the bot). Read by the status page and the down alert.
+model ServiceHeartbeat {
+  service String   @id
+  at      DateTime
+  meta    Json     @default("{}")
+
+  @@map("service_heartbeats")
+}

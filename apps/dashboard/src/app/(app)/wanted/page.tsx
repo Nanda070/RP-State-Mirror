@@ -32,6 +32,9 @@ export default async function WantedRegistryPage() {
         <p className="muted">
           Федеральный розыск. Всего записей: {total.toLocaleString("ru-RU")}.
         </p>
+        <a className="btn btn-secondary export-link" href="/api/export/wanted" download>
+          Скачать CSV
+        </a>
       </div>
 
       <div className="panel">

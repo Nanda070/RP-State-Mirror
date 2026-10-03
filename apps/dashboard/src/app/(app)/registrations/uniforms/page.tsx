@@ -23,6 +23,7 @@ export default async function UniformRegistrationsPage() {
   return (
     <RegistrationsRegistry
       title="Регистрации форм"
+      exportRegistry="registrations-uniforms"
       description="Реестр заявок на регистрацию униформы / формы."
       emptyHint={
         <>

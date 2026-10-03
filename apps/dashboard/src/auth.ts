@@ -1,10 +1,15 @@
 import {
   canBootstrapDashboard,
+  createUserSession,
+  endUserSession,
   ensureUserByDiscordId,
+  findActiveTechBan,
   getSetting,
+  isSessionActive,
   resolveIdentity,
   type Identity,
 } from "@mirror/core";
+import { headers } from "next/headers";
 import { AuditActorType } from "@mirror/db";
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
@@ -21,6 +26,8 @@ type MirrorJWT = JWT & {
   discordId?: string;
   username?: string | null;
   userId?: string;
+  /** Id of the `sessions` row behind this cookie; the cookie works only while that row is live. */
+  sid?: string;
   bannerUrl?: string | null;
   accentColor?: string | null;
   identity?: SessionIdentity;
@@ -48,6 +55,21 @@ declare module "next-auth" {
       accentColor?: string | null;
     };
     identity: SessionIdentity;
+    /** Id of the tracked session this request belongs to. */
+    sid?: string;
+  }
+}
+
+/** Where the sign-in came from, for the session list. Best effort: absent outside a request. */
+async function requestOrigin(): Promise<{ ipAddress: string | null; userAgent: string | null }> {
+  try {
+    const h = await headers();
+    return {
+      ipAddress: h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || null,
+      userAgent: h.get("user-agent"),
+    };
+  } catch {
+    return { ipAddress: null, userAgent: null };
   }
 }
 
@@ -112,6 +134,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
         });
 
         const identity = await loadIdentity(discordId);
+        // A technical ban closes the dashboard too; super admins cannot be banned.
+        if (!identity.isSuperAdmin && (await findActiveTechBan({ discordId }))) {
+          return "/denied?reason=banned";
+        }
         const mainGuildId = await getSetting("core.mainGuildId");
         if (!canBootstrapDashboard(identity, mainGuildId)) {
           return "/denied?reason=bootstrap";
@@ -123,6 +149,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
         const discordId =
           (typeof profile?.id === "string" ? profile.id : undefined) ?? mirrorToken.discordId;
         if (!discordId) return mirrorToken;
+
+        // An ended session (by its owner, by a super admin, by a ban) stops working on the next request.
+        if (!account && mirrorToken.sid && !(await isSessionActive(mirrorToken.sid))) {
+          return null;
+        }
 
         if (profile || account || trigger === "update" || !mirrorToken.identity) {
           const { user } = await ensureUserByDiscordId(discordId);
@@ -163,6 +194,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
 
           mirrorToken.identity = await loadIdentity(discordId);
         }
+
+        // Every sign-in gets its own tracked session. Cookies issued before sessions were tracked
+        // get one on their next request, so nobody is signed out by the upgrade.
+        if ((account || !mirrorToken.sid) && mirrorToken.userId) {
+          const created = await createUserSession({
+            userId: mirrorToken.userId,
+            discordId,
+            ...(await requestOrigin()),
+          });
+          mirrorToken.sid = created.id;
+        }
         return mirrorToken;
       },
       async session({ session, token }) {
@@ -184,7 +226,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
           accentColor: mirrorToken.accentColor ?? null,
         };
         session.identity = mirrorToken.identity;
+        if (mirrorToken.sid) session.sid = mirrorToken.sid;
         return session;
+      },
+    },
+    events: {
+      // Sign-out ends the tracked session, so a copied cookie stops working too.
+      async signOut(message) {
+        const token = "token" in message ? (message.token as MirrorJWT | null) : null;
+        if (token?.sid && token.discordId) await endUserSession(token.sid, token.discordId);
       },
     },
   };

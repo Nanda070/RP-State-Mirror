@@ -1,7 +1,8 @@
-import { getPublicForm, submitPublicForm, UserError } from "@mirror/core";
+import { getPublicForm, LOCKDOWN_MESSAGE, submitPublicForm, UserError } from "@mirror/core";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
 import { isSameOrigin } from "@/lib/public-request";
+import { publicLockedOut } from "@/lib/session";
 
 type RouteContext = { params: Promise<{ slug: string }> };
 
@@ -18,6 +19,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   try {
     if (!isSameOrigin(request)) {
       return Response.json({ error: "Запрос отклонён" }, { status: 403 });
+    }
+    if (await publicLockedOut()) {
+      return Response.json({ error: LOCKDOWN_MESSAGE }, { status: 503 });
     }
     const text = await request.text();
     if (text.length > MAX_BODY_BYTES) {

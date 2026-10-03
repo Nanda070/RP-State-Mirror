@@ -31,6 +31,7 @@ export const MODULE_JOB_TYPES = {
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
   IC_BLACKLIST_PUBLISH: "ic_blacklist.publish",
   IC_BLACKLIST_EDIT_CLOSED: "ic_blacklist.edit_closed",
+  ADMIN_ROLES_APPLY: "admin_roles.apply",
 } as const;
 
 export type ModuleJobType = (typeof MODULE_JOB_TYPES)[keyof typeof MODULE_JOB_TYPES];

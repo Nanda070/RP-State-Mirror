@@ -1,4 +1,4 @@
-import { canManageModules, listIcBlacklistEntries, listShareLinksFor } from "@mirror/core";
+import { canManageModules, canViewModules, listIcBlacklistEntries, listShareLinksFor } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import { ShareButton } from "@/components/share-button";
 import { formatMoscow } from "@/lib/moscow";
@@ -31,6 +31,11 @@ export default async function IcBlacklistRegistryPage() {
           Реестр записей ЧС. Публикация через <code>/чс-гос</code> и{" "}
           <code>/снятие-чс-гос</code>. Всего: {items.length.toLocaleString("ru-RU")}.
         </p>
+        {canViewModules(identity) ? (
+          <a className="btn btn-secondary export-link" href="/api/export/ic-blacklist" download>
+            Скачать CSV
+          </a>
+        ) : null}
       </div>
 
       <div className="panel">

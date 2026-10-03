@@ -1,4 +1,5 @@
 import {
+  discordWebhookUrlSchema,
   getSetting,
   isSettingKey,
   setSetting,
@@ -25,6 +26,9 @@ const bodySchema = z.object({
   "cp.logChannelId": snowflakeSchema.nullable().optional(),
   "cp.maxKickPercent": z.number().min(0).max(100).optional(),
   "cp.dryRun": z.boolean().optional(),
+  "monitoring.errorChannelId": snowflakeSchema.nullable().optional(),
+  "monitoring.alertWebhookUrl": discordWebhookUrlSchema.nullable().optional(),
+  "audit.archiveAfterDays": z.number().int().min(30).max(3650).optional(),
 });
 
 export async function GET() {

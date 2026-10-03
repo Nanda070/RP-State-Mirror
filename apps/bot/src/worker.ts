@@ -19,6 +19,8 @@ export interface JobContext {
 export type JobHandler = (payload: Record<string, unknown>, context: JobContext) => Promise<unknown>;
 
 export interface JobWorkerOptions {
+  /** Called when a job has failed permanently (no attempts left). */
+  onPermanentFailure?: (job: Job, error: unknown) => void;
   pollIntervalMs?: number;
   staleAfterMs?: number;
   maxJobsPerTick?: number;
@@ -28,6 +30,7 @@ export class JobWorker {
   private readonly pollIntervalMs: number;
   private readonly staleAfterMs: number;
   private readonly maxJobsPerTick: number;
+  private readonly onPermanentFailure: ((job: Job, error: unknown) => void) | undefined;
   private pollTimer: NodeJS.Timeout | undefined;
   private staleTimer: NodeJS.Timeout | undefined;
   private running: Promise<void> | undefined;
@@ -43,6 +46,7 @@ export class JobWorker {
     this.pollIntervalMs = options.pollIntervalMs ?? 2_000;
     this.staleAfterMs = options.staleAfterMs ?? 5 * 60_000;
     this.maxJobsPerTick = options.maxJobsPerTick ?? 20;
+    this.onPermanentFailure = options.onPermanentFailure;
   }
 
   start() {
@@ -108,6 +112,7 @@ export class JobWorker {
     } catch (error) {
       const updated = await failJob(job.id, this.workerId, error);
       log.warn({ err: error, status: updated?.status, availableAt: updated?.availableAt }, "job failed");
+      if (updated?.status === "FAILED") this.onPermanentFailure?.(job, error);
     }
   }
 

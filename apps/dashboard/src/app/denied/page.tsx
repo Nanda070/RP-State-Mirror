@@ -1,48 +1,57 @@
 import Link from "next/link";
-import { BrandMark } from "@/components/brand-mark";
-import { SiteFooter } from "@/components/site-footer";
+import { NoticePage } from "@/components/notice-page";
+
+export const metadata = { title: "Нет доступа · Mirror" };
+
+const REASONS: Record<string, { title: string; text: string[] }> = {
+  bootstrap: {
+    title: "Дашборд ещё не настроен",
+    text: [
+      "Главный сервер пока не выбран, поэтому войти может только главный администратор — он выполняет первичную настройку.",
+      "Если вы игрок или сотрудник фракции, попробуйте позже: доступ откроется после настройки.",
+    ],
+  },
+  banned: {
+    title: "Доступ закрыт",
+    text: [
+      "Для вашего аккаунта действует технический бан: пользоваться ботом и сайтом нельзя.",
+      "Чтобы обжаловать бан, обратитесь к администрации сервера в Discord.",
+    ],
+  },
+};
 
 export default async function DeniedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reason?: string }>;
+  searchParams: Promise<{ reason?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  const bootstrap = params.reason === "bootstrap";
+  const reason = REASONS[params.reason ?? ""] ?? {
+    title: "Нет доступа",
+    text: [
+      "Вход не выполнен или у вашего аккаунта нет прав на этот раздел.",
+      "Доступ к разделам администрации дают роли на главном сервере Discord. Если роль выдали недавно — войдите заново.",
+    ],
+  };
 
   return (
-    <div className="legal-page">
-      <header className="public-nav">
-        <Link href="/" className="public-nav-brand">
-          <BrandMark />
-          <div>
-            <div className="brand">Mirror · GTA5RP</div>
-            <span className="sub">Dashboard</span>
-          </div>
-        </Link>
-        <Link href="/" className="btn btn-ghost">
-          На главную
-        </Link>
-      </header>
-      <main className="legal">
-        <h1>Доступ ограничен</h1>
-        <div className="panel stack">
-          {bootstrap ? (
-            <p>
-              Главный сервер ещё не настроен. Пока первичную настройку может выполнить только
-              пользователь из списка главных админов (`SUPER_ADMIN_USER_IDS`).
-            </p>
-          ) : (
-            <p>Недостаточно прав для этого раздела или вход был отклонён.</p>
-          )}
-          <div>
-            <Link href="/" className="btn btn-primary">
-              На страницу входа
-            </Link>
-          </div>
-        </div>
-      </main>
-      <SiteFooter />
-    </div>
+    <NoticePage
+      code="403"
+      title={reason.title}
+      actions={
+        <>
+          <Link href="/" className="btn btn-primary">
+            На страницу входа
+          </Link>
+          <Link href="/faq" className="btn btn-secondary">
+            FAQ
+          </Link>
+        </>
+      }
+    >
+      {reason.text.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </NoticePage>
   );
 }

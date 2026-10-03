@@ -13,6 +13,7 @@ import { auditedMutation, type AuditContext } from "./audit.js";
 import { toJsonValue } from "./db.js";
 import { SNOWFLAKE_RE } from "./env.js";
 import { UserError } from "./errors.js";
+import { toCsv } from "./exports.js";
 import { enqueueFormSubmissionDeliver } from "./module-jobs.js";
 
 export const FORM_FIELD_TYPES = ["short", "paragraph", "number", "select", "multiselect", "checkbox", "date"] as const;
@@ -488,15 +489,6 @@ export async function listFormColumns(formId: string) {
   });
 }
 
-/** Excel reads UTF-8 CSV correctly only with a byte order mark. */
-const UTF8_BOM = String.fromCharCode(0xfeff);
-
-function csvCell(value: string): string {
-  // A leading = + - @ would be run as a formula by spreadsheet apps; prefix it to keep it text.
-  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-  return `"${safe.replaceAll('"', '""')}"`;
-}
-
 /** All answers of a form as CSV (UTF-8 with BOM, `;` separator — opens correctly in Excel). */
 export async function formSubmissionsCsv(formId: string): Promise<string> {
   const [columns, { items }] = await Promise.all([
@@ -513,7 +505,7 @@ export async function formSubmissionsCsv(formId: string): Promise<string> {
       ...columns.map((column) => (column.key in values ? formatFormValue(values[column.key]) : "")),
     ];
   });
-  return `${UTF8_BOM}${[header, ...rows].map((row) => row.map(csvCell).join(";")).join("\r\n")}\r\n`;
+  return toCsv(header, rows);
 }
 
 // ──────────────────────────────────────────────────────────────
