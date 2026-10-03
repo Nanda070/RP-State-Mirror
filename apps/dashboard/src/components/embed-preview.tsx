@@ -81,11 +81,17 @@ export function EmbedPreview({ spec }: { spec: EmbedSpec }) {
       {spec.components?.length ? (
         <div className="embed-preview-buttons">
           {spec.components.flatMap((row, ri) =>
-            row.components.map((btn, bi) => (
-              <span key={`${ri}-${bi}`} className="embed-preview-btn" data-style={btn.style ?? "secondary"}>
-                {btn.label}
-              </span>
-            )),
+            row.type === "role_select"
+              ? [
+                  <span key={`${ri}-select`} className="embed-preview-btn" data-style="secondary">
+                    {row.placeholder ?? "Выберите роли"} ▾
+                  </span>,
+                ]
+              : row.components.map((btn, bi) => (
+                  <span key={`${ri}-${bi}`} className="embed-preview-btn" data-style={btn.style ?? "secondary"}>
+                    {btn.label}
+                  </span>
+                )),
           )}
         </div>
       ) : null}

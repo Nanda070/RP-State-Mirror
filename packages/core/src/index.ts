@@ -22,6 +22,7 @@ export * from "./module-jobs.js";
 export * from "./personnel.js";
 export * from "./profile.js";
 export * from "./role-mappings.js";
+export * from "./role-panels.js";
 export * from "./stage4.js";
 export * from "./stage4-embeds.js";
 export * from "./seed.js";

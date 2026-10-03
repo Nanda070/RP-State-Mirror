@@ -10,9 +10,10 @@ import {
   embedSpecSchema,
   makeCustomId,
   type EmbedSpec,
-  type V2ActionRow,
+  type InteractiveRow,
   type V2Button,
   type V2Component,
+  type V2RoleSelect,
 } from "./embeds.js";
 import { enqueueJob } from "./jobs.js";
 import { MODULE_JOB_TYPES } from "./module-jobs.js";
@@ -187,16 +188,24 @@ async function materializeButton(button: V2Button): Promise<V2Button> {
   };
 }
 
-async function materializeActionRows(rows: V2ActionRow[]): Promise<V2ActionRow[]> {
-  const out: V2ActionRow[] = [];
-  for (const row of rows) {
-    const components: V2Button[] = [];
-    for (const btn of row.components) {
-      components.push(await materializeButton(btn));
-    }
-    out.push({ type: "action_row", components });
+/** The dropdown keeps its own action row: role ids, usage restriction and the per-member limit. */
+async function materializeRoleSelect(select: V2RoleSelect): Promise<V2RoleSelect> {
+  if (select.customId) return select;
+  const created = await createButtonAction("role.select", {
+    roleIds: select.options.map((option) => option.roleDiscordId),
+    allowedRoleIds: select.allowedRoleIds ?? [],
+    maxValues: select.maxValues ?? select.options.length,
+  });
+  return { ...select, customId: created.customId };
+}
+
+async function materializeRow<T extends InteractiveRow>(row: T): Promise<T> {
+  if (row.type === "role_select") return (await materializeRoleSelect(row)) as T;
+  const components: V2Button[] = [];
+  for (const btn of row.components) {
+    components.push(await materializeButton(btn));
   }
-  return out;
+  return { type: "action_row", components } as T;
 }
 
 /**
@@ -206,19 +215,17 @@ async function materializeActionRows(rows: V2ActionRow[]): Promise<V2ActionRow[]
 export async function materializeEmbedSpecButtons(spec: EmbedSpec): Promise<EmbedSpec> {
   if (spec.version === 1) {
     if (!spec.components?.length) return spec;
-    return {
-      ...spec,
-      components: await materializeActionRows(spec.components),
-    };
+    const components: InteractiveRow[] = [];
+    for (const row of spec.components) components.push(await materializeRow(row));
+    return { ...spec, components };
   }
 
   const containers = [];
   for (const container of spec.components) {
     const components: V2Component[] = [];
     for (const node of container.components) {
-      if (node.type === "action_row") {
-        const [row] = await materializeActionRows([node]);
-        if (row) components.push(row);
+      if (node.type === "action_row" || node.type === "role_select") {
+        components.push(await materializeRow(node));
       } else {
         components.push(node);
       }

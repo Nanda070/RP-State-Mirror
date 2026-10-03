@@ -106,17 +106,52 @@ export const v2ActionRowSchema = z.object({
 });
 export type V2ActionRow = z.infer<typeof v2ActionRowSchema>;
 
+const roleSnowflake = z.string().regex(/^d{17,20}$/);
+
+/**
+ * Dropdown of self-assignable roles. Picking a set replaces the member's current roles from this list:
+ * selected ones are granted, the rest are removed. Occupies a whole row in Discord.
+ */
+export const v2RoleSelectSchema = z.object({
+  type: z.literal("role_select"),
+  placeholder: z.string().max(150).optional(),
+  /** Resolved interactive id: mirror:role.select:<id>. Set on send. */
+  customId: z.string().max(100).optional(),
+  options: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(100),
+        roleDiscordId: roleSnowflake,
+        description: z.string().max(100).optional(),
+        emoji: z.string().optional(),
+      }),
+    )
+    .min(1)
+    .max(25),
+  /** How many roles from the list a member may hold at once (1 = mutually exclusive). */
+  maxValues: z.number().int().min(1).max(25).optional(),
+  /** Who may use the dropdown; empty = everyone. */
+  allowedRoleIds: z.array(roleSnowflake).max(25).optional(),
+});
+export type V2RoleSelect = z.infer<typeof v2RoleSelectSchema>;
+
+/** Interactive row under a message: a row of buttons or a role dropdown. */
+export const interactiveRowSchema = z.discriminatedUnion("type", [v2ActionRowSchema, v2RoleSelectSchema]);
+export type InteractiveRow = z.infer<typeof interactiveRowSchema>;
+
 export type V2Component =
   | z.infer<typeof v2TextDisplaySchema>
   | z.infer<typeof v2MediaGallerySchema>
   | z.infer<typeof v2SeparatorSchema>
-  | z.infer<typeof v2ActionRowSchema>;
+  | z.infer<typeof v2ActionRowSchema>
+  | z.infer<typeof v2RoleSelectSchema>;
 
 const v2ComponentSchema: z.ZodType<V2Component> = z.discriminatedUnion("type", [
   v2TextDisplaySchema,
   v2MediaGallerySchema,
   v2SeparatorSchema,
   v2ActionRowSchema,
+  v2RoleSelectSchema,
 ]);
 
 export const v2ContainerSchema = z.object({
@@ -133,7 +168,7 @@ export const embedSpecV1Schema = z.object({
   version: z.literal(1),
   embeds: z.array(classicEmbedSchema).min(1).max(10),
   /** Optional action rows (role toggle / callback buttons) attached under classic embeds. */
-  components: z.array(v2ActionRowSchema).max(5).optional(),
+  components: z.array(interactiveRowSchema).max(5).optional(),
 });
 export type EmbedSpecV1 = z.infer<typeof embedSpecV1Schema>;
 
@@ -240,7 +275,7 @@ export function isButtonPanelSpec(spec: unknown): boolean {
   return value.components.some(
     (container) =>
       Array.isArray(container?.components) &&
-      container.components.some((node) => node?.type === "action_row"),
+      container.components.some((node) => node?.type === "action_row" || node?.type === "role_select"),
   );
 }
 
@@ -255,7 +290,7 @@ export function stripButtonComponents(spec: EmbedSpec): EmbedSpec {
       ...container,
       type: "container" as const,
       components: (Array.isArray(container.components) ? container.components : []).filter(
-        (node) => node.type !== "action_row",
+        (node) => node.type !== "action_row" && node.type !== "role_select",
       ),
     }))
     .filter((container) => container.components.length > 0);

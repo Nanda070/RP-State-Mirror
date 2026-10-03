@@ -16,7 +16,7 @@ import {
   upsertGuild,
   upsertMember,
 } from "@mirror/core";
-import { handleButtonInteraction, handleModalSubmit } from "./buttons.js";
+import { handleButtonInteraction, handleModalSubmit, handleSelectInteraction } from "./buttons.js";
 import { evaluateMemberCpAccess, isCpRelevantGuild, reconcileCpAccess } from "./cp-sync.js";
 import { jobHandlers } from "./handlers.js";
 import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
@@ -100,6 +100,16 @@ client.on(Events.InteractionCreate, (interaction) => {
         client,
         superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
         log: log.child({ component: "buttons" }),
+      }),
+    );
+    return;
+  }
+  if (interaction.isStringSelectMenu()) {
+    guarded("select", () =>
+      handleSelectInteraction(interaction, {
+        client,
+        superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+        log: log.child({ component: "selects" }),
       }),
     );
     return;

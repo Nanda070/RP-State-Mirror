@@ -12,6 +12,7 @@ import {
   type ButtonInteraction,
   type Client,
   type ModalSubmitInteraction,
+  type StringSelectMenuInteraction,
 } from "discord.js";
 import {
   decideRegistration,
@@ -58,6 +59,8 @@ export interface InteractionContext {
 const COOLDOWN_MS = 3_000;
 const recentClicks = new Map<string, number>();
 type AnyInteraction = ButtonInteraction | ModalSubmitInteraction;
+/** Anything that can be answered with an ephemeral message. */
+type Respondable = AnyInteraction | StringSelectMenuInteraction;
 
 const ACCESS_DENIED = "Нет доступа.";
 const ACCESS_DENIED_TRANSFER_SIDE = "Нет доступа к решению этой стороны.";
@@ -79,7 +82,7 @@ function ephemeral(content: string) {
 }
 
 /** Safe ephemeral reply/followUp — never throws (expired interactions stay quiet in logs). */
-async function respondEphemeral(interaction: AnyInteraction, content: string) {
+async function respondEphemeral(interaction: Respondable, content: string) {
   const payload = ephemeral(content);
   try {
     if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
@@ -94,7 +97,7 @@ async function denyAccess(interaction: AnyInteraction, detail: string = ACCESS_D
 }
 
 /** Replies with an ephemeral error whether or not the interaction was already acknowledged. */
-export async function replyInteractionError(interaction: AnyInteraction, error: unknown) {
+export async function replyInteractionError(interaction: Respondable, error: unknown) {
   const message = formatUserError(error);
   await respondEphemeral(interaction, `Ошибка: ${message}`);
 }
@@ -262,6 +265,73 @@ async function handleRoleToggle(interaction: ButtonInteraction, params: Record<s
 
   await respondEphemeral(interaction, has ? `Роль **${role.name}** снята.` : `Роль **${role.name}** выдана.`);
   log.info({ userId: interaction.user.id, roleId: role.id, removed: has }, "role.toggle");
+}
+
+/**
+ * Role dropdown: the picked set replaces the member's roles from the panel list —
+ * picked roles are granted, the others from the list are removed.
+ */
+async function handleRoleSelect(
+  interaction: StringSelectMenuInteraction,
+  params: Record<string, unknown>,
+  log: Logger,
+) {
+  if (!interaction.guild) {
+    await respondEphemeral(interaction, "Список работает только на сервере.");
+    return;
+  }
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const managed = asSnowflakeArray(params.roleIds);
+  const limit = typeof params.maxValues === "number" ? params.maxValues : managed.length;
+  const picked = [...new Set(interaction.values)].filter((id) => managed.includes(id)).slice(0, limit);
+
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  const allowedRoleIds = asSnowflakeArray(params.allowedRoleIds);
+  if (allowedRoleIds.length > 0 && !allowedRoleIds.some((id) => member.roles.cache.has(id))) {
+    await interaction.editReply({ content: ACCESS_DENIED });
+    return;
+  }
+
+  const me = interaction.guild.members.me ?? (await interaction.guild.members.fetchMe());
+  const usable = (id: string) => {
+    const role = interaction.guild?.roles.cache.get(id);
+    return role && !role.managed && role.position < me.roles.highest.position ? role : null;
+  };
+  const toAdd = picked.filter((id) => !member.roles.cache.has(id));
+  const toRemove = managed.filter((id) => !picked.includes(id) && member.roles.cache.has(id));
+  const blocked = [...toAdd, ...toRemove].filter((id) => !usable(id));
+  const add = toAdd.filter((id) => usable(id));
+  const remove = toRemove.filter((id) => usable(id));
+
+  // Remove first: with a limit of one role the member never holds two at once.
+  if (remove.length > 0) await member.roles.remove(remove, "Mirror: список ролей");
+  if (add.length > 0) await member.roles.add(add, "Mirror: список ролей");
+
+  if (add.length > 0 || remove.length > 0) {
+    await writeAuditEvent({
+      actorType: AuditActorType.USER,
+      source: "discord.select",
+      guildId: interaction.guild.id,
+      channelId: interaction.channelId,
+      action: "select.roles_changed",
+      entityType: "discord_guild_member",
+      entityId: `${interaction.guild.id}:${interaction.user.id}`,
+      after: { added: add, removed: remove },
+    });
+  }
+
+  const mention = (ids: string[]) => ids.map((id) => `<@&${id}>`).join(", ");
+  const lines = [
+    add.length > 0 ? `Выданы: ${mention(add)}` : null,
+    remove.length > 0 ? `Сняты: ${mention(remove)}` : null,
+    blocked.length > 0 ? `Не могу изменить (иерархия ролей): ${mention(blocked)}` : null,
+  ].filter(Boolean);
+  await interaction.editReply({
+    content: lines.length > 0 ? lines.join("\n") : "Изменений нет: у вас уже такой набор ролей.",
+    allowedMentions: { parse: [] },
+  });
+  log.info({ userId: interaction.user.id, added: add.length, removed: remove.length }, "role.select");
 }
 
 async function handleCallback(interaction: ButtonInteraction, params: Record<string, unknown>) {
@@ -732,5 +802,28 @@ export async function handleButtonInteraction(interaction: ButtonInteraction, ct
     ctx.log.warn({ err: error, customId: interaction.customId }, "button interaction failed");
     await replyInteractionError(interaction, error);
     return true;
+  }
+}
+
+export async function handleSelectInteraction(interaction: StringSelectMenuInteraction, ctx: InteractionContext) {
+  try {
+    const parsed = parseCustomId(interaction.customId);
+    if (!parsed) {
+      await respondEphemeral(interaction, "Список не поддерживается.");
+      return;
+    }
+    if (underCooldown(interaction.user.id, parsed.id)) {
+      await respondEphemeral(interaction, "Подождите пару секунд.");
+      return;
+    }
+    const stored = await getButtonAction(parsed.id);
+    if (!stored || stored.action !== "role.select") {
+      await respondEphemeral(interaction, "Список устарел или отключён.");
+      return;
+    }
+    await handleRoleSelect(interaction, storedParams(stored), ctx.log);
+  } catch (error) {
+    ctx.log.warn({ err: error, customId: interaction.customId }, "select interaction failed");
+    await replyInteractionError(interaction, error);
   }
 }

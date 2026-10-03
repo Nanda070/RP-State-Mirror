@@ -33,6 +33,7 @@ const ITEMS: PaletteItem[] = [
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", requiresStaff: true },
   { href: "/feedback", label: "Обратная связь", group: "Администрирование", requiresStaff: true },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", requiresSystemSettings: true },
+  { href: "/settings/buttons", label: "Кнопки и роли", group: "Администрирование", requiresSystemSettings: true },
   { href: "/settings/forms", label: "Формы", group: "Администрирование", requiresSystemSettings: true },
   { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование", requiresSystemSettings: true },
   {

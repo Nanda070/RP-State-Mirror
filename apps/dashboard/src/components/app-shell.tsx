@@ -86,6 +86,14 @@ const NAV: NavItem[] = [
     requiresSystemSettings: true,
   },
   {
+    href: "/settings/buttons",
+    label: "Кнопки и роли",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "roles",
+    requiresSystemSettings: true,
+  },
+  {
     href: "/settings/forms",
     label: "Формы",
     group: "Администрирование",

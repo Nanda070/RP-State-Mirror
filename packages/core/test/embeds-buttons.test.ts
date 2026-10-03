@@ -75,7 +75,8 @@ describe("embed buttons + designs", () => {
     const ready = await materializeEmbedSpecButtons(spec);
     expect(ready.version).toBe(1);
     if (ready.version !== 1) return;
-    const btn = ready.components?.[0]?.components[0];
+    const row = ready.components?.[0];
+    const btn = row?.type === "action_row" ? row.components[0] : undefined;
     expect(btn?.customId?.startsWith("mirror:role.toggle:")).toBe(true);
     expect(btn?.action).toBeUndefined();
     expect(await prisma.buttonAction.count()).toBe(1);
@@ -118,7 +119,8 @@ describe("embed buttons + designs", () => {
     const ready = await materializeEmbedSpecButtons(spec);
     expect(ready.version).toBe(1);
     if (ready.version !== 1) return;
-    const labels = (ready.components?.[0]?.components ?? []).map((b) => b.customId?.split(":")[1]);
+    const row = ready.components?.[0];
+    const labels = (row?.type === "action_row" ? row.components : []).map((b) => b.customId?.split(":")[1]);
     expect(labels).toEqual(["form.open", "feedback.open", "token.receive"]);
     expect(await prisma.buttonAction.count()).toBe(3);
   });

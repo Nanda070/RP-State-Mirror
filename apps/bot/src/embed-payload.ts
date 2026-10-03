@@ -12,10 +12,18 @@ import {
   MessageFlags,
   SeparatorBuilder,
   SeparatorSpacingSize,
+  StringSelectMenuBuilder,
   TextDisplayBuilder,
   type MessageCreateOptions,
 } from "discord.js";
-import type { ClassicEmbed, EmbedSpec, V2ActionRow, V2Button } from "@mirror/core";
+import type {
+  ClassicEmbed,
+  EmbedSpec,
+  InteractiveRow,
+  V2ActionRow,
+  V2Button,
+  V2RoleSelect,
+} from "@mirror/core";
 
 const STYLE_MAP: Record<string, ButtonStyle> = {
   primary: ButtonStyle.Primary,
@@ -79,13 +87,36 @@ function buildActionRow(row: V2ActionRow): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(row.components.map(buildButton));
 }
 
+/** Role dropdown: option values are role ids; min 0 lets a member clear every role of the list. */
+function buildRoleSelect(select: V2RoleSelect): ActionRowBuilder<StringSelectMenuBuilder> {
+  if (!select.customId) throw new Error("Выпадающий список ролей требует customId");
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(select.customId)
+    .setMinValues(0)
+    .setMaxValues(Math.min(select.maxValues ?? select.options.length, select.options.length))
+    .addOptions(
+      select.options.map((option) => ({
+        label: option.label,
+        value: option.roleDiscordId,
+        ...(option.description ? { description: option.description } : {}),
+        ...(option.emoji ? { emoji: option.emoji } : {}),
+      })),
+    );
+  if (select.placeholder) menu.setPlaceholder(select.placeholder);
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
+}
+
+function buildInteractiveRow(row: InteractiveRow) {
+  return row.type === "role_select" ? buildRoleSelect(row) : buildActionRow(row);
+}
+
 export function embedSpecToMessageOptions(spec: EmbedSpec): MessageCreateOptions {
   if (spec.version === 1) {
     const options: MessageCreateOptions = {
       embeds: spec.embeds.map(classicToEmbed),
     };
     if (spec.components?.length) {
-      options.components = spec.components.map(buildActionRow);
+      options.components = spec.components.map(buildInteractiveRow);
     }
     return options;
   }
@@ -112,6 +143,8 @@ export function embedSpecToMessageOptions(spec: EmbedSpec): MessageCreateOptions
         built.addMediaGalleryComponents(gallery);
       } else if (node.type === "action_row") {
         built.addActionRowComponents(buildActionRow(node));
+      } else if (node.type === "role_select") {
+        built.addActionRowComponents(buildRoleSelect(node));
       }
     }
     return built;
