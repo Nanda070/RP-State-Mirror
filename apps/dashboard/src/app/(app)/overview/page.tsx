@@ -24,15 +24,106 @@ export default async function OverviewPage() {
   const canSettings = canManageSystemSettings(identity);
 
   const displayName = session.user.name ?? session.user.username ?? "пользователь";
+  const newsStamp = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date());
 
   return (
-    <div className="stack">
-      <div className="section-head">
-        <h1>Обзор</h1>
+    <div className="stack overview-page">
+      <div className="welcome-head">
+        <h1>Добро пожаловать, {displayName}</h1>
         <p className="muted">
-          Добро пожаловать, {displayName}. Статус:{" "}
-          <strong style={{ color: "var(--ink)" }}>{badge.primary}</strong>.
+          Статус доступа: <strong className="ink-strong">{badge.primary}</strong>
         </p>
+      </div>
+
+      <section className="news-card panel">
+        <div className="news-card-head">
+          <div className="news-card-title">
+            <span className="news-card-icon" aria-hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                <path
+                  d="M12 3.5 13.8 9.2 19.5 11 13.8 12.8 12 18.5 10.2 12.8 4.5 11l5.7-1.8L12 3.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <h2>Что нового</h2>
+          </div>
+          <span className="news-card-date">{newsStamp}</span>
+        </div>
+        <ul className="news-list">
+          <li>
+            Реестры документов, розыска, штрафов и персонала доступны из раздела «Модули».
+          </li>
+          <li>
+            Синхронизация серверов:{" "}
+            <strong>
+              {guildCount > 0
+                ? `${formatCount(guildCount)} активных`
+                : "ожидает подключения бота"}
+            </strong>
+            ; карта ролей:{" "}
+            <strong>
+              {mappingCount > 0
+                ? `${formatCount(mappingCount)} привязок из ${formatCount(roleCount)}`
+                : "ещё не настроена"}
+            </strong>
+            .
+          </li>
+          <li>
+            Очередь задач:{" "}
+            <strong>
+              {pendingJobs === 0 ? "пусто" : `${formatCount(pendingJobs)} в ожидании`}
+            </strong>
+            . Участников в снимке: <strong>{formatCount(memberCount)}</strong>.
+          </li>
+        </ul>
+      </section>
+
+      <div className="action-btn-row">
+        <Link href="/profile" className="btn btn-outline">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>
+            <circle cx="12" cy="8" r="3.25" stroke="currentColor" strokeWidth="1.6" />
+            <path
+              d="M5.5 19.5c1.6-3.2 4-4.8 6.5-4.8s4.9 1.6 6.5 4.8"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          Профиль
+        </Link>
+        <Link href="/documents" className="btn btn-outline">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>
+            <path
+              d="M7 3.75h7.5L19 8.25V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.75a1 1 0 0 1 1-1Z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+            <path d="M14.5 3.75V8.5H19" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          </svg>
+          Документы и реестры
+        </Link>
+        {canSettings ? (
+          <Link href="/settings" className="btn btn-outline">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+              <path
+                d="M12 4.5v1.6M12 17.9v1.6M4.5 12h1.6M17.9 12h1.6M6.4 6.4l1.1 1.1M16.5 16.5l1.1 1.1M17.6 6.4l-1.1 1.1M7.5 16.5l-1.1 1.1"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+            Настройки сервера
+          </Link>
+        ) : null}
       </div>
 
       <div className="metric-grid">
@@ -78,64 +169,20 @@ export default async function OverviewPage() {
         </article>
       </div>
 
-      <div className="overview-split">
+      {canSettings ? (
         <div className="panel">
-          <h2 className="panel-title">Быстрые действия</h2>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Переход к профилю и системным настройкам без лишних кликов.
+          <h2 className="panel-title">Модули</h2>
+          <p className="muted" style={{ marginBottom: "0.85rem" }}>
+            Быстрый переход к реестрам и настройкам. Токены и регистрации — следующие модули.
           </p>
-          <div className="row" style={{ marginTop: "0.85rem" }}>
-            <Link href="/profile" className="btn btn-secondary">
-              Профиль
-            </Link>
-            {canSettings ? (
-              <>
-                <Link href="/settings" className="btn btn-secondary">
-                  Модули настроек
-                </Link>
-                <Link href="/settings/system" className="btn btn-primary">
-                  Система
-                </Link>
-              </>
-            ) : null}
-          </div>
-        </div>
-        <div className="panel">
-          <h2 className="panel-title">Состояние платформы</h2>
-          <ul className="status-list">
-            <li>
-              <span className="status-dot" data-ok={guildCount > 0} />
-              Синхронизация серверов
-              <strong>{guildCount > 0 ? "есть данные" : "ожидает бота"}</strong>
-            </li>
-            <li>
-              <span className="status-dot" data-ok={mappingCount > 0} />
-              Карта ролей
-              <strong>{mappingCount > 0 ? `${formatCount(mappingCount)} привязок` : "не настроена"}</strong>
-            </li>
-            <li>
-              <span className="status-dot" data-ok={pendingJobs === 0} />
-              Очередь задач
-              <strong>{pendingJobs === 0 ? "пусто" : `${formatCount(pendingJobs)} в ожидании`}</strong>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="panel">
-        <h2 className="panel-title">Модули этапа 3</h2>
-        <p className="muted" style={{ marginBottom: "0.85rem" }}>
-          Документы, розыск, штрафы и эмбеды уже работают: реестры и настройки доступны ниже.
-          Токены и регистрации — следующие модули.
-        </p>
-        {canSettings ? (
           <div className="module-chip-row">
             {(
               [
                 { label: "Документы", href: "/documents", ready: true },
                 { label: "Розыск", href: "/wanted", ready: true },
                 { label: "Штрафы", href: "/fines", ready: true },
-                { label: "Настройки модулей", href: "/settings", ready: true },
+                { label: "Персонал", href: "/personnel", ready: true },
+                { label: "Эмбеды", href: "/settings/embeds", ready: true },
                 { label: "Токены", href: "/settings/tokens", ready: false },
               ] as const
             ).map((item) => (
@@ -145,8 +192,8 @@ export default async function OverviewPage() {
               </Link>
             ))}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

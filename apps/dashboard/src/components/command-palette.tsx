@@ -3,6 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+export const COMMAND_PALETTE_EVENT = "mirror:open-command-palette";
+
+export function openCommandPalette() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(COMMAND_PALETTE_EVENT));
+}
+
 const ITEMS = [
   { href: "/overview", label: "Обзор" },
   { href: "/profile", label: "Профиль" },
@@ -39,6 +46,11 @@ export function CommandPalette() {
   }, [query]);
 
   useEffect(() => {
+    const openPalette = () => {
+      setOpen(true);
+      setQuery("");
+      setActive(0);
+    };
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -49,7 +61,11 @@ export function CommandPalette() {
       if (event.key === "Escape") setOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(COMMAND_PALETTE_EVENT, openPalette);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(COMMAND_PALETTE_EVENT, openPalette);
+    };
   }, []);
 
   if (!open) return null;
