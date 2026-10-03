@@ -5,6 +5,7 @@ import {
   botEnvSchema,
   createLogger,
   expireDocuments,
+  expireIcBlacklistEntries,
   expireRegistrations,
   markGuildUnavailable,
   markMemberLeft,
@@ -39,8 +40,14 @@ let maintenanceTimer: NodeJS.Timeout | undefined;
 
 /** Time-based status transitions; side effects (card edits, DMs) go through jobs. */
 async function runMaintenance() {
-  const [registrations, documents] = [await expireRegistrations(), await expireDocuments()];
-  if (registrations + documents > 0) log.info({ registrations, documents }, "maintenance: records expired");
+  const [registrations, documents, blacklist] = await Promise.all([
+    expireRegistrations(),
+    expireDocuments(),
+    expireIcBlacklistEntries(),
+  ]);
+  if (registrations + documents + blacklist > 0) {
+    log.info({ registrations, documents, blacklist }, "maintenance: records expired");
+  }
 }
 
 function guarded(name: string, fn: () => Promise<unknown>) {

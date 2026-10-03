@@ -71,6 +71,31 @@ export function canFindTokens(
   return finderRoleIds.some((roleId) => heldRoleIds.includes(roleId));
 }
 
+function holdsAnyRole(heldRoleIds: readonly string[], allowed: readonly string[]): boolean {
+  return allowed.some((roleId) => heldRoleIds.includes(roleId));
+}
+
+/** IC blacklist add/remove: admins or `icBlacklist.managerRoleIds`. */
+export function canManageIcBlacklist(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
+  heldRoleIds: readonly string[],
+  managerRoleIds: readonly string[],
+): boolean {
+  return canManageModules(identity) || holdsAnyRole(heldRoleIds, managerRoleIds);
+}
+
+/** IC blacklist search: managers, admins, or `icBlacklist.searchRoleIds`. */
+export function canSearchIcBlacklist(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
+  heldRoleIds: readonly string[],
+  managerRoleIds: readonly string[],
+  searchRoleIds: readonly string[],
+): boolean {
+  return (
+    canManageIcBlacklist(identity, heldRoleIds, managerRoleIds) || holdsAnyRole(heldRoleIds, searchRoleIds)
+  );
+}
+
 /**
  * Can view module records (read-only).
  * PLAN: Хелпер и выше.

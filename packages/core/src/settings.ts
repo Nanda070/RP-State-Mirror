@@ -85,6 +85,16 @@ export const settingDefinitions = {
     null,
     "Канал уведомлений админам о новых запросах форм (/создать-webhook)",
   ),
+  "icBlacklist.managerRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли GOV: добавление и снятие IC чёрного списка",
+  ),
+  "icBlacklist.searchRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли: поиск по IC чёрному списку",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),

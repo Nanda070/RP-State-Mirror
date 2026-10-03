@@ -20,15 +20,19 @@ import {
   storeMediaFromUrl,
   canActOnModuleRecord,
   canFindTokens,
+  canManageIcBlacklist,
   canManageModules,
+  canSearchIcBlacklist,
   closeWanted,
   createCharacter,
   createRegistration,
   createTransfer,
   createWebhookRequest,
   createIcBlacklistEntry,
+  findActiveIcBlacklist,
   findTokens,
   formatTokenDisplay,
+  listActiveIcBlacklistForStatics,
   createDocument,
   createDocumentResponse,
   createFine,
@@ -98,6 +102,13 @@ function hasFactionMembership(identity: Identity, factionCode?: string): boolean
     return identity.factions.some((f) => f.code.toUpperCase() === factionCode.toUpperCase());
   }
   return identity.factions.length > 0;
+}
+
+function interactionRoleIds(interaction: ChatInputCommandInteraction): string[] {
+  if (!interaction.member || typeof interaction.member === "string") return [];
+  return Array.isArray(interaction.member.roles)
+    ? interaction.member.roles
+    : [...interaction.member.roles.cache.keys()];
 }
 
 function canPostDocument(identity: Identity): boolean {
@@ -290,6 +301,7 @@ export async function handleSlashCommand(
         break;
       case "чс-добавить":
       case "чс-снять":
+      case "чс-найти":
         await handleIcBlacklist(interaction, ctx);
         break;
       default:
@@ -341,15 +353,23 @@ async function handleCharacter(interaction: ChatInputCommandInteraction, ctx: Sl
   }
 
   const characters = await listCharacters(user.id);
+  const flagged = await listActiveIcBlacklistForStatics(characters.map((c) => c.staticId));
   await interaction.reply(
     ephemeral(
       characters.length === 0
         ? "Персонажей пока нет."
         : characters
-            .map(
-              (character) =>
-                `${character.slot}. **${character.name}** · статик ${character.staticId}${character.tokens[0] ? ` · нашивка ${character.tokens[0].number}` : ""}`,
-            )
+            .map((character) => {
+              const token = character.tokens[0];
+              const bl = flagged.get(character.staticId);
+              return [
+                `${character.slot}. **${character.name}** · статик ${character.staticId}`,
+                token ? `нашивка ${token.number}` : null,
+                bl ? "⚠ в IC чёрном списке" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+            })
             .join("\n"),
     ),
   );
@@ -371,12 +391,7 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
   if (subcommand === "find") {
     const identity = await loadIdentity(interaction.user.id, ctx);
     const finderRoleIds = await getSetting("tokens.finderRoleIds");
-    const roleIds =
-      interaction.member && typeof interaction.member !== "string"
-        ? Array.isArray(interaction.member.roles)
-          ? interaction.member.roles
-          : [...interaction.member.roles.cache.keys()]
-        : [];
+    const roleIds = interactionRoleIds(interaction);
     if (!canFindTokens(identity, roleIds, finderRoleIds)) {
       await interaction.reply(ephemeral("Поиск нашивок доступен ролям ОГП/Юстиция и администраторам."));
       return;
@@ -619,8 +634,45 @@ async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ct
 
 async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   const identity = await loadIdentity(interaction.user.id, ctx);
-  if (!canManageModules(identity) && !hasFactionMembership(identity, "GOV")) {
-    await interaction.reply(ephemeral("IC чёрным списком могут управлять только GOV и администраторы."));
+  const roleIds = interactionRoleIds(interaction);
+  const [managerRoleIds, searchRoleIds] = await Promise.all([
+    getSetting("icBlacklist.managerRoleIds"),
+    getSetting("icBlacklist.searchRoleIds"),
+  ]);
+
+  if (interaction.commandName === "чс-найти") {
+    if (!canSearchIcBlacklist(identity, roleIds, managerRoleIds, searchRoleIds)) {
+      await interaction.reply(ephemeral("Поиск по IC чёрному списку недоступен для вашей роли."));
+      return;
+    }
+    const entry = await findActiveIcBlacklist(interaction.options.getString("статик", true));
+    if (!entry) {
+      await interaction.reply(ephemeral("Активных записей по этому статику нет."));
+      return;
+    }
+    const until = entry.expiresAt
+      ? entry.expiresAt.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" })
+      : "бессрочно";
+    await interaction.reply(
+      ephemeral(
+        [
+          `**${entry.fullName}** · статик \`${entry.staticId}\``,
+          `Причина: ${entry.reason}`,
+          `Срок: ${until}`,
+          `Добавил: <@${entry.createdByDiscordId}>`,
+          entry.evidenceFileIds.length > 0 ? `Доказательства: ${entry.evidenceFileIds.length} файл(ов)` : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
+    );
+    return;
+  }
+
+  if (!canManageIcBlacklist(identity, roleIds, managerRoleIds)) {
+    await interaction.reply(
+      ephemeral("Добавлять и снимать IC чёрный список могут администраторы и роли из настроек дашборда."),
+    );
     return;
   }
   if (interaction.commandName === "чс-снять") {
@@ -632,21 +684,34 @@ async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: 
     await interaction.reply(ephemeral("Запись снята с IC чёрного списка."));
     return;
   }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const rawExpiresAt = interaction.options.getString("срок");
   const expiresAt = rawExpiresAt ? new Date(rawExpiresAt) : null;
   if (expiresAt && Number.isNaN(expiresAt.getTime())) throw new Error("Срок должен быть датой ISO.");
-  const entry = await createIcBlacklistEntry(
-    {
-      staticId: interaction.options.getString("статик", true),
-      fullName: interaction.options.getString("фио", true),
-      reason: interaction.options.getString("причина", true),
-      expiresAt,
-      createdByDiscordId: interaction.user.id,
-      evidenceFileIds: [],
-    },
-    auditFromInteraction(interaction),
-  );
-  await interaction.reply(ephemeral(`Гражданин добавлен в IC чёрный список. Запись: **${entry.id}**.`));
+  const { user } = await ensureUserByDiscordId(interaction.user.id);
+  const evidence = interaction.options.getAttachment("доказательства");
+  const evidenceIds: string[] = [];
+  if (evidence) {
+    evidenceIds.push((await storeImageAttachment(interaction, evidence, user.id)).id);
+  }
+  try {
+    const entry = await createIcBlacklistEntry(
+      {
+        staticId: interaction.options.getString("статик", true),
+        fullName: interaction.options.getString("фио", true),
+        reason: interaction.options.getString("причина", true),
+        expiresAt,
+        createdByDiscordId: interaction.user.id,
+        evidenceFileIds: evidenceIds,
+      },
+      auditFromInteraction(interaction),
+    );
+    await interaction.editReply(`Гражданин добавлен в IC чёрный список. Запись: \`${entry.id}\`.`);
+  } catch (error) {
+    await archiveOrphanMedia(interaction, evidenceIds, ctx);
+    throw error;
+  }
 }
 
 async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {

@@ -328,11 +328,17 @@ export const blacklistAddCommand = new SlashCommandBuilder()
   .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32))
   .addStringOption((o) => o.setName("фио").setDescription("ФИО").setRequired(true).setMaxLength(128))
   .addStringOption((o) => o.setName("причина").setDescription("Причина").setRequired(true).setMaxLength(2000))
-  .addStringOption((o) => o.setName("срок").setDescription("Дата окончания ISO или пусто для бессрочного").setMaxLength(32));
+  .addStringOption((o) => o.setName("срок").setDescription("Дата окончания ISO или пусто для бессрочного").setMaxLength(32))
+  .addAttachmentOption((o) => o.setName("доказательства").setDescription("Фото-доказательства (необязательно)"));
 
 export const blacklistRemoveCommand = new SlashCommandBuilder()
   .setName("чс-снять")
   .setDescription("Снять запись гражданина с IC чёрного списка")
+  .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32));
+
+export const blacklistFindCommand = new SlashCommandBuilder()
+  .setName("чс-найти")
+  .setDescription("Найти гражданина в IC чёрном списке")
   .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32));
 
 // ──────────────────────────────────────────────────────────────
@@ -355,6 +361,7 @@ export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   webhookRequestCommand.toJSON(),
   blacklistAddCommand.toJSON(),
   blacklistRemoveCommand.toJSON(),
+  blacklistFindCommand.toJSON(),
 ];
 
 // ──────────────────────────────────────────────────────────────

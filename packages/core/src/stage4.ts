@@ -597,9 +597,23 @@ export const createBlacklistSchema = z.object({
   createdByDiscordId: snowflakeLike,
 });
 
+function isActiveBlacklistEntry(entry: { status: RecordStatus; expiresAt: Date | null }, now = new Date()) {
+  return entry.status === RecordStatus.ACTIVE && (!entry.expiresAt || entry.expiresAt > now);
+}
+
 export async function createIcBlacklistEntry(input: z.input<typeof createBlacklistSchema>, context: AuditContext) {
   const data = createBlacklistSchema.parse(input);
+  if (data.expiresAt && data.expiresAt.getTime() <= Date.now()) {
+    throw new Error("Срок окончания должен быть в будущем (или оставьте пустым для бессрочной записи).");
+  }
   return auditedMutation(context, "ic_blacklist.created", "ic_blacklist", async (tx) => {
+    const existing = await tx.icBlacklistEntry.findFirst({
+      where: { staticId: data.staticId, status: RecordStatus.ACTIVE },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existing && isActiveBlacklistEntry(existing)) {
+      throw new Error("У этого статика уже есть активная запись IC чёрного списка.");
+    }
     const entry = await tx.icBlacklistEntry.create({ data });
     return { entityId: entry.id, after: entry, result: entry };
   });
@@ -628,6 +642,56 @@ export async function revokeIcBlacklistByStatic(
   });
   if (!entry) throw new Error("Активная запись чёрного списка не найдена.");
   return revokeIcBlacklistEntry(entry.id, actorDiscordId, context);
+}
+
+/** Active (non-expired) IC blacklist row for a static, if any. */
+export async function findActiveIcBlacklist(staticId: string, now = new Date()) {
+  const entry = await prisma.icBlacklistEntry.findFirst({
+    where: { staticId, status: RecordStatus.ACTIVE },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!entry || !isActiveBlacklistEntry(entry, now)) return null;
+  return entry;
+}
+
+export async function listActiveIcBlacklistForStatics(staticIds: string[], now = new Date()) {
+  if (staticIds.length === 0) return new Map<string, Awaited<ReturnType<typeof findActiveIcBlacklist>>>();
+  const rows = await prisma.icBlacklistEntry.findMany({
+    where: { staticId: { in: staticIds }, status: RecordStatus.ACTIVE },
+    orderBy: { createdAt: "desc" },
+  });
+  const map = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (map.has(row.staticId) || !isActiveBlacklistEntry(row, now)) continue;
+    map.set(row.staticId, row);
+  }
+  return map;
+}
+
+/** Marks ACTIVE entries past expiresAt as EXPIRED. Returns how many were expired. */
+export async function expireIcBlacklistEntries(now: Date = new Date(), batch = 100): Promise<number> {
+  const due = await prisma.icBlacklistEntry.findMany({
+    where: { status: RecordStatus.ACTIVE, expiresAt: { lte: now } },
+    select: { id: true },
+    take: batch,
+  });
+  let expired = 0;
+  for (const { id } of due) {
+    const done = await auditedMutation(
+      { actorType: AuditActorType.SYSTEM, source: "ic_blacklist.expiry" },
+      "ic_blacklist.expired",
+      "ic_blacklist",
+      async (tx) => {
+        const { count } = await tx.icBlacklistEntry.updateMany({
+          where: { id, status: RecordStatus.ACTIVE, expiresAt: { lte: now } },
+          data: { status: RecordStatus.EXPIRED },
+        });
+        return { entityId: id, after: { status: RecordStatus.EXPIRED }, result: count === 1 };
+      },
+    );
+    if (done) expired += 1;
+  }
+  return expired;
 }
 
 export async function createRolePanel(input: {
