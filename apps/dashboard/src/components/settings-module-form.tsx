@@ -38,25 +38,67 @@ export function SettingsDocumentsForm({
   );
 }
 
+type RoleOption = { discordId: string; name: string };
+
+function RolePingPicker({
+  roles,
+  selected,
+  onToggle,
+  emptyHint,
+}: {
+  roles: RoleOption[];
+  selected: string[];
+  onToggle: (roleId: string) => void;
+  emptyHint: string;
+}) {
+  if (roles.length === 0) {
+    return (
+      <p className="muted" style={{ margin: 0 }}>
+        {emptyHint}
+      </p>
+    );
+  }
+  return (
+    <div className="chip-row">
+      {roles.map((role) => (
+        <label key={role.discordId} className="chip-check">
+          <input
+            type="checkbox"
+            checked={selected.includes(role.discordId)}
+            onChange={() => onToggle(role.discordId)}
+          />
+          {role.name}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function SettingsWantedForm({
   initialEnabled,
   initialChannelId,
+  initialPingRoleIds,
   channels,
   incidentGuildId,
+  roles,
 }: {
   initialEnabled: boolean;
   initialChannelId: string | null;
+  initialPingRoleIds: string[];
   channels: ChannelOption[];
   incidentGuildId: string | null;
+  roles: RoleOption[];
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [channelId, setChannelId] = useState(initialChannelId ?? "");
+  const [pingRoleIds, setPingRoleIds] = useState<string[]>(initialPingRoleIds);
   return (
     <ModuleSettingsForm
       module="wanted"
       fields={[
         { key: "wanted.enabled", value: enabled },
         { key: "wanted.channelId", value: channelId.trim() || null },
+        { key: "wanted.pingRoleIds", value: pingRoleIds },
       ]}
     >
       <div className="field">
@@ -82,6 +124,23 @@ export function SettingsWantedForm({
           emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
         />
       </div>
+      <div className="field">
+        <span className="field-label">Роли для пинга при объявлении</span>
+        <RolePingPicker
+          roles={roles}
+          selected={pingRoleIds}
+          onToggle={(roleId) =>
+            setPingRoleIds((prev) =>
+              prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
+            )
+          }
+          emptyHint={
+            incidentGuildId
+              ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
+              : "Сначала задайте сервер ЧП"
+          }
+        />
+      </div>
     </ModuleSettingsForm>
   );
 }
@@ -89,22 +148,28 @@ export function SettingsWantedForm({
 export function SettingsFinesForm({
   initialDueDays,
   initialChannelId,
+  initialPingRoleIds,
   channels,
   incidentGuildId,
+  roles,
 }: {
   initialDueDays: number;
   initialChannelId: string | null;
+  initialPingRoleIds: string[];
   channels: ChannelOption[];
   incidentGuildId: string | null;
+  roles: RoleOption[];
 }) {
   const [dueDays, setDueDays] = useState(String(initialDueDays));
   const [channelId, setChannelId] = useState(initialChannelId ?? "");
+  const [pingRoleIds, setPingRoleIds] = useState<string[]>(initialPingRoleIds);
   return (
     <ModuleSettingsForm
       module="fines"
       fields={[
         { key: "fines.dueDays", value: Number(dueDays) },
         { key: "fines.channelId", value: channelId.trim() || null },
+        { key: "fines.pingRoleIds", value: pingRoleIds },
       ]}
       onBeforeSubmit={() => {
         const n = Number(dueDays);
@@ -135,6 +200,28 @@ export function SettingsFinesForm({
           channels={channels}
           guildDiscordId={incidentGuildId}
           emptyLabel={incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП"}
+        />
+      </div>
+      <div className="field">
+        <span className="field-label">Роли для пинга на сервере ЧП</span>
+        <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+          Отдельно от «старшего состава» фракции: основной реестр штрафов публикуется на ЧП.
+          Если у фракции настроены канал документов и роль старшего состава — туда уходит
+          дополнительное уведомление с пингом.
+        </p>
+        <RolePingPicker
+          roles={roles}
+          selected={pingRoleIds}
+          onToggle={(roleId) =>
+            setPingRoleIds((prev) =>
+              prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
+            )
+          }
+          emptyHint={
+            incidentGuildId
+              ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
+              : "Сначала задайте сервер ЧП"
+          }
         />
       </div>
     </ModuleSettingsForm>

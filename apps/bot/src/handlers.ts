@@ -15,13 +15,17 @@ import {
   MODULE_JOB_TYPES,
   PERSONNEL_EVENT_LABELS_RU,
   checkDiscordLimits,
+  deliveryConfigured,
   embedSpecSchema,
+  formatRoleMentions,
+  getSetting,
   materializeEmbedSpecButtons,
   normalizeLinkOrText,
   spoilerLink,
   recordSentMessage,
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
+  resolveFactionSeniorRoleId,
   resolveFineDelivery,
   resolveWantedDelivery,
   type DeliveryTarget,
@@ -45,15 +49,27 @@ type EmbedSendResult =
   | { status: "sent"; messageId: string; channelId: string; guildId: string; spec: EmbedSpec }
   | { status: "deferred"; reason: string };
 
+type SendEmbedOptions = {
+  content?: string | null;
+  /** Role snowflakes allowed to ping (parsed from content mentions). */
+  mentionRoleIds?: readonly string[];
+};
+
 async function sendEmbed(
   client: Client,
   target: DeliveryTarget,
   embed: EmbedBuilder,
   log: Logger,
+  options: SendEmbedOptions = {},
 ): Promise<EmbedSendResult> {
   if (target.kind === "unconfigured") {
     return { status: "deferred", reason: target.reason };
   }
+
+  const content = options.content?.trim() || undefined;
+  const mentionRoleIds = [...new Set(options.mentionRoleIds ?? [])].filter((id) =>
+    /^\d{17,20}$/.test(id),
+  );
 
   const embedJson = embed.toJSON();
   const spec: EmbedSpec = {
@@ -80,7 +96,11 @@ async function sendEmbed(
     if (!channel || !channel.isTextBased()) {
       throw new Error(`Канал ${target.channelDiscordId} недоступен`);
     }
-    const message = await channel.send({ embeds: [embed] });
+    const message = await channel.send({
+      ...(content ? { content } : {}),
+      embeds: [embed],
+      allowedMentions: { parse: [], roles: mentionRoleIds, users: [] },
+    });
     return {
       status: "sent",
       messageId: message.id,
@@ -95,7 +115,11 @@ async function sendEmbed(
   const response = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ embeds: [embed.toJSON()] }),
+    body: JSON.stringify({
+      ...(content ? { content } : {}),
+      embeds: [embed.toJSON()],
+      allowed_mentions: { parse: [], roles: mentionRoleIds, users: [] },
+    }),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -209,7 +233,16 @@ const documentSend: JobHandler = async (payload, { client, log }) => {
     .setAuthor({ name: `Автор: ${username}`.slice(0, 256) })
     .setTimestamp(doc.createdAt);
 
-  const result = await sendEmbed(client, target, embed, log);
+  const seniorRoleId = await resolveFactionSeniorRoleId(doc.factionCode);
+  const mention = seniorRoleId ? formatRoleMentions([seniorRoleId]) : "";
+  const content = mention
+    ? `Новый документ из правительства. ${mention} незамедлительно исполнить.`
+    : "Новый документ из правительства.";
+
+  const result = await sendEmbed(client, target, embed, log, {
+    content,
+    mentionRoleIds: seniorRoleId ? [seniorRoleId] : [],
+  });
   if (result.status === "deferred") return result;
   await persistSend(result, { documentId: doc.id });
   return { status: "sent", documentNumber: doc.number, messageId: result.messageId };
@@ -270,6 +303,9 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
   if (!wanted) throw new Error(`Wanted ${wantedId} not found`);
 
   const target = await resolveWantedDelivery();
+  const pingRoleIds = await getSetting("wanted.pingRoleIds");
+  const content = formatRoleMentions(pingRoleIds);
+
   const embed = new EmbedBuilder()
     .setColor(COLOR_WANTED as ColorResolvable)
     .setTitle("Новый ордер от правительства штата")
@@ -281,7 +317,10 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
     })
     .setTimestamp(wanted.createdAt);
 
-  const result = await sendEmbed(client, target, embed, log);
+  const result = await sendEmbed(client, target, embed, log, {
+    ...(content ? { content } : {}),
+    mentionRoleIds: pingRoleIds,
+  });
   if (result.status === "deferred") return result;
   await persistSend(result, { wantedId: wanted.id });
   return { status: "sent", wantedNumber: wanted.number, messageId: result.messageId };
@@ -342,6 +381,7 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
   if (!fine) throw new Error(`Fine ${fineId} not found`);
 
   const target = await resolveFineDelivery();
+  const pingRoleIds = await getSetting("fines.pingRoleIds");
   const description = [
     `**Уведомляемая фракция:** ${fine.factionCode}`,
     `**Номер штрафа:** ${fine.number}`,
@@ -359,9 +399,35 @@ const finePublish: JobHandler = async (payload, { client, log }) => {
     .setAuthor({ name: `Автор: <@${fine.issuedByDiscordId}>`.slice(0, 256) })
     .setTimestamp(fine.createdAt);
 
-  const result = await sendEmbed(client, target, embed, log);
+  const chpContent = formatRoleMentions(pingRoleIds);
+  const result = await sendEmbed(client, target, embed, log, {
+    ...(chpContent ? { content: chpContent } : {}),
+    mentionRoleIds: pingRoleIds,
+  });
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });
+
+  // Legacy: fine went to the faction webhook with leader_role_id.
+  // Mirror keeps the registry on ЧП and additionally notifies faction senior staff
+  // when documents delivery + seniorRoleId are configured.
+  const seniorRoleId = await resolveFactionSeniorRoleId(fine.factionCode);
+  const factionTarget = await resolveFactionDocumentDelivery(fine.factionCode);
+  if (seniorRoleId && deliveryConfigured(factionTarget)) {
+    const mention = formatRoleMentions([seniorRoleId]);
+    const factionContent = `Новый штраф из правительства. ${mention} требуется исполнение и контроль оплаты.`;
+    try {
+      const factionResult = await sendEmbed(client, factionTarget, embed, log, {
+        content: factionContent,
+        mentionRoleIds: [seniorRoleId],
+      });
+      if (factionResult.status === "sent") {
+        await persistSend(factionResult, { fineId: fine.id });
+      }
+    } catch (error) {
+      log.warn({ err: error, fineId: fine.id }, "faction fine notice failed; ЧП publish kept");
+    }
+  }
+
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId };
 };
 

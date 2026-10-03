@@ -10,6 +10,7 @@ const putSchema = z.object({
   personnelChannelId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
   documentsWebhookUrl: z.string().url().nullable().or(z.literal("")).optional(),
   personnelWebhookUrl: z.string().url().nullable().or(z.literal("")).optional(),
+  seniorRoleId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
   guildDiscordId: z.string().regex(/^\d{17,20}$/).nullable().optional(),
 });
 
@@ -46,6 +47,7 @@ export async function PUT(request: Request) {
           body.documentsWebhookUrl === "" ? null : body.documentsWebhookUrl,
         personnelWebhookUrl:
           body.personnelWebhookUrl === "" ? null : body.personnelWebhookUrl,
+        seniorRoleId: body.seniorRoleId,
         guildDiscordId: body.guildDiscordId,
       },
       ctx,

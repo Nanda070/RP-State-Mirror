@@ -12,7 +12,7 @@ export default async function SettingsFactionsPage() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) redirect("/overview");
 
-  const [factions, guilds, channels] = await Promise.all([
+  const [factions, guilds, channels, roles] = await Promise.all([
     listActiveFactions(),
     prisma.guild.findMany({
       where: { status: RecordStatus.ACTIVE },
@@ -20,6 +20,15 @@ export default async function SettingsFactionsPage() {
       select: { discordId: true, name: true },
     }),
     listActiveChannels(),
+    prisma.discordRole.findMany({
+      where: { status: RecordStatus.ACTIVE },
+      orderBy: { name: "asc" },
+      select: {
+        discordId: true,
+        name: true,
+        guild: { select: { discordId: true } },
+      },
+    }),
   ]);
 
   return (
@@ -32,8 +41,8 @@ export default async function SettingsFactionsPage() {
         </p>
         <h1>Каналы фракций</h1>
         <p className="muted">
-          Каналы и вебхуки документов / кадрового аудита. Доставка slash-команд читает эти
-          настройки — без хардкода ID в коде.
+          Каналы, вебхуки документов / кадрового аудита и роль старшего состава для пинга.
+          Доставка slash-команд читает эти настройки — без хардкода ID в коде.
         </p>
         <div className="row" style={{ marginTop: "0.75rem" }}>
           <span className="stub-badge" data-ready>
@@ -56,6 +65,11 @@ export default async function SettingsFactionsPage() {
           discordId: c.discordId,
           name: c.name,
           guildDiscordId: c.guild.discordId,
+        }))}
+        roles={roles.map((r) => ({
+          discordId: r.discordId,
+          name: r.name,
+          guildDiscordId: r.guild.discordId,
         }))}
       />
     </div>

@@ -1,5 +1,5 @@
 import { canManageSystemSettings, getSetting, listActiveChannels } from "@mirror/core";
-import { prisma } from "@mirror/db";
+import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -12,13 +12,26 @@ export default async function SettingsWantedPage() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) redirect("/overview");
 
-  const [enabled, channelId, incidentGuildId, wantedCount, channels] = await Promise.all([
-    getSetting("wanted.enabled"),
-    getSetting("wanted.channelId"),
-    getSetting("core.incidentGuildId"),
-    prisma.wanted.count(),
-    listActiveChannels(),
-  ]);
+  const [enabled, channelId, pingRoleIds, incidentGuildId, wantedCount, channels] =
+    await Promise.all([
+      getSetting("wanted.enabled"),
+      getSetting("wanted.channelId"),
+      getSetting("wanted.pingRoleIds"),
+      getSetting("core.incidentGuildId"),
+      prisma.wanted.count(),
+      listActiveChannels(),
+    ]);
+
+  const incidentRoles = incidentGuildId
+    ? await prisma.discordRole.findMany({
+        where: {
+          status: RecordStatus.ACTIVE,
+          guild: { discordId: incidentGuildId, status: RecordStatus.ACTIVE },
+        },
+        orderBy: { name: "asc" },
+        select: { discordId: true, name: true },
+      })
+    : [];
 
   return (
     <div className="stack">
@@ -74,12 +87,14 @@ export default async function SettingsWantedPage() {
       <SettingsWantedForm
         initialEnabled={enabled}
         initialChannelId={channelId}
+        initialPingRoleIds={pingRoleIds}
         incidentGuildId={incidentGuildId}
         channels={channels.map((c) => ({
           discordId: c.discordId,
           name: c.name,
           guildDiscordId: c.guild.discordId,
         }))}
+        roles={incidentRoles}
       />
     </div>
   );

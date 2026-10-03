@@ -34,11 +34,21 @@ export const settingDefinitions = {
     null,
     "Канал на сервере ЧП для публикации штрафов",
   ),
+  "fines.pingRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли на сервере ЧП: пинг при публикации нового штрафа",
+  ),
   "wanted.enabled": defineSetting(z.boolean(), true, "Модуль розыска включён"),
   "wanted.channelId": defineSetting(
     snowflakeSchema.nullable(),
     null,
     "Канал на сервере ЧП для публикации розысков",
+  ),
+  "wanted.pingRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли на сервере ЧП: пинг при объявлении федерального розыска",
   ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(

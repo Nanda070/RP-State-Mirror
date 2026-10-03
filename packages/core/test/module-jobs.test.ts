@@ -10,13 +10,16 @@ import {
   enqueueFinePublish,
   enqueueWantedEditClosed,
   enqueueWantedPublish,
+  formatRoleMentions,
   markFinePaid,
   MODULE_JOB_TYPES,
   resolveFactionDocumentDelivery,
+  resolveFactionSeniorRoleId,
   resolveFineDelivery,
   resolveWantedDelivery,
   seedFoundation,
   setSetting,
+  updateFactionDeliverySettings,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
 
@@ -141,6 +144,36 @@ describe("stage 3 delivery + job enqueue", () => {
       kind: "channel",
       guildDiscordId: "200000000000000010",
       channelDiscordId: "300000000000000010",
+    });
+  });
+
+  it("stores and resolves seniorRoleId from faction delivery settings", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    expect(formatRoleMentions(["400000000000000001", "bad"])).toBe("<@&400000000000000001>");
+    expect(await resolveFactionSeniorRoleId("LSPD")).toBeNull();
+
+    const guild = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000011",
+        name: "LSPD Guild",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await updateFactionDeliverySettings(
+      {
+        factionCode: "LSPD",
+        guildDiscordId: guild.discordId,
+        seniorRoleId: "400000000000000011",
+        documentsChannelId: "300000000000000011",
+      },
+      ctx,
+    );
+
+    expect(await resolveFactionSeniorRoleId("LSPD")).toBe("400000000000000011");
+    const faction = await prisma.faction.findUniqueOrThrow({ where: { code: "LSPD" } });
+    expect(faction.settings).toMatchObject({
+      seniorRoleId: "400000000000000011",
+      documentsChannelId: "300000000000000011",
     });
   });
 });

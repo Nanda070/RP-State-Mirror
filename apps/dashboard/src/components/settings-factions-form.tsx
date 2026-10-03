@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { RoleSelect, type RoleSelectOption } from "./role-select";
 
 type FactionRow = {
   code: string;
@@ -14,6 +15,7 @@ type FactionRow = {
     personnelChannelId?: string;
     documentsWebhookUrl?: string;
     personnelWebhookUrl?: string;
+    seniorRoleId?: string;
   };
 };
 
@@ -28,10 +30,12 @@ export function SettingsFactionsForm({
   initialFactions,
   guilds,
   channels,
+  roles,
 }: {
   initialFactions: Array<Omit<FactionRow, "settings"> & { settings: unknown }>;
   guilds: Guild[];
   channels: ChannelOption[];
+  roles: RoleSelectOption[];
 }) {
   const [rows, setRows] = useState<FactionRow[]>(
     initialFactions.map((f) => ({
@@ -58,6 +62,7 @@ export function SettingsFactionsForm({
           personnelChannelId: row.settings.personnelChannelId ?? null,
           documentsWebhookUrl: row.settings.documentsWebhookUrl ?? null,
           personnelWebhookUrl: row.settings.personnelWebhookUrl ?? null,
+          seniorRoleId: row.settings.seniorRoleId ?? null,
         }),
       });
       const data = await res.json();
@@ -90,6 +95,7 @@ export function SettingsFactionsForm({
       personnelChannelId?: string | null;
       documentsWebhookUrl?: string | null;
       personnelWebhookUrl?: string | null;
+      seniorRoleId?: string | null;
     },
   ) {
     setRows((prev) =>
@@ -99,6 +105,7 @@ export function SettingsFactionsForm({
         if (next.clearChannels) {
           delete settings.documentsChannelId;
           delete settings.personnelChannelId;
+          delete settings.seniorRoleId;
         }
         if (next.documentsChannelId !== undefined) {
           if (next.documentsChannelId) settings.documentsChannelId = next.documentsChannelId;
@@ -115,6 +122,10 @@ export function SettingsFactionsForm({
         if (next.personnelWebhookUrl !== undefined) {
           if (next.personnelWebhookUrl) settings.personnelWebhookUrl = next.personnelWebhookUrl;
           else delete settings.personnelWebhookUrl;
+        }
+        if (next.seniorRoleId !== undefined) {
+          if (next.seniorRoleId) settings.seniorRoleId = next.seniorRoleId;
+          else delete settings.seniorRoleId;
         }
         return {
           ...r,
@@ -156,6 +167,23 @@ export function SettingsFactionsForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="field">
+            <label htmlFor={`senior-${row.code}`}>Старший состав (пинг)</label>
+            <RoleSelect
+              id={`senior-${row.code}`}
+              value={row.settings.seniorRoleId ?? ""}
+              onChange={(v) => patchRow(row.code, { seniorRoleId: v || null })}
+              roles={roles}
+              guildDiscordId={row.guildDiscordId}
+              emptyLabel={
+                row.guildDiscordId ? "Не выбрана" : "Сначала привяжите сервер фракции"
+              }
+            />
+            <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+              Роль из снимка Discord на сервере фракции. Упоминается при отправке документов
+              (<code>/пост</code>) и при уведомлении фракции о штрафе.
+            </p>
           </div>
           <div className="field">
             <label htmlFor={`doc-ch-${row.code}`}>Канал документов</label>

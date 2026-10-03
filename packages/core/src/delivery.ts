@@ -13,10 +13,31 @@ export const factionDeliverySettingsSchema = z
     personnelChannelId: snowflakeSchema.optional(),
     documentsWebhookUrl: z.string().url().optional(),
     personnelWebhookUrl: z.string().url().optional(),
+    /** Discord role on the faction guild pinged for documents / faction-bound notices («старший состав»). */
+    seniorRoleId: snowflakeSchema.optional(),
   })
   .passthrough();
 
 export type FactionDeliverySettings = z.infer<typeof factionDeliverySettingsSchema>;
+
+/** Build Discord role mention string; empty if no ids. */
+export function formatRoleMentions(roleIds: readonly string[]): string {
+  return roleIds
+    .filter((id) => /^\d{17,20}$/.test(id))
+    .map((id) => `<@&${id}>`)
+    .join(" ");
+}
+
+/**
+ * Senior staff («старший состав») role for a faction, from faction.settings.seniorRoleId.
+ * Used to ping on document delivery (and faction-side fine notice when configured).
+ */
+export async function resolveFactionSeniorRoleId(factionCode: string): Promise<string | null> {
+  const faction = await factionWithGuild(factionCode);
+  if (!faction) return null;
+  const settings = parseFactionSettings(faction.settings);
+  return settings.seniorRoleId ?? null;
+}
 
 export type DeliveryTarget =
   | {
