@@ -85,7 +85,6 @@ const NAV: NavItem[] = [
     icon: "feedback",
     requiresStaff: true,
   },
-  { href: "/bans", label: "Тех. баны", group: "Администрирование", match: "prefix", icon: "ban", requiresAdmin: true },
   {
     href: "/jobs",
     label: "Очередь задач",
@@ -129,7 +128,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings",
     label: "Настройки",
-    group: "Настройка фракций",
+    group: "Технические настройки",
     match: "exact",
     icon: "settings",
     requiresSystemSettings: true,
@@ -137,7 +136,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/factions",
     label: "Фракции",
-    group: "Настройка фракций",
+    group: "Технические настройки",
     match: "prefix",
     icon: "factions",
     requiresSystemSettings: true,
@@ -145,7 +144,7 @@ const NAV: NavItem[] = [
   {
     href: "/settings/modules",
     label: "Модули",
-    group: "Настройка фракций",
+    group: "Технические настройки",
     match: "prefix",
     icon: "modules",
     requiresSystemSettings: true,
@@ -153,11 +152,12 @@ const NAV: NavItem[] = [
   {
     href: "/settings/sessions",
     label: "Сессии и аудит",
-    group: "Настройка фракций",
+    group: "Технические настройки",
     match: "prefix",
     icon: "sessions",
     requiresSystemSettings: true,
   },
+  { href: "/bans", label: "Тех. баны", group: "Технические настройки", match: "prefix", icon: "ban", requiresAdmin: true },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {

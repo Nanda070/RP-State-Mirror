@@ -411,3 +411,16 @@ describe("audit log archive", () => {
     expect(await prisma.auditLog.count({ where: { entityId: "recent" } })).toBe(0);
   });
 });
+
+describe("settings whose value is an object", () => {
+  it("can be empty: `{}` is a value, not a missing one", async () => {
+    // What the seed writes for a fresh installation, and what saving «no roles» writes.
+    await prisma.systemSetting.create({ data: { key: "adminRoles.byGuild", value: {} } });
+    expect(await getSetting("adminRoles.byGuild")).toEqual({});
+    await setSetting("adminRoles.byGuild", {}, context);
+    expect(await getSetting("adminRoles.byGuild")).toEqual({});
+    // Nullable settings keep the old rule: an empty object stored for them still means «not set».
+    await prisma.systemSetting.create({ data: { key: "monitoring.errorChannelId", value: {} } });
+    expect(await getSetting("monitoring.errorChannelId")).toBeNull();
+  });
+});

@@ -1672,3 +1672,9 @@ a.metric-card[data-alert] .metric-value {
     grid-column: auto;
   }
 }
+
+/* Buttons inside the cookie notice are buttons, not text links. */
+.cookie-banner .cookie-actions a.btn {
+  color: var(--ink);
+  text-decoration: none;
+}

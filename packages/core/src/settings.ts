@@ -285,8 +285,14 @@ async function readSettingValue<K extends SettingKey>(
   }
   if (!row) return definition.defaultValue as SettingValue<K>;
 
-  const decoded = fromJsonValue(row.value);
-  const parsed = definition.schema.safeParse(decoded);
+  let decoded = fromJsonValue(row.value);
+  let parsed = definition.schema.safeParse(decoded);
+  if (!parsed.success && decoded === null && row.value !== null) {
+    // An empty object is read as «null» by the artifact rule above, but for a setting whose value is
+    // an object (role sets by guild) an empty object is a real value: take the stored value as it is.
+    decoded = row.value;
+    parsed = definition.schema.safeParse(decoded);
+  }
   if (!parsed.success) {
     throw parsed.error;
   }
