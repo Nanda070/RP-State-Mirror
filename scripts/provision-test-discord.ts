@@ -569,19 +569,24 @@ async function main() {
   const wantedChannelId = cp?.channels["федеральный розыск"] ?? null;
   const finesChannelId = cp?.channels["Пост"] ?? null;
   const logChannelId = cp?.channels["Логи"] ?? null;
-  const pingRoleId = cp?.roles["Фракция"] ?? null;
+  // Wanted pings: per-faction roles on ЧП (all except WN). No shared «Фракция».
+  const wantedPingRoleIds = factions
+    .filter((f) => f.code.toUpperCase() !== "WN")
+    .map((f) => cp?.roles[f.code])
+    .filter((id): id is string => Boolean(id));
   const coordinatorRoleId = cp?.roles["Координатор"] ?? null;
 
   await setSetting("wanted.channelId", wantedChannelId, CTX);
   await setSetting("wanted.enabled", true, CTX);
-  await setSetting("wanted.pingRoleIds", pingRoleId ? [pingRoleId] : [], CTX);
+  // Informational / dashboard snapshot; bot resolves pings dynamically (except WN).
+  await setSetting("wanted.pingRoleIds", wantedPingRoleIds, CTX);
   await setSetting(
     "wanted.coordinatorRoleIds",
     coordinatorRoleId ? [coordinatorRoleId] : [],
     CTX,
   );
   await setSetting("fines.channelId", finesChannelId, CTX);
-  await setSetting("fines.pingRoleIds", pingRoleId ? [pingRoleId] : [], CTX);
+  await setSetting("fines.pingRoleIds", [], CTX);
   await setSetting("cp.syncEnabled", true, CTX);
   await setSetting("cp.logChannelId", logChannelId, CTX);
   await setSetting("cp.excludedRoleIds", [], CTX);
@@ -609,10 +614,10 @@ async function main() {
       "core.mainGuildId": mainGuild?.id ?? null,
       "core.incidentGuildId": INCIDENT_GUILD_ID,
       "wanted.channelId": wantedChannelId,
-      "wanted.pingRoleIds": pingRoleId ? [pingRoleId] : [],
+      "wanted.pingRoleIds": wantedPingRoleIds,
       "wanted.coordinatorRoleIds": coordinatorRoleId ? [coordinatorRoleId] : [],
       "fines.channelId": finesChannelId,
-      "fines.pingRoleIds": pingRoleId ? [pingRoleId] : [],
+      "fines.pingRoleIds": [],
       "cp.syncEnabled": true,
       "cp.logChannelId": logChannelId,
       "cp.excludedRoleIds": [],

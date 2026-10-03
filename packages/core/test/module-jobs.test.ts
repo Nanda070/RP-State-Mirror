@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { AuditActorType, JobStatus, RecordStatus } from "@mirror/db";
+import { AuditActorType, JobStatus, RecordStatus, RoleMappingKind } from "@mirror/db";
 import {
   createDocument,
   createFine,
@@ -22,6 +22,7 @@ import {
   resolveFineDelivery,
   resolveFinePaidDelivery,
   resolveWantedDelivery,
+  resolveWantedPingRoleIds,
   sameDeliveryChannel,
   seedFoundation,
   setSetting,
@@ -245,6 +246,86 @@ describe("stage 3 delivery + job enqueue", () => {
     });
     expect(sameDeliveryChannel(replyTarget, localTarget)).toBe(false);
     expect(replyTarget).not.toEqual(await resolveFactionDocumentDelivery("LSPD"));
+  });
+
+  it("resolves wanted ping roles for all ЧП factions except WN", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    expect(await resolveWantedPingRoleIds()).toEqual([]);
+
+    const incident = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000099",
+        name: "ЧП",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await setSetting("core.incidentGuildId", incident.discordId, ctx);
+
+    const roleSpecs = [
+      { code: "GOV", discordId: "400000000000000001" },
+      { code: "LSPD", discordId: "400000000000000002" },
+      { code: "WN", discordId: "400000000000000003" },
+      { code: "SHARED", discordId: "400000000000000004", name: "Фракция" },
+    ] as const;
+
+    for (const spec of roleSpecs) {
+      await prisma.discordRole.create({
+        data: {
+          discordId: spec.discordId,
+          guildId: incident.id,
+          name: "name" in spec ? spec.name : spec.code,
+          status: RecordStatus.ACTIVE,
+        },
+      });
+    }
+
+    for (const code of ["GOV", "LSPD", "WN"] as const) {
+      const faction = await prisma.faction.findUniqueOrThrow({ where: { code } });
+      const roleDiscordId =
+        code === "GOV"
+          ? "400000000000000001"
+          : code === "LSPD"
+            ? "400000000000000002"
+            : "400000000000000003";
+      await prisma.roleMapping.create({
+        data: {
+          guildId: incident.id,
+          roleDiscordId,
+          kind: RoleMappingKind.FACTION_MEMBER,
+          value: "true",
+          factionId: faction.id,
+          status: RecordStatus.ACTIVE,
+        },
+      });
+    }
+
+    // FIB only has the shared «Фракция» mapping — should fall back to role named FIB.
+    const fib = await prisma.faction.findUniqueOrThrow({ where: { code: "FIB" } });
+    await prisma.discordRole.create({
+      data: {
+        discordId: "400000000000000005",
+        guildId: incident.id,
+        name: "FIB",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await prisma.roleMapping.create({
+      data: {
+        guildId: incident.id,
+        roleDiscordId: "400000000000000004",
+        kind: RoleMappingKind.FACTION_MEMBER,
+        value: "FIB",
+        factionId: fib.id,
+        status: RecordStatus.ACTIVE,
+      },
+    });
+
+    const pingIds = await resolveWantedPingRoleIds();
+    expect(pingIds).toContain("400000000000000001"); // GOV
+    expect(pingIds).toContain("400000000000000002"); // LSPD
+    expect(pingIds).toContain("400000000000000005"); // FIB fallback by name
+    expect(pingIds).not.toContain("400000000000000003"); // WN excluded
+    expect(pingIds).not.toContain("400000000000000004"); // shared Фракция skipped
   });
 
   it("stores and resolves seniorRoleId / ping role from faction delivery settings", async () => {

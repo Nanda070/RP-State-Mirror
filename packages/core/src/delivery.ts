@@ -281,6 +281,97 @@ export async function resolveWantedDelivery(): Promise<DeliveryTarget> {
 }
 
 /**
+ * Faction codes never mentioned on federal wanted announcements (ЧП).
+ * WN (Weazel News) is media, not a state agency for розыск pings.
+ */
+export const WANTED_PING_EXCLUDED_FACTION_CODES = ["WN"] as const;
+
+const SHARED_FACTION_ROLE_NAME = "фракция";
+
+/**
+ * Roles to ping when publishing federal wanted on ЧП.
+ * All ACTIVE factions' FACTION_MEMBER roles on the incident guild, except WN.
+ * Skips the legacy shared «Фракция» role; falls back to a role named like the
+ * faction code (LSPD → @LSPD) when needed.
+ */
+export async function resolveWantedPingRoleIds(): Promise<string[]> {
+  const incidentGuildDiscordId = await getSetting("core.incidentGuildId");
+  if (!incidentGuildDiscordId) return [];
+
+  const incidentGuild = await prisma.guild.findFirst({
+    where: { discordId: incidentGuildDiscordId, status: RecordStatus.ACTIVE },
+    select: { id: true },
+  });
+  if (!incidentGuild) return [];
+
+  const excluded = new Set(
+    WANTED_PING_EXCLUDED_FACTION_CODES.map((code) => code.toUpperCase()),
+  );
+
+  const factions = await prisma.faction.findMany({
+    where: { status: RecordStatus.ACTIVE },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    select: { id: true, code: true },
+  });
+
+  const roleIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const faction of factions) {
+    const code = faction.code.toUpperCase();
+    if (excluded.has(code)) continue;
+
+    const mappings = await prisma.roleMapping.findMany({
+      where: {
+        status: RecordStatus.ACTIVE,
+        kind: RoleMappingKind.FACTION_MEMBER,
+        factionId: faction.id,
+        guildId: incidentGuild.id,
+      },
+      select: { roleDiscordId: true },
+    });
+
+    let addedFromMapping = false;
+    if (mappings.length > 0) {
+      const mappedRoles = await prisma.discordRole.findMany({
+        where: {
+          discordId: { in: mappings.map((m) => m.roleDiscordId) },
+          status: RecordStatus.ACTIVE,
+        },
+        select: { discordId: true, name: true },
+      });
+      const byId = new Map(mappedRoles.map((r) => [r.discordId, r]));
+      for (const mapping of mappings) {
+        const role = byId.get(mapping.roleDiscordId);
+        if (!role) continue;
+        if (role.name.trim().toLowerCase() === SHARED_FACTION_ROLE_NAME) continue;
+        if (seen.has(role.discordId)) continue;
+        seen.add(role.discordId);
+        roleIds.push(role.discordId);
+        addedFromMapping = true;
+      }
+    }
+
+    if (addedFromMapping) continue;
+
+    const byCodeName = await prisma.discordRole.findFirst({
+      where: {
+        guildId: incidentGuild.id,
+        status: RecordStatus.ACTIVE,
+        name: { equals: code, mode: "insensitive" },
+      },
+      select: { discordId: true },
+    });
+    if (byCodeName && !seen.has(byCodeName.discordId)) {
+      seen.add(byCodeName.discordId);
+      roleIds.push(byCodeName.discordId);
+    }
+  }
+
+  return roleIds;
+}
+
+/**
  * Primary `/штраф` publish: selected faction's documents channel (same as `/пост`).
  * Does **not** use `fines.channelId` on ЧП.
  */

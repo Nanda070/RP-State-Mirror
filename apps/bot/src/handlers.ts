@@ -32,6 +32,7 @@ import {
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFactionPingRoleId,
+  resolveWantedPingRoleIds,
   resolveFineDelivery,
   resolveFinePaidDelivery,
   resolveWantedDelivery,
@@ -312,7 +313,8 @@ const wantedPublish: JobHandler = async (payload, { client, log }) => {
   if (!wanted) throw new Error(`Wanted ${wantedId} not found`);
 
   const target = await resolveWantedDelivery();
-  const pingRoleIds = await getSetting("wanted.pingRoleIds");
+  // Ping every ЧП faction role except WN — not the legacy shared «Фракция» role.
+  const pingRoleIds = await resolveWantedPingRoleIds();
   const content = formatRoleMentions(pingRoleIds);
   const actor = await resolveAuthor(client, wanted.issuedByDiscordId);
 

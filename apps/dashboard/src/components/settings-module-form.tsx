@@ -93,7 +93,6 @@ export function SettingsWantedForm({
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [channelId, setChannelId] = useState(initialChannelId ?? "");
-  const [pingRoleIds, setPingRoleIds] = useState<string[]>(initialPingRoleIds);
   const [coordinatorRoleIds, setCoordinatorRoleIds] = useState<string[]>(initialCoordinatorRoleIds);
   return (
     <ModuleSettingsForm
@@ -101,7 +100,6 @@ export function SettingsWantedForm({
       fields={[
         { key: "wanted.enabled", value: enabled },
         { key: "wanted.channelId", value: channelId.trim() || null },
-        { key: "wanted.pingRoleIds", value: pingRoleIds },
         { key: "wanted.coordinatorRoleIds", value: coordinatorRoleIds },
       ]}
     >
@@ -154,21 +152,18 @@ export function SettingsWantedForm({
         />
       </div>
       <div className="field">
-        <span className="field-label">Роли для пинга при объявлении</span>
-        <RolePingPicker
-          roles={roles}
-          selected={pingRoleIds}
-          onToggle={(roleId) =>
-            setPingRoleIds((prev) =>
-              prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
-            )
-          }
-          emptyHint={
-            incidentGuildId
-              ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
-              : "Сначала задайте сервер ЧП"
-          }
-        />
+        <span className="field-label">Пинг при объявлении розыска</span>
+        <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+          Автоматически тегаются все фракционные роли на сервере ЧП{" "}
+          <strong>кроме WN</strong>. Общей роли «Фракция» нет — пинг строится из
+          привязок FACTION_MEMBER (или роли с именем кода фракции).
+        </p>
+        {initialPingRoleIds.length > 0 ? (
+          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+            Снимок provision/настроек (информативно): {initialPingRoleIds.length}{" "}
+            ролей. Бот пересчитывает список при каждой публикации.
+          </p>
+        ) : null}
       </div>
     </ModuleSettingsForm>
   );

@@ -48,7 +48,7 @@ export const settingDefinitions = {
   "wanted.pingRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],
-    "Роли на сервере ЧП: пинг при объявлении федерального розыска",
+    "Устарело: пинг розыска берётся из фракционных ролей на ЧП (все кроме WN)",
   ),
   "wanted.coordinatorRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
