@@ -316,6 +316,17 @@ export const webhookRequestCommand = new SlashCommandBuilder()
   .addChannelOption((o) => o.setName("канал").setDescription("Канал для вебхука").setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
   .addStringOption((o) => o.setName("описание").setDescription("Для чего нужна форма").setRequired(true).setMaxLength(2000));
 
+export const vehicleRequestCommand = new SlashCommandBuilder()
+  .setName("запрос-тс")
+  .setDescription("Попросить администрацию заспавнить транспорт")
+  .addStringOption((o) => o.setName("причина").setDescription("Зачем нужен транспорт").setRequired(true).setMaxLength(500))
+  .addStringOption((o) =>
+    o.setName("модель").setDescription("Модель: начните вводить название").setRequired(true).setAutocomplete(true).setMaxLength(40),
+  )
+  .addStringOption((o) =>
+    o.setName("время").setDescription("Когда нужен транспорт, например «сегодня 20:00 МСК»").setRequired(true).setMaxLength(100),
+  );
+
 export const blacklistAddCommand = new SlashCommandBuilder()
   .setName("чс-гос")
   .setDescription("Добавить гражданина в IC чёрный список правительства штата")
@@ -383,6 +394,7 @@ export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   uniformRegistrationCommand.toJSON(),
   transferCommand.toJSON(),
   webhookRequestCommand.toJSON(),
+  vehicleRequestCommand.toJSON(),
   blacklistAddCommand.toJSON(),
   blacklistRemoveCommand.toJSON(),
   blacklistFindCommand.toJSON(),

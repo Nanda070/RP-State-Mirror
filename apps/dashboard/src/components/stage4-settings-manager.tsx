@@ -16,6 +16,8 @@ export type Stage4SettingsValues = {
   "transfers.pingRoleIds": string[];
   "transfers.approvalDmText": string;
   "transfers.pendingTtlDays": number;
+  "vehicleRequests.channelId": string | null;
+  "vehicleRequests.pingRoleIds": string[];
   "webhooks.notifyChannelId": string | null;
   "feedback.notifyChannelId": string | null;
   "feedback.categories": string[];
@@ -34,6 +36,7 @@ export type ModuleTabId =
   | "transfers"
   | "icBlacklist"
   | "tokens"
+  | "vehicleRequests"
   | "webhooks"
   | "feedback"
   | "invites";
@@ -44,6 +47,7 @@ export function Stage4SettingsManager({
   channels,
   incidentRoles,
   govRoles,
+  allRoles,
   guilds,
   incidentGuildId,
   govGuildId,
@@ -55,6 +59,8 @@ export function Stage4SettingsManager({
   channels: ChannelOption[];
   incidentRoles: RoleChipOption[];
   govRoles: RoleChipOption[];
+  /** Roles of every connected server: a module that is not tied to the ЧП server picks from its own. */
+  allRoles: Array<RoleChipOption & { guildDiscordId: string }>;
   guilds: Array<{ discordId: string; name: string }>;
   incidentGuildId: string | null;
   govGuildId: string | null;
@@ -85,6 +91,7 @@ export function Stage4SettingsManager({
             "registrations.vehicleChannelId": values["registrations.vehicleChannelId"] || null,
             "registrations.uniformChannelId": values["registrations.uniformChannelId"] || null,
             "transfers.channelId": values["transfers.channelId"] || null,
+            "vehicleRequests.channelId": values["vehicleRequests.channelId"] || null,
             "webhooks.notifyChannelId": values["webhooks.notifyChannelId"] || null,
             "feedback.notifyChannelId": values["feedback.notifyChannelId"] || null,
             "feedback.categories": (values["feedback.categories"] ?? []).map((line) => line.trim()).filter(Boolean),
@@ -103,6 +110,8 @@ export function Stage4SettingsManager({
   }
 
   const channelEmpty = incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП";
+  const vehicleRequestGuildId = channels.find((channel) => channel.discordId === values["vehicleRequests.channelId"])?.guildDiscordId;
+  const vehicleRequestRoles = vehicleRequestGuildId ? allRoles.filter((role) => role.guildDiscordId === vehicleRequestGuildId) : [];
   const incidentRolesEmpty = incidentGuildId
     ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
     : "Сначала задайте сервер ЧП";
@@ -307,6 +316,36 @@ export function Stage4SettingsManager({
               channels={channels}
               initialOpenMessage={tokenOpenMessage}
             />
+          </>
+        ) : null}
+
+        {tab === "vehicleRequests" ? (
+          <>
+            <h2 className="panel-title">Запрос ТС — куда приходит</h2>
+            <label className="field">
+              <span>Канал</span>
+              <ChannelSelect
+                id="vehicle-requests-channel"
+                value={values["vehicleRequests.channelId"] ?? ""}
+                onChange={(next) => {
+                  // Roles are mentioned on the channel's own server: a change of server drops the old choice.
+                  const guildOf = (id: string) => channels.find((channel) => channel.discordId === id)?.guildDiscordId;
+                  if (guildOf(next) !== guildOf(values["vehicleRequests.channelId"] ?? "")) patch("vehicleRequests.pingRoleIds", []);
+                  patch("vehicleRequests.channelId", next || null);
+                }}
+                channels={channels}
+                emptyLabel="Выберите канал"
+              />
+            </label>
+            <div className="field">
+              <span className="field-label">Кого упоминать</span>
+              <RoleChipPicker
+                roles={vehicleRequestRoles}
+                selected={values["vehicleRequests.pingRoleIds"]}
+                onChange={(next) => patch("vehicleRequests.pingRoleIds", next)}
+                emptyHint={values["vehicleRequests.channelId"] ? "У сервера этого канала нет ролей в снимке." : "Сначала выберите канал."}
+              />
+            </div>
           </>
         ) : null}
 

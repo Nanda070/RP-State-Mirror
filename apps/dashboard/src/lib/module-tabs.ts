@@ -6,6 +6,7 @@ export const MODULE_TABS = [
   { id: "transfers", label: "Переводы", icon: "swap" },
   { id: "icBlacklist", label: "IC ЧС", icon: "ban" },
   { id: "tokens", label: "Нашивки", icon: "tag" },
+  { id: "vehicleRequests", label: "Запрос ТС", icon: "key" },
   { id: "webhooks", label: "Вебхуки", icon: "hook" },
   { id: "feedback", label: "Обратная связь", icon: "chat" },
   { id: "invites", label: "Приглашения", icon: "link" },

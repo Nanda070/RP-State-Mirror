@@ -5,6 +5,7 @@ import type { Stage4SettingsValues } from "@/components/stage4-settings-manager"
 import {
   getActiveChannelOptions,
   getActiveGuildOptions,
+  getActiveRoleOptions,
   getRolesForGuild,
 } from "@/lib/catalog";
 import { moduleTab } from "@/lib/module-tabs";
@@ -34,6 +35,8 @@ export default async function ModulesSettingsPage({
       "transfers.pingRoleIds",
       "transfers.approvalDmText",
       "transfers.pendingTtlDays",
+      "vehicleRequests.channelId",
+      "vehicleRequests.pingRoleIds",
       "webhooks.notifyChannelId",
       "feedback.notifyChannelId",
       "feedback.categories",
@@ -55,6 +58,7 @@ export default async function ModulesSettingsPage({
     getActiveChannelOptions(),
     getActiveGuildOptions(),
   ]);
+  const allRoles = await getActiveRoleOptions();
 
   const incidentGuildId = settings["core.incidentGuildId"];
   const govFaction = await prisma.faction.findFirst({
@@ -84,6 +88,8 @@ export default async function ModulesSettingsPage({
     "transfers.pingRoleIds": settings["transfers.pingRoleIds"],
     "transfers.approvalDmText": settings["transfers.approvalDmText"] ?? "",
     "transfers.pendingTtlDays": settings["transfers.pendingTtlDays"],
+    "vehicleRequests.channelId": settings["vehicleRequests.channelId"],
+    "vehicleRequests.pingRoleIds": settings["vehicleRequests.pingRoleIds"],
     "webhooks.notifyChannelId": settings["webhooks.notifyChannelId"],
     "feedback.notifyChannelId": settings["feedback.notifyChannelId"],
     "feedback.categories": settings["feedback.categories"],
@@ -118,6 +124,7 @@ export default async function ModulesSettingsPage({
           channels: channelOptions,
           incidentRoles,
           govRoles,
+          allRoles: allRoles.map((role) => ({ discordId: role.discordId, name: role.name, guildDiscordId: role.guild.discordId })),
           guilds: guilds.map((g) => ({ discordId: g.discordId, name: g.name })),
           incidentGuildId,
           govGuildId,

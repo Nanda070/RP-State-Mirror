@@ -106,10 +106,7 @@ chmod 600 "$ENV_FILE"
 say "База данных, хранилище файлов и резервные копии (Docker)"
 (cd "$APP_ROOT" && docker compose up -d --build)
 echo "Жду готовности PostgreSQL…"
-for _ in $(seq 1 30); do
-  (cd "$APP_ROOT" && docker compose exec -T postgres pg_isready -U mirror -d mirror >/dev/null 2>&1) && break
-  sleep 2
-done
+wait_for_postgres || die "база данных не ответила за 2 минуты (docker compose logs postgres)"
 
 say "Зависимости, миграции базы, сборка"
 as_app "pnpm install --frozen-lockfile"

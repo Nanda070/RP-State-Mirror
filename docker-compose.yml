@@ -2,6 +2,18 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Durability (fsync) stays on: this is the real data. The settings below keep one stuck client
+    # from holding the others up and put slow work into the log:
+    #  - a transaction left open and idle for a minute is ended, so its locks cannot block the rest;
+    #  - queries over a second, lock waits and checkpoints are logged (docker compose logs postgres).
+    command: >
+      postgres
+      -c idle_in_transaction_session_timeout=60000
+      -c log_min_duration_statement=1000
+      -c log_lock_waits=on
+      -c log_checkpoints=on
+    # Room for parallel queries; Docker's default of 64 MB is too little.
+    shm_size: 256mb
     environment:
       POSTGRES_DB: mirror
       POSTGRES_USER: mirror

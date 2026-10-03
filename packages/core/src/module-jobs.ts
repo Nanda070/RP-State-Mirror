@@ -33,6 +33,7 @@ export const MODULE_JOB_TYPES = {
   FORM_OPEN_PUBLISH: "form.open_publish",
   TOKEN_RECEIVE_PUBLISH: "token.receive_publish",
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
+  VEHICLE_REQUEST_SEND: "vehicle_request.send",
   IC_BLACKLIST_PUBLISH: "ic_blacklist.publish",
   IC_BLACKLIST_EDIT_CLOSED: "ic_blacklist.edit_closed",
   ADMIN_ROLES_APPLY: "admin_roles.apply",

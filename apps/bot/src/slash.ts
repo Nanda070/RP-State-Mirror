@@ -51,6 +51,8 @@ import {
   getDocumentByNumber,
   getSetting,
   listActiveFactionsForAutocomplete,
+  createVehicleRequest,
+  searchRageVehicles,
   listInviteGuilds,
   findFactionOverlaps,
   markFinePaid,
@@ -269,6 +271,15 @@ export async function handleFactionAutocomplete(interaction: AutocompleteInterac
       );
       return;
     }
+    if (focused.name === "модель") {
+      await interaction.respond(
+        searchRageVehicles(String(focused.value ?? "")).map((vehicle) => ({
+          name: `${vehicle.model} · ${vehicle.category}`,
+          value: vehicle.model,
+        })),
+      );
+      return;
+    }
     if (!FACTION_AUTOCOMPLETE_OPTIONS.has(focused.name)) {
       await interaction.respond([]);
       return;
@@ -328,6 +339,9 @@ export async function handleSlashCommand(
         break;
       case "создать-вебхук":
         await handleWebhookRequest(interaction, ctx);
+        break;
+      case "запрос-тс":
+        await handleVehicleRequest(interaction, ctx);
         break;
       case "чс-гос":
       case "снятие-чс-гос":
@@ -531,6 +545,27 @@ async function handleTransfer(interaction: ChatInputCommandInteraction, ctx: Sla
     await archiveOrphanMedia(interaction, [photo.id], ctx);
     throw error;
   }
+}
+
+/** A request to spawn a vehicle: checked and queued here, posted to the admins' channel by the worker. */
+async function handleVehicleRequest(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  if (!isStaff(identity)) {
+    await interaction.editReply("Запрос транспорта доступен сотрудникам фракций и администраторам.");
+    return;
+  }
+  const request = await createVehicleRequest(
+    {
+      requesterDiscordId: interaction.user.id,
+      guildDiscordId: interaction.guildId,
+      model: interaction.options.getString("модель", true),
+      reason: interaction.options.getString("причина", true),
+      time: interaction.options.getString("время", true),
+    },
+    auditFromInteraction(interaction),
+  );
+  await interaction.editReply(`Запрос отправлен администрации: **${request.model}** (${request.category}), время — ${request.time}.`);
 }
 
 async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {

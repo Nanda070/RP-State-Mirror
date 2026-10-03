@@ -33,6 +33,7 @@ import {
   getSetting,
   wantsDm,
   type DmKind,
+  type VehicleRequestPayload,
   makeCompactAuditEmbed,
   makeDocumentEmbed,
   makeFineEmbed,
@@ -1625,6 +1626,41 @@ const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", dm, requestId, requestStatus: request.status };
 };
 
+/** Posts a request to spawn a vehicle into the channel from the settings and pings the chosen roles. */
+const vehicleRequestSend: JobHandler = async (payload, { client, log, job }) => {
+  const request = payload as unknown as VehicleRequestPayload;
+  const channelId = await getSetting("vehicleRequests.channelId");
+  if (!channelId) return { status: "deferred", reason: "vehicleRequests.channelId is not configured" };
+
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased() || channel.isDMBased() || !("send" in channel)) {
+    throw new Error(`Канал запросов ТС ${channelId} недоступен`);
+  }
+  const roleIds = await getSetting("vehicleRequests.pingRoleIds");
+  const embed: ClassicEmbed = {
+    type: "embed",
+    title: "Запрос на спавн транспорта",
+    color: 0xff6a1a,
+    fields: [
+      { name: "Модель", value: `\`${request.model}\` · ${request.category}`, inline: true },
+      { name: "Время", value: request.time, inline: true },
+      { name: "Заявитель", value: `<@${request.requesterDiscordId}>`, inline: true },
+      { name: "Причина", value: request.reason },
+    ],
+    timestamp: true,
+  };
+  const posted = await runOnce(job, "post", log, async () => {
+    const message = await channel.send({
+      ...(roleIds.length > 0 ? { content: `${formatRoleMentions(roleIds)} нужно заспавнить транспорт.` } : {}),
+      embeds: [classicToEmbed(embed)],
+      allowedMentions: { parse: [], roles: [...roleIds], users: [request.requesterDiscordId] },
+    });
+    return { id: message.id };
+  });
+  log.info({ model: request.model, messageId: posted.id }, "vehicle request posted");
+  return { status: "sent", messageId: posted.id };
+};
+
 const formSubmissionDeliver: JobHandler = async (payload, { client, log, job }) => {
   const submissionId = String(payload.submissionId ?? "");
   const submission = await prisma.formSubmission.findUnique({
@@ -1741,6 +1777,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, formOpenPublish],
   [MODULE_JOB_TYPES.TOKEN_RECEIVE_PUBLISH, tokenReceivePublish],
   [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],
+  [MODULE_JOB_TYPES.VEHICLE_REQUEST_SEND, vehicleRequestSend],
   [MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, icBlacklistPublish],
   [MODULE_JOB_TYPES.IC_BLACKLIST_EDIT_CLOSED, icBlacklistEditClosed],
   [MODULE_JOB_TYPES.ADMIN_ROLES_APPLY, adminRolesApply],

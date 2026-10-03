@@ -121,6 +121,16 @@ export const settingDefinitions = {
     "Ваш перевод одобрен обеими сторонами. Можете подойти в холл на собеседование.",
     "Текст ЛС игроку после одобрения перевода обеими фракциями",
   ),
+  "vehicleRequests.channelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал, куда бот отправляет запросы на спавн ТС (/запрос-тс)",
+  ),
+  "vehicleRequests.pingRoleIds": defineSetting(
+    z.array(snowflakeSchema).max(10).default([]),
+    [],
+    "Роли, которые бот упоминает в запросе на спавн ТС (роли того же сервера, что и канал)",
+  ),
   "webhooks.notifyChannelId": defineSetting(
     snowflakeSchema.nullable(),
     null,

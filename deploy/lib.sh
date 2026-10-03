@@ -10,6 +10,17 @@ say() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'ВНИМАНИЕ: %s\n' "$*" >&2; }
 die() { printf 'ОШИБКА: %s\n' "$*" >&2; exit 1; }
 
+# Waits until PostgreSQL in Docker accepts connections. A changed service definition recreates the
+# container, and the next step (migrations) must not start before the database is back.
+wait_for_postgres() {
+  local attempt
+  for attempt in $(seq 1 60); do
+    (cd "$APP_ROOT" && docker compose exec -T postgres pg_isready -U mirror -d mirror >/dev/null 2>&1) && return 0
+    sleep 2
+  done
+  return 1
+}
+
 require_root() {
   [[ "$(id -u)" -eq 0 ]] || die "Запустите через sudo."
 }

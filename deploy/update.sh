@@ -49,6 +49,7 @@ build_and_migrate() {
 
   step "База данных и хранилище (Docker)"
   (cd "$APP_ROOT" && docker compose up -d --build)
+  wait_for_postgres || die "база данных не ответила за 2 минуты (docker compose logs postgres)"
 
   step "Клиент базы данных"
   as_app "pnpm db:generate"
