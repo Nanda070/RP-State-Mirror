@@ -25,8 +25,10 @@ type Sent = {
 
 type Guild = { discordId: string; name: string };
 type Role = { discordId: string; name: string; guildDiscordId: string };
+type FormOption = { id: string; name: string };
 
 type ButtonStyle = NonNullable<V2Button["style"]>;
+type ModuleAction = "form.open" | "feedback.open" | "token.receive";
 
 const EMPTY_PANEL: EmbedSpecV1 = {
   version: 1,
@@ -67,12 +69,14 @@ export function ButtonManager({
   guilds,
   channels,
   roles,
+  forms = [],
 }: {
   initialDesigns: Design[];
   initialSent: Sent[];
   guilds: Guild[];
   channels: ChannelOption[];
   roles: Role[];
+  forms?: FormOption[];
 }) {
   const [designs, setDesigns] = useState(initialDesigns);
   const [sent, setSent] = useState(initialSent);
@@ -87,6 +91,8 @@ export function ButtonManager({
   const [buttonStyle, setButtonStyle] = useState<ButtonStyle>("primary");
   const [allowedRoleIdsRaw, setAllowedRoleIdsRaw] = useState("");
   const [mutualExclusive, setMutualExclusive] = useState(true);
+  const [moduleFormId, setModuleFormId] = useState(forms[0]?.id ?? "");
+  const [moduleLabel, setModuleLabel] = useState("Открыть");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -197,6 +203,55 @@ export function ButtonManager({
     });
     setRowsFromButtons(list);
     setMessage(null);
+  }
+
+  function addModuleButton(action: ModuleAction) {
+    const list = flatButtons(spec);
+    if (list.length >= 25) {
+      setMessage("Максимум 25 кнопок");
+      return;
+    }
+    const label = (moduleLabel.trim() || defaultModuleLabel(action)).slice(0, 80);
+    if (action === "form.open") {
+      if (!moduleFormId) {
+        setMessage("Сначала создайте Discord-форму в настройках Stage 4");
+        return;
+      }
+      list.push({
+        type: "button",
+        label,
+        style: buttonStyle === "link" ? "primary" : buttonStyle,
+        action: "form.open",
+        params: { formId: moduleFormId },
+      });
+    } else {
+      list.push({
+        type: "button",
+        label,
+        style: buttonStyle === "link" ? "primary" : buttonStyle,
+        action,
+        params: {},
+      });
+    }
+    setRowsFromButtons(list);
+    setMessage(null);
+  }
+
+  function defaultModuleLabel(action: ModuleAction): string {
+    if (action === "form.open") return "Заполнить форму";
+    if (action === "feedback.open") return "Обратная связь";
+    return "Получить нашивку";
+  }
+
+  function buttonActionLabel(btn: V2Button): string {
+    if (btn.action === "role.toggle" && typeof btn.params?.roleDiscordId === "string") {
+      return `role.toggle · ${btn.params.roleDiscordId}`;
+    }
+    if (btn.action === "form.open" && typeof btn.params?.formId === "string") {
+      const form = forms.find((f) => f.id === btn.params?.formId);
+      return `form.open · ${form?.name ?? btn.params.formId}`;
+    }
+    return btn.action ?? btn.customId ?? "кнопка";
   }
 
   function removeButton(index: number) {
@@ -498,6 +553,45 @@ export function ButtonManager({
             </p>
           </div>
 
+          <div className="field" style={{ marginTop: "1rem" }}>
+            <label htmlFor="moduleBtnLabel">Служебные кнопки модулей</label>
+            <input
+              id="moduleBtnLabel"
+              value={moduleLabel}
+              onChange={(e) => setModuleLabel(e.target.value)}
+              placeholder="Текст на кнопке"
+            />
+            <div className="row" style={{ gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
+              <select
+                value={moduleFormId}
+                onChange={(e) => setModuleFormId(e.target.value)}
+                disabled={forms.length === 0}
+              >
+                {forms.length === 0 ? (
+                  <option value="">Нет форм</option>
+                ) : (
+                  forms.map((form) => (
+                    <option key={form.id} value={form.id}>
+                      {form.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button type="button" className="btn btn-secondary" onClick={() => addModuleButton("form.open")}>
+                form.open
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => addModuleButton("feedback.open")}>
+                feedback.open
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => addModuleButton("token.receive")}>
+                token.receive
+              </button>
+            </div>
+            <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+              Публикуются так же, как role.toggle: custom_id mirror:&lt;action&gt;:&lt;id&gt; в button_actions.
+            </p>
+          </div>
+
           {buttons.length > 0 ? (
             <ul className="embed-design-list" style={{ marginTop: "0.75rem" }}>
               {buttons.map((btn, index) => (
@@ -505,10 +599,7 @@ export function ButtonManager({
                   <div className="embed-design-item" style={{ cursor: "default" }}>
                     <strong>{btn.label}</strong>
                     <span className="muted">
-                      {btn.style ?? "primary"}
-                      {typeof btn.params?.roleDiscordId === "string"
-                        ? ` · ${btn.params.roleDiscordId}`
-                        : ""}
+                      {btn.style ?? "primary"} · {buttonActionLabel(btn)}
                     </span>
                     <button
                       type="button"

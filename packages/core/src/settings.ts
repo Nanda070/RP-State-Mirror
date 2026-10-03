@@ -90,10 +90,16 @@ export const settingDefinitions = {
     null,
     "Канал уведомлений о новых обращениях обратной связи",
   ),
+  "icBlacklist.enabled": defineSetting(z.boolean(), true, "Модуль IC чёрного списка (/чс-гос) включён"),
+  "icBlacklist.channelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал на сервере ЧП для публикации IC чёрного списка",
+  ),
   "icBlacklist.managerRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],
-    "Роли GOV: добавление и снятие IC чёрного списка",
+    "Роли GOV: добавление и снятие IC чёрного списка (/чс-гос)",
   ),
   "icBlacklist.searchRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),

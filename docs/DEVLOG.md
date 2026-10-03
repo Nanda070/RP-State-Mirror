@@ -1,5 +1,25 @@
 # Mirror: dev blog
 
+## 2026-10-03: этап 4 закрыт — IC ЧС как ордер GOV + хвосты Stage 4
+
+### Изменения
+
+- IC чёрный список переведён на модель федерального розыска:
+  - команды `/чс-гос` и `/снятие-чс-гос` (вместо `/чс-добавить` / `/чс-снять`);
+  - ввод: ФИО, паспорт, причина, ссылка на форум; номер `BL-###` и статус — система;
+  - embed `makeIcBlacklistEmbed` (цвет 15158332), jobs publish/edit_closed, канал `icBlacklist.channelId`;
+  - миграция `20261003100000_ic_blacklist_gov`;
+- button-manager публикует `form.open` / `feedback.open` / `token.receive`;
+- очередь `webhook_requests` в `/settings/stage4` с URL и статусами FORM_BUILT / REJECTED;
+- `/персонаж создать` принимает фракцию и отдел для формата нашивки;
+- реестр IC ЧС в дашборде; docs STAGE_4 / PLAN закрыты.
+
+### Проверка
+
+- `pnpm check` / `pnpm lint` / `pnpm test` / `pnpm db:status`.
+
+Остатки → этап 5 (формы >5 полей, публичный конструктор, role select) и этап 6 (§4.12 admin-роли).
+
 ## 2026-10-03: этап 4 — role panels, feedback, доставка форм (§4.14 gaps)
 
 ### Изменения

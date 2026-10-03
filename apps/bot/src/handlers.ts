@@ -24,6 +24,7 @@ import {
   makeFineEmbed,
   makeFinePaidEmbed,
   makeResponseEmbed,
+  makeIcBlacklistEmbed,
   makeWantedDoneEmbed,
   makeWantedEmbed,
   materializeEmbedSpecButtons,
@@ -33,6 +34,7 @@ import {
   resolveFactionDocumentDelivery,
   resolveFactionPersonnelDelivery,
   resolveFactionPingRoleId,
+  resolveIcBlacklistDelivery,
   resolveWantedPingRoleIds,
   resolveFineDelivery,
   resolveFinePaidDelivery,
@@ -167,6 +169,7 @@ async function persistSend(
     wantedId?: string;
     fineId?: string;
     personnelId?: string;
+    icBlacklistId?: string;
   },
 ) {
   const sent = await recordSentMessage({
@@ -183,6 +186,7 @@ async function persistSend(
       wantedId: link.wantedId ?? null,
       fineId: link.fineId ?? null,
       personnelId: link.personnelId ?? null,
+      icBlacklistId: link.icBlacklistId ?? null,
     },
   });
   return sent;
@@ -191,6 +195,14 @@ async function persistSend(
 async function findLinkedMessage(wantedId: string) {
   return prisma.sentMessageLink.findFirst({
     where: { wantedId },
+    include: { sentMessage: true },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+async function findLinkedIcBlacklistMessage(entryId: string) {
+  return prisma.sentMessageLink.findFirst({
+    where: { icBlacklistId: entryId },
     include: { sentMessage: true },
     orderBy: { createdAt: "desc" },
   });
@@ -433,6 +445,76 @@ const wantedEditClosed: JobHandler = async (payload, { client, log }) => {
     await persistSend(doneResult, { wantedId: wanted.id });
   }
   return { status: "sent", wantedNumber: wanted.number, messageId: result.messageId };
+};
+
+const icBlacklistPublish: JobHandler = async (payload, { client, log }) => {
+  const entryId = String(payload.entryId ?? "");
+  const entry = await prisma.icBlacklistEntry.findUnique({ where: { id: entryId } });
+  if (!entry) throw new Error(`IC blacklist ${entryId} not found`);
+
+  const target = await resolveIcBlacklistDelivery();
+  const actor = await resolveAuthor(client, entry.createdByDiscordId);
+  const classic = makeIcBlacklistEmbed({
+    actorUsername: actor.username,
+    actorAvatarUrl: actor.avatarUrl,
+    fio: entry.fullName,
+    passport: entry.staticId,
+    reason: entry.reason,
+    forumLink: entry.forumLink,
+    number: entry.number,
+  });
+  const result = await sendEmbed(client, target, classic, log);
+  if (result.status === "deferred") return result;
+  await persistSend(result, { icBlacklistId: entry.id });
+  return { status: "sent", number: entry.number, messageId: result.messageId };
+};
+
+const icBlacklistEditClosed: JobHandler = async (payload, { client, log }) => {
+  const entryId = String(payload.entryId ?? "");
+  const entry = await prisma.icBlacklistEntry.findUnique({ where: { id: entryId } });
+  if (!entry) throw new Error(`IC blacklist ${entryId} not found`);
+
+  const link = await findLinkedIcBlacklistMessage(entry.id);
+  const issuer = await resolveAuthor(client, entry.createdByDiscordId);
+  let closedByUsername: string | null = null;
+  if (entry.closedByDiscordId) {
+    const closer = await resolveAuthor(client, entry.closedByDiscordId);
+    closedByUsername = closer.username;
+  }
+
+  const classic = makeIcBlacklistEmbed({
+    actorUsername: issuer.username,
+    actorAvatarUrl: issuer.avatarUrl,
+    fio: entry.fullName,
+    passport: entry.staticId,
+    reason: entry.reason,
+    forumLink: entry.forumLink,
+    number: entry.number,
+    closed: true,
+    closeReason: entry.closeReason,
+    closedByUsername,
+  });
+  const embed = classicToEmbed(classic);
+
+  if (link?.sentMessage && link.sentMessage.status === RecordStatus.ACTIVE) {
+    try {
+      const guild = await client.guilds.fetch(link.sentMessage.guildDiscordId);
+      const channel = (await guild.channels.fetch(link.sentMessage.channelDiscordId)) as TextChannel | null;
+      if (channel?.isTextBased()) {
+        const message = await channel.messages.fetch(link.sentMessage.messageDiscordId);
+        await message.edit({ content: "~~IC Черный Список~~", embeds: [embed] });
+        return { status: "edited", number: entry.number, messageId: message.id };
+      }
+    } catch (error) {
+      log.warn({ err: error }, "failed to edit ic blacklist message; publishing new");
+    }
+  }
+
+  const target = await resolveIcBlacklistDelivery();
+  const result = await sendEmbed(client, target, classic, log);
+  if (result.status === "deferred") return result;
+  await persistSend(result, { icBlacklistId: entry.id });
+  return { status: "sent", number: entry.number, messageId: result.messageId };
 };
 
 const finePublish: JobHandler = async (payload, { client, log }) => {
@@ -1062,5 +1144,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND, feedbackReplySend],
   [MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, feedbackClosedSend],
   [MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, formSubmissionDeliver],
+  [MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, icBlacklistPublish],
+  [MODULE_JOB_TYPES.IC_BLACKLIST_EDIT_CLOSED, icBlacklistEditClosed],
 ]);
 

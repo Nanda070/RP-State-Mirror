@@ -17,6 +17,9 @@ export const COLOR_DEFAULT = 0x89_89_a8;
 export const COLOR_RESPONSE = 0x8b_6f_47;
 export const COLOR_WANTED = 0x6e_6b_73;
 export const COLOR_WANTED_DONE = 0x5a_8f_63;
+/** Government IC blacklist publish color (15158332). */
+export const COLOR_IC_BLACKLIST = 15_158_332;
+export const COLOR_IC_BLACKLIST_CLOSED = 0x5a_8f_63;
 export const COLOR_SUCCESS = 0x5a_8f_63;
 export const COLOR_ERROR = 0xa6_4b_4b;
 export const COLOR_FINE = 0xb0_7a_3f;
@@ -238,6 +241,51 @@ export function makeWantedEmbed(input: {
       ...(fields.length > 0 ? { fields } : {}),
       author: {
         name: `Автор: ${input.actorUsername}`,
+        iconUrl: safeAvatarUrl(input.actorAvatarUrl),
+      },
+    },
+    input.now,
+  );
+}
+
+export function makeIcBlacklistEmbed(input: {
+  actorUsername: string;
+  actorAvatarUrl?: string | null;
+  fio: string;
+  passport: string;
+  reason: string;
+  forumLink: string;
+  number: string;
+  closed?: boolean;
+  closeReason?: string | null;
+  closedByUsername?: string | null;
+  now?: Date;
+}): ClassicEmbed {
+  const closed = Boolean(input.closed);
+  const evidence = normalizeLinkOrText(input.forumLink);
+  const lines = [
+    `**Имя Фамилия:** ${input.fio}`,
+    `**Номер Паспорта:** ${input.passport}`,
+    `**Причина:** ${input.reason}`,
+    `**Доказательства:** ${evidence}`,
+    `**Статус:** ${closed ? "Снят" : "Активен"}`,
+    `**Номер:** ${input.number}`,
+  ];
+  if (closed) {
+    lines.push(`**Причина снятия:** ${normalizeLinkOrText(input.closeReason)}`);
+    if (input.closedByUsername) {
+      lines.push(`**Снял:** ${input.closedByUsername}`);
+    }
+  }
+  return withFooter(
+    {
+      title: closed
+        ? "IC Черный Список снят Правительством штата"
+        : "Новый IC Черный Список от Правительства штата",
+      color: closed ? COLOR_IC_BLACKLIST_CLOSED : COLOR_IC_BLACKLIST,
+      description: lines.join("\n"),
+      author: {
+        name: `Издал ордер: ${input.actorUsername}`,
         iconUrl: safeAvatarUrl(input.actorAvatarUrl),
       },
     },

@@ -25,6 +25,8 @@ export const MODULE_JOB_TYPES = {
   FEEDBACK_REPLY_SEND: "feedback.reply_send",
   FEEDBACK_CLOSED_SEND: "feedback.closed_send",
   FORM_SUBMISSION_DELIVER: "form.submission_deliver",
+  IC_BLACKLIST_PUBLISH: "ic_blacklist.publish",
+  IC_BLACKLIST_EDIT_CLOSED: "ic_blacklist.edit_closed",
 } as const;
 
 export type ModuleJobType = (typeof MODULE_JOB_TYPES)[keyof typeof MODULE_JOB_TYPES];
@@ -114,6 +116,20 @@ export function enqueueFeedbackClosedSend(ticketId: string, db?: Db) {
 export function enqueueFormSubmissionDeliver(submissionId: string, db?: Db) {
   return enqueueJob(
     { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, payload: { submissionId } },
+    db,
+  );
+}
+
+export function enqueueIcBlacklistPublish(entryId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, payload: { entryId } },
+    db,
+  );
+}
+
+export function enqueueIcBlacklistEditClosed(entryId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.IC_BLACKLIST_EDIT_CLOSED, payload: { entryId } },
     db,
   );
 }

@@ -76,7 +76,13 @@ export const v2SeparatorSchema = z.object({
   spacing: z.enum(["small", "large"]).optional(),
 });
 
-export const BUTTON_ACTIONS = ["role.toggle", "callback"] as const;
+export const BUTTON_ACTIONS = [
+  "role.toggle",
+  "callback",
+  "form.open",
+  "feedback.open",
+  "token.receive",
+] as const;
 export type ButtonActionName = (typeof BUTTON_ACTIONS)[number];
 
 export const v2ButtonSchema = z.object({

@@ -28,6 +28,7 @@ import {
   createRegistration,
   createTransfer,
   createWebhookRequest,
+  closeIcBlacklistEntry,
   createIcBlacklistEntry,
   findActiveIcBlacklist,
   findTokens,
@@ -66,10 +67,10 @@ import {
   resolveFactionPersonnelDelivery,
   resolveFineDelivery,
   resolveFinePaidDelivery,
+  resolveIcBlacklistDelivery,
   resolveIdentity,
   resolveWantedDelivery,
   revokeToken,
-  revokeIcBlacklistByStatic,
   sameDeliveryChannel,
   updateCharacterStaticId,
   type Identity,
@@ -312,8 +313,8 @@ export async function handleSlashCommand(
       case "создать-webhook":
         await handleWebhookRequest(interaction, ctx);
         break;
-      case "чс-добавить":
-      case "чс-снять":
+      case "чс-гос":
+      case "снятие-чс-гос":
       case "чс-найти":
         await handleIcBlacklist(interaction, ctx);
         break;
@@ -342,16 +343,31 @@ async function handleCharacter(interaction: ChatInputCommandInteraction, ctx: Sl
   const { user } = await ensureUserByDiscordId(interaction.user.id);
   const subcommand = interaction.options.getSubcommand();
   if (subcommand === "создать") {
+    const factionRaw = interaction.options.getString("фракция");
+    const factionCode = factionRaw ? await requireActiveFaction(factionRaw) : undefined;
+    const department = interaction.options.getString("отдел")?.trim() || undefined;
     const character = await createCharacter(
       {
         userId: user.id,
         slot: interaction.options.getInteger("слот", true),
         staticId: interaction.options.getString("статик", true),
         name: interaction.options.getString("имя", true),
+        ...(factionCode ? { factionCode } : {}),
+        ...(department ? { department } : {}),
       },
       auditFromInteraction(interaction),
     );
-    await interaction.reply(ephemeral(`Персонаж **${character.name}** создан. Статик: **${character.staticId}**.`));
+    const extras = [
+      character.factionCode ? `фракция **${character.factionCode}**` : null,
+      character.department ? `отдел **${character.department}**` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    await interaction.reply(
+      ephemeral(
+        `Персонаж **${character.name}** создан. Статик: **${character.staticId}**.${extras ? ` ${extras}.` : ""}`,
+      ),
+    );
     return;
   }
   if (subcommand === "статик") {
@@ -383,8 +399,17 @@ async function handleCharacter(interaction: ChatInputCommandInteraction, ctx: Sl
               const bl = flagged.get(character.staticId);
               return [
                 `${character.slot}. **${character.name}** · статик ${character.staticId}`,
-                token ? `нашивка ${token.number}` : null,
-                bl ? "⚠ в IC чёрном списке" : null,
+                character.factionCode || character.department
+                  ? `${character.factionCode ?? "—"} / ${character.department ?? "—"}`
+                  : null,
+                token
+                  ? `нашивка ${formatTokenDisplay({
+                      factionCode: character.factionCode,
+                      department: character.department,
+                      number: token.number,
+                    })}`
+                  : null,
+                bl ? `⚠ в IC чёрном списке (${bl.number})` : null,
               ]
                 .filter(Boolean)
                 .join(" · ");
@@ -654,7 +679,8 @@ async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ct
 async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   const identity = await loadIdentity(interaction.user.id, ctx);
   const roleIds = interactionRoleIds(interaction);
-  const [managerRoleIds, searchRoleIds] = await Promise.all([
+  const [enabled, managerRoleIds, searchRoleIds] = await Promise.all([
+    getSetting("icBlacklist.enabled"),
     getSetting("icBlacklist.managerRoleIds"),
     getSetting("icBlacklist.searchRoleIds"),
   ]);
@@ -664,73 +690,68 @@ async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: 
       await interaction.reply(ephemeral("Поиск по IC чёрному списку недоступен для вашей роли."));
       return;
     }
-    const entry = await findActiveIcBlacklist(interaction.options.getString("статик", true));
+    const entry = await findActiveIcBlacklist(interaction.options.getString("паспорт", true));
     if (!entry) {
-      await interaction.reply(ephemeral("Активных записей по этому статику нет."));
+      await interaction.reply(ephemeral("Активных записей по этому паспорту нет."));
       return;
     }
-    const until = entry.expiresAt
-      ? entry.expiresAt.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" })
-      : "бессрочно";
     await interaction.reply(
       ephemeral(
         [
-          `**${entry.fullName}** · статик \`${entry.staticId}\``,
+          `**${entry.fullName}** · паспорт \`${entry.staticId}\` · номер **${entry.number}**`,
           `Причина: ${entry.reason}`,
-          `Срок: ${until}`,
+          `Доказательства: ${entry.forumLink}`,
+          `Статус: Активен`,
           `Добавил: <@${entry.createdByDiscordId}>`,
-          entry.evidenceFileIds.length > 0 ? `Доказательства: ${entry.evidenceFileIds.length} файл(ов)` : null,
-        ]
-          .filter(Boolean)
-          .join("\n"),
+        ].join("\n"),
       ),
     );
     return;
   }
 
+  if (!enabled) {
+    await interaction.reply(ephemeral("Модуль IC чёрного списка отключён в настройках."));
+    return;
+  }
   if (!canManageIcBlacklist(identity, roleIds, managerRoleIds)) {
     await interaction.reply(
       ephemeral("Добавлять и снимать IC чёрный список могут администраторы и роли из настроек дашборда."),
     );
     return;
   }
-  if (interaction.commandName === "чс-снять") {
-    await revokeIcBlacklistByStatic(
-      interaction.options.getString("статик", true),
-      interaction.user.id,
-      auditFromInteraction(interaction),
-    );
-    await interaction.reply(ephemeral("Запись снята с IC чёрного списка."));
-    return;
-  }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-  const rawExpiresAt = interaction.options.getString("срок");
-  const expiresAt = rawExpiresAt ? new Date(rawExpiresAt) : null;
-  if (expiresAt && Number.isNaN(expiresAt.getTime())) throw new Error("Срок должен быть датой ISO.");
-  const { user } = await ensureUserByDiscordId(interaction.user.id);
-  const evidence = interaction.options.getAttachment("доказательства");
-  const evidenceIds: string[] = [];
-  if (evidence) {
-    evidenceIds.push((await storeImageAttachment(interaction, evidence, user.id)).id);
-  }
-  try {
-    const entry = await createIcBlacklistEntry(
+
+  if (interaction.commandName === "снятие-чс-гос") {
+    const closed = await closeIcBlacklistEntry(
       {
-        staticId: interaction.options.getString("статик", true),
-        fullName: interaction.options.getString("фио", true),
-        reason: interaction.options.getString("причина", true),
-        expiresAt,
-        createdByDiscordId: interaction.user.id,
-        evidenceFileIds: evidenceIds,
+        number: interaction.options.getString("номер", true),
+        closedByDiscordId: interaction.user.id,
+        closeReason: interaction.options.getString("причина", true),
       },
       auditFromInteraction(interaction),
     );
-    await interaction.editReply(`Гражданин добавлен в IC чёрный список. Запись: \`${entry.id}\`.`);
-  } catch (error) {
-    await archiveOrphanMedia(interaction, evidenceIds, ctx);
-    throw error;
+    const target = await resolveIcBlacklistDelivery();
+    await interaction.editReply(
+      `Запись **${closed.number}** снята с IC чёрного списка.\n${deliveryDeferredMessage(target)}`,
+    );
+    return;
   }
+
+  const entry = await createIcBlacklistEntry(
+    {
+      staticId: interaction.options.getString("паспорт", true),
+      fullName: interaction.options.getString("фио", true),
+      reason: interaction.options.getString("причина", true),
+      forumLink: interaction.options.getString("ссылка_на_форум", true),
+      createdByDiscordId: interaction.user.id,
+    },
+    auditFromInteraction(interaction),
+  );
+  const target = await resolveIcBlacklistDelivery();
+  await interaction.editReply(
+    `Гражданин добавлен в IC чёрный список. Номер: **${entry.number}**.\n${deliveryDeferredMessage(target)}`,
+  );
 }
 
 async function handleCheckFactions(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {

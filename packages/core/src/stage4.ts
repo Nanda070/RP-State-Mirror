@@ -20,6 +20,8 @@ import {
   enqueueFeedbackReplySend,
   enqueueFeedbackTicketNotify,
   enqueueFormSubmissionDeliver,
+  enqueueIcBlacklistEditClosed,
+  enqueueIcBlacklistPublish,
   enqueueRolePanelArchive,
   enqueueRolePanelPublish,
 } from "./module-jobs.js";
@@ -586,28 +588,63 @@ export async function createWebhookRequest(
 export async function setWebhookRequestStatus(
   id: string,
   status: WebhookRequestStatus,
-  webhookUrl: string | null,
+  webhookUrl: string | null | undefined,
   context: AuditContext,
 ) {
   return auditedMutation(context, "webhook_request.updated", "webhook_request", async (tx) => {
     const current = await tx.webhookRequest.findUnique({ where: { id } });
     if (!current) throw new Error("Запрос webhook не найден.");
-    const updated = await tx.webhookRequest.update({ where: { id }, data: { status, webhookUrl } });
+    const updated = await tx.webhookRequest.update({
+      where: { id },
+      data: {
+        status,
+        ...(webhookUrl !== undefined ? { webhookUrl } : {}),
+      },
+    });
     return { entityId: id, before: current, after: updated, result: updated };
   });
 }
 
+export async function listWebhookRequests(filter: { status?: WebhookRequestStatus; limit?: number } = {}) {
+  return prisma.webhookRequest.findMany({
+    ...(filter.status ? { where: { status: filter.status } } : {}),
+    orderBy: { createdAt: "desc" },
+    take: filter.limit ?? 50,
+  });
+}
+
 export const createBlacklistSchema = z.object({
+  /** Passport number (stored as staticId for character matching). */
   staticId: nonEmptyText(32),
   fullName: nonEmptyText(128),
   reason: nonEmptyText(2000),
-  evidenceFileIds: z.array(z.string().min(1)).max(10).default([]),
+  forumLink: nonEmptyText(1000),
   expiresAt: z.coerce.date().nullable().default(null),
   createdByDiscordId: snowflakeLike,
 });
 
+export const closeBlacklistSchema = z.object({
+  number: nonEmptyText(64),
+  closedByDiscordId: snowflakeLike,
+  closeReason: nonEmptyText(2000),
+});
+
 function isActiveBlacklistEntry(entry: { status: RecordStatus; expiresAt: Date | null }, now = new Date()) {
   return entry.status === RecordStatus.ACTIVE && (!entry.expiresAt || entry.expiresAt > now);
+}
+
+/** Next system number BL-001, BL-002, … */
+export async function nextIcBlacklistNumber(db: Db = prisma): Promise<string> {
+  const last = await db.icBlacklistEntry.findFirst({
+    orderBy: { createdAt: "desc" },
+    select: { number: true },
+  });
+  let seq = 1;
+  if (last) {
+    const n = Number.parseInt(last.number.replace(/^BL-/i, ""), 10);
+    if (Number.isFinite(n)) seq = n + 1;
+  }
+  return `BL-${String(seq).padStart(3, "0")}`;
 }
 
 export async function createIcBlacklistEntry(input: z.input<typeof createBlacklistSchema>, context: AuditContext) {
@@ -621,39 +658,83 @@ export async function createIcBlacklistEntry(input: z.input<typeof createBlackli
       orderBy: { createdAt: "desc" },
     });
     if (existing && isActiveBlacklistEntry(existing)) {
-      throw new Error("У этого статика уже есть активная запись IC чёрного списка.");
+      throw new Error("У этого гражданина уже есть активная запись IC чёрного списка.");
     }
-    const entry = await tx.icBlacklistEntry.create({ data });
+    const number = await nextIcBlacklistNumber(tx);
+    const entry = await tx.icBlacklistEntry.create({
+      data: {
+        number,
+        staticId: data.staticId,
+        fullName: data.fullName,
+        reason: data.reason,
+        forumLink: data.forumLink,
+        expiresAt: data.expiresAt,
+        createdByDiscordId: data.createdByDiscordId,
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await enqueueIcBlacklistPublish(entry.id, tx);
     return { entityId: entry.id, after: entry, result: entry };
   });
 }
 
-export async function revokeIcBlacklistEntry(id: string, actorDiscordId: string, context: AuditContext) {
+export async function closeIcBlacklistEntry(input: z.input<typeof closeBlacklistSchema>, context: AuditContext) {
+  const data = closeBlacklistSchema.parse(input);
+  const number = data.number.toUpperCase();
+  return auditedMutation(context, "ic_blacklist.closed", "ic_blacklist", async (tx) => {
+    const current = await tx.icBlacklistEntry.findUnique({ where: { number } });
+    if (!current || current.status !== RecordStatus.ACTIVE) {
+      throw new Error(`Запись ЧС ${number} не найдена или уже снята.`);
+    }
+    const updated = await tx.icBlacklistEntry.update({
+      where: { id: current.id },
+      data: {
+        status: RecordStatus.CLOSED,
+        closedByDiscordId: data.closedByDiscordId,
+        closeReason: data.closeReason,
+      },
+    });
+    await enqueueIcBlacklistEditClosed(updated.id, tx);
+    return { entityId: updated.id, before: current, after: updated, result: updated };
+  });
+}
+
+/** @deprecated Prefer closeIcBlacklistEntry by number. */
+export async function revokeIcBlacklistEntry(
+  id: string,
+  actorDiscordId: string,
+  context: AuditContext,
+  closeReason = "Снято администратором",
+) {
   return auditedMutation(context, "ic_blacklist.revoked", "ic_blacklist", async (tx) => {
     const current = await tx.icBlacklistEntry.findUnique({ where: { id } });
     if (!current || current.status !== RecordStatus.ACTIVE) throw new Error("Запись чёрного списка не найдена.");
     const updated = await tx.icBlacklistEntry.update({
       where: { id },
-      data: { status: RecordStatus.REVOKED, revokedByDiscordId: actorDiscordId },
+      data: {
+        status: RecordStatus.CLOSED,
+        closedByDiscordId: actorDiscordId,
+        closeReason,
+      },
     });
+    await enqueueIcBlacklistEditClosed(updated.id, tx);
     return { entityId: id, before: current, after: updated, result: updated };
   });
 }
 
-export async function revokeIcBlacklistByStatic(
-  staticId: string,
-  actorDiscordId: string,
-  context: AuditContext,
-) {
-  const entry = await prisma.icBlacklistEntry.findFirst({
-    where: { staticId, status: RecordStatus.ACTIVE },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!entry) throw new Error("Активная запись чёрного списка не найдена.");
-  return revokeIcBlacklistEntry(entry.id, actorDiscordId, context);
+export async function getIcBlacklistByNumber(number: string) {
+  return prisma.icBlacklistEntry.findUnique({ where: { number: number.toUpperCase() } });
 }
 
-/** Active (non-expired) IC blacklist row for a static, if any. */
+export async function listIcBlacklistEntries(filter: { status?: RecordStatus; limit?: number } = {}) {
+  return prisma.icBlacklistEntry.findMany({
+    ...(filter.status ? { where: { status: filter.status } } : {}),
+    orderBy: { createdAt: "desc" },
+    take: filter.limit ?? 50,
+  });
+}
+
+/** Active (non-expired) IC blacklist row for a passport/static, if any. */
 export async function findActiveIcBlacklist(staticId: string, now = new Date()) {
   const entry = await prisma.icBlacklistEntry.findFirst({
     where: { staticId, status: RecordStatus.ACTIVE },

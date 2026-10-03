@@ -106,7 +106,7 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/buttons",
       title: "Кнопки",
-      description: "Панели role.toggle / callback и отправка через button_actions.",
+      description: "Панели role.toggle, form.open, feedback.open, token.receive.",
       status: "ready",
       meta: "Отдельный раздел отправки панелей",
     },

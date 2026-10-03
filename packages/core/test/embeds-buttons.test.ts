@@ -81,6 +81,48 @@ describe("embed buttons + designs", () => {
     expect(await prisma.buttonAction.count()).toBe(1);
   });
 
+  it("materializes form.open / feedback.open / token.receive buttons", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    const spec = {
+      version: 1 as const,
+      embeds: [{ type: "embed" as const, title: "Модули" }],
+      components: [
+        {
+          type: "action_row" as const,
+          components: [
+            {
+              type: "button" as const,
+              label: "Форма",
+              style: "primary" as const,
+              action: "form.open" as const,
+              params: { formId: "form1" },
+            },
+            {
+              type: "button" as const,
+              label: "Фидбек",
+              style: "secondary" as const,
+              action: "feedback.open" as const,
+              params: {},
+            },
+            {
+              type: "button" as const,
+              label: "Нашивка",
+              style: "success" as const,
+              action: "token.receive" as const,
+              params: {},
+            },
+          ],
+        },
+      ],
+    };
+    const ready = await materializeEmbedSpecButtons(spec);
+    expect(ready.version).toBe(1);
+    if (ready.version !== 1) return;
+    const labels = (ready.components?.[0]?.components ?? []).map((b) => b.customId?.split(":")[1]);
+    expect(labels).toEqual(["form.open", "feedback.open", "token.receive"]);
+    expect(await prisma.buttonAction.count()).toBe(3);
+  });
+
   it("creates audited message designs", async () => {
     await seedFoundation({ superAdminUserIds: [] });
     const design = await createMessageDesign(

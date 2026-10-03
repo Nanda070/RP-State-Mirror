@@ -250,7 +250,17 @@ export const characterCommand = new SlashCommandBuilder()
       .setDescription("Добавить персонажа")
       .addIntegerOption((o) => o.setName("слот").setDescription("Слот от 1 до 3").setRequired(true).setMinValue(1).setMaxValue(3))
       .addStringOption((o) => o.setName("статик").setDescription("Уникальный статик персонажа").setRequired(true).setMaxLength(32))
-      .addStringOption((o) => o.setName("имя").setDescription("Имя персонажа").setRequired(true).setMaxLength(128)),
+      .addStringOption((o) => o.setName("имя").setDescription("Имя персонажа").setRequired(true).setMaxLength(128))
+      .addStringOption((o) =>
+        o
+          .setName("фракция")
+          .setDescription("Код фракции для формата нашивки (необязательно)")
+          .setMaxLength(32)
+          .setAutocomplete(true),
+      )
+      .addStringOption((o) =>
+        o.setName("отдел").setDescription("Отдел для формата нашивки (необязательно)").setMaxLength(128),
+      ),
   )
   .addSubcommand((sub) => sub.setName("список").setDescription("Показать своих персонажей"))
   .addSubcommand((sub) =>
@@ -323,23 +333,37 @@ export const webhookRequestCommand = new SlashCommandBuilder()
   .addStringOption((o) => o.setName("описание").setDescription("Для чего нужна форма").setRequired(true).setMaxLength(2000));
 
 export const blacklistAddCommand = new SlashCommandBuilder()
-  .setName("чс-добавить")
-  .setDescription("Добавить гражданина в IC чёрный список GOV")
-  .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32))
-  .addStringOption((o) => o.setName("фио").setDescription("ФИО").setRequired(true).setMaxLength(128))
+  .setName("чс-гос")
+  .setDescription("Добавить гражданина в IC чёрный список правительства штата")
+  .addStringOption((o) => o.setName("фио").setDescription("Имя Фамилия").setRequired(true).setMaxLength(128))
+  .addStringOption((o) =>
+    o.setName("паспорт").setDescription("Номер паспорта").setRequired(true).setMaxLength(32),
+  )
   .addStringOption((o) => o.setName("причина").setDescription("Причина").setRequired(true).setMaxLength(2000))
-  .addStringOption((o) => o.setName("срок").setDescription("Дата окончания ISO или пусто для бессрочного").setMaxLength(32))
-  .addAttachmentOption((o) => o.setName("доказательства").setDescription("Фото-доказательства (необязательно)"));
+  .addStringOption((o) =>
+    o
+      .setName("ссылка_на_форум")
+      .setDescription("Доказательства — ссылка на форум")
+      .setRequired(true)
+      .setMaxLength(1000),
+  );
 
 export const blacklistRemoveCommand = new SlashCommandBuilder()
-  .setName("чс-снять")
-  .setDescription("Снять запись гражданина с IC чёрного списка")
-  .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32));
+  .setName("снятие-чс-гос")
+  .setDescription("Снять запись с IC чёрного списка по номеру")
+  .addStringOption((o) =>
+    o.setName("номер").setDescription("Номер записи ЧС, например BL-001").setRequired(true).setMaxLength(64),
+  )
+  .addStringOption((o) =>
+    o.setName("причина").setDescription("Причина снятия").setRequired(true).setMaxLength(2000),
+  );
 
 export const blacklistFindCommand = new SlashCommandBuilder()
   .setName("чс-найти")
-  .setDescription("Найти гражданина в IC чёрном списке")
-  .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32));
+  .setDescription("Найти гражданина в IC чёрном списке по паспорту")
+  .addStringOption((o) =>
+    o.setName("паспорт").setDescription("Номер паспорта / статик").setRequired(true).setMaxLength(32),
+  );
 
 export const checkFactionsCommand = new SlashCommandBuilder()
   .setName("проверить-фракции")

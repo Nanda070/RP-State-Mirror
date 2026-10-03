@@ -14,6 +14,26 @@ type Stage4Data = {
     _count: { submissions: number };
   }>;
   feedback: Array<{ id: string; category: string; status: string; authorDiscordId: string; messages: Array<{ authorDiscordId: string; content: string }> }>;
+  webhookRequests: Array<{
+    id: string;
+    requesterDiscordId: string;
+    guildDiscordId: string;
+    channelDiscordId: string;
+    description: string;
+    webhookUrl?: string | null;
+    status: string;
+    createdAt: string;
+  }>;
+  icBlacklist: Array<{
+    id: string;
+    number: string;
+    fullName: string;
+    staticId: string;
+    reason: string;
+    forumLink: string;
+    status: string;
+    createdByDiscordId: string;
+  }>;
 };
 
 const settingFields = [
@@ -24,6 +44,8 @@ const settingFields = [
   ["transfers.approvalDmText", "ЛС после одобрения"],
   ["webhooks.notifyChannelId", "Канал уведомлений webhook"],
   ["feedback.notifyChannelId", "Канал уведомлений обратной связи"],
+  ["icBlacklist.enabled", "IC ЧС включён (true/false)"],
+  ["icBlacklist.channelId", "Канал публикации IC ЧС"],
   ["icBlacklist.managerRoleIds", "Роли управления ЧС (JSON-массив)"],
   ["icBlacklist.searchRoleIds", "Роли поиска ЧС (JSON-массив)"],
   ["invites.guildIds", "Серверы /инвайт-админ (JSON-массив)"],
@@ -62,7 +84,11 @@ export function Stage4SettingsManager() {
     const response = await fetch("/api/settings/stage4");
     const next = (await response.json()) as Stage4Data;
     if (!response.ok) throw new Error((next as unknown as { error?: string }).error ?? "Не удалось загрузить настройки");
-    setData(next);
+    setData({
+      ...next,
+      webhookRequests: next.webhookRequests ?? [],
+      icBlacklist: next.icBlacklist ?? [],
+    });
     setSettings(Object.fromEntries(Object.entries(next.settings).map(([key, value]) => [key, JSON.stringify(value)])));
   }
 
@@ -74,8 +100,14 @@ export function Stage4SettingsManager() {
     const parsed: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(settings)) {
       try {
-        parsed[key] = value.trim().startsWith("[") ? JSON.parse(value) : value;
+        const trimmed = value.trim();
+        if (key === "icBlacklist.enabled") {
+          parsed[key] = trimmed === "true" || trimmed === "1";
+          continue;
+        }
+        parsed[key] = trimmed.startsWith("[") ? JSON.parse(trimmed) : trimmed;
         if (/Days|Percent|Seconds/.test(key)) parsed[key] = Number(parsed[key]);
+        if (key.endsWith("channelId") && (trimmed === "" || trimmed === "null")) parsed[key] = null;
       } catch {
         throw new Error(`Некорректное JSON-значение для ${key}`);
       }
@@ -89,7 +121,7 @@ export function Stage4SettingsManager() {
     setMessage("Настройки сохранены.");
   }
 
-  async function createForm() {
+  async function createForm(markWebhookId?: string) {
     const response = await fetch("/api/settings/stage4", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -104,12 +136,39 @@ export function Stage4SettingsManager() {
       }),
     });
     if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка создания формы");
+    if (markWebhookId) {
+      await fetch("/api/settings/stage4", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "webhook-status", id: markWebhookId, status: "FORM_BUILT" }),
+      });
+    }
     setFormName("");
     setFormWebhookUrl("");
     setFormDeliveryChannelId("");
     setFormResponseLimit("");
     setMessage("Форма создана.");
     await load();
+  }
+
+  async function webhookStatus(id: string, status: "FORM_BUILT" | "REJECTED" | "CLOSED") {
+    const response = await fetch("/api/settings/stage4", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "webhook-status", id, status }),
+    });
+    if (!response.ok) throw new Error(((await response.json()) as { error?: string }).error ?? "Ошибка статуса webhook");
+    setMessage(status === "FORM_BUILT" ? "Запрос отмечен: форма собрана." : status === "REJECTED" ? "Запрос отклонён." : "Запрос закрыт.");
+    await load();
+  }
+
+  function useWebhookUrl(url: string | null | undefined) {
+    if (!url) {
+      setMessage("У этого запроса нет сохранённого webhook URL.");
+      return;
+    }
+    setFormWebhookUrl(url);
+    setMessage("Webhook URL подставлен в форму ниже — создайте Discord-форму.");
   }
 
   async function createPanel() {
@@ -265,6 +324,86 @@ export function Stage4SettingsManager() {
             </li>
           ))}
         </ul>
+      </section>
+      <section className="panel stack">
+        <h2 className="panel-title">Очередь запросов webhook</h2>
+        <p className="muted">
+          Запросы из <code>/создать-webhook</code>. URL уже создан ботом — подставьте в форму и отметьте «форма собрана».
+        </p>
+        {data.webhookRequests.length === 0 ? (
+          <p className="muted">Запросов пока нет.</p>
+        ) : (
+          <ul>
+            {data.webhookRequests.map((req) => (
+              <li
+                key={req.id}
+                className="stack"
+                style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "0.75rem", marginBottom: "0.75rem" }}
+              >
+                <div>
+                  <strong>{req.status}</strong> · <code>{req.id}</code> · канал <code>{req.channelDiscordId}</code> · заявитель{" "}
+                  <code>{req.requesterDiscordId}</code>
+                </div>
+                <div>{req.description}</div>
+                {req.webhookUrl ? (
+                  <code style={{ wordBreak: "break-all", fontSize: "0.85rem" }}>{req.webhookUrl}</code>
+                ) : (
+                  <span className="muted">URL ещё не сохранён</span>
+                )}
+                <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+                  <button className="btn btn-secondary" type="button" onClick={() => useWebhookUrl(req.webhookUrl)}>
+                    Подставить URL в форму
+                  </button>
+                  {req.status === "PENDING" ? (
+                    <>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        onClick={() => void webhookStatus(req.id, "FORM_BUILT").catch((error) => setMessage(error.message))}
+                      >
+                        Форма собрана
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        type="button"
+                        onClick={() => void webhookStatus(req.id, "REJECTED").catch((error) => setMessage(error.message))}
+                      >
+                        Отклонить
+                      </button>
+                    </>
+                  ) : null}
+                  {req.status === "FORM_BUILT" ? (
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      onClick={() => void webhookStatus(req.id, "CLOSED").catch((error) => setMessage(error.message))}
+                    >
+                      Закрыть
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="panel stack">
+        <h2 className="panel-title">IC чёрный список (реестр)</h2>
+        <p className="muted">
+          Публикация из Discord: <code>/чс-гос</code> и <code>/снятие-чс-гос</code>. Ниже — последние записи.
+        </p>
+        {data.icBlacklist.length === 0 ? (
+          <p className="muted">Записей пока нет.</p>
+        ) : (
+          <ul>
+            {data.icBlacklist.map((entry) => (
+              <li key={entry.id}>
+                <strong>{entry.number}</strong> · {entry.status} · {entry.fullName} · паспорт <code>{entry.staticId}</code> —{" "}
+                {entry.reason}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
       <section className="panel stack">
         <h2 className="panel-title">Обратная связь (Feedback)</h2>

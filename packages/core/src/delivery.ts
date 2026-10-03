@@ -312,6 +312,24 @@ export async function resolveWantedDelivery(): Promise<DeliveryTarget> {
   };
 }
 
+export async function resolveIcBlacklistDelivery(): Promise<DeliveryTarget> {
+  const [channelId, incidentGuildId] = await Promise.all([
+    getSetting("icBlacklist.channelId"),
+    getSetting("core.incidentGuildId"),
+  ]);
+  if (!channelId || !incidentGuildId) {
+    return {
+      kind: "unconfigured",
+      reason: "Канал IC чёрного списка или сервер ЧП ещё не настроены",
+    };
+  }
+  return {
+    kind: "channel",
+    guildDiscordId: incidentGuildId,
+    channelDiscordId: channelId,
+  };
+}
+
 /**
  * Faction codes never mentioned on federal wanted announcements (ЧП).
  * WN (Weazel News) is media, not a state agency for розыск pings.

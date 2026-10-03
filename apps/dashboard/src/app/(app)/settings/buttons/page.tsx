@@ -4,6 +4,7 @@ import {
   listSentMessages,
   type EmbedSpec,
 } from "@mirror/core";
+import { prisma, RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { ButtonManager } from "@/components/button-manager";
 import {
@@ -16,12 +17,18 @@ import { requireSystemSettingsPage } from "@/lib/session";
 export default async function SettingsButtonsPage() {
   await requireSystemSettingsPage();
 
-  const [designs, sent, guilds, channels, roles] = await Promise.all([
+  const [designs, sent, guilds, channels, roles, forms] = await Promise.all([
     listMessageDesigns(false),
     listSentMessages(40),
     getActiveGuildOptions(),
     getActiveChannelOptions(),
     getActiveRoleOptions(),
+    prisma.discordForm.findMany({
+      where: { status: RecordStatus.ACTIVE },
+      select: { id: true, name: true },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    }),
   ]);
 
   const buttonDesigns = designs.filter((d) => isButtonPanelSpec(d.spec));
@@ -38,7 +45,7 @@ export default async function SettingsButtonsPage() {
         </p>
         <h1>Кнопки</h1>
         <p className="muted">
-          Панели role.toggle и callback: настройка кнопок, превью, сохранение и отправка ботом.
+          Панели role.toggle, form.open, feedback.open, token.receive: настройка, превью, отправка ботом.
           Действия пишутся в button_actions при материализации.
         </p>
         <div className="status-link-row">
@@ -78,6 +85,7 @@ export default async function SettingsButtonsPage() {
           name: r.name,
           guildDiscordId: r.guild.discordId,
         }))}
+        forms={forms}
       />
     </div>
   );

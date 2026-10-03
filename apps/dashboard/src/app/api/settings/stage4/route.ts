@@ -5,13 +5,16 @@ import {
   closeFeedbackTicket,
   addFeedbackMessage,
   listFeedbackTickets,
+  listIcBlacklistEntries,
   listRolePanels,
+  listWebhookRequests,
   getSetting,
   isSettingKey,
   setSetting,
+  setWebhookRequestStatus,
   type SettingKey,
 } from "@mirror/core";
-import { prisma, RecordStatus } from "@mirror/db";
+import { prisma, RecordStatus, type WebhookRequestStatus } from "@mirror/db";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
 import { dashboardAuditContext } from "@/lib/audit-context";
@@ -25,6 +28,8 @@ const settingKeys = [
   "transfers.approvalDmText",
   "webhooks.notifyChannelId",
   "feedback.notifyChannelId",
+  "icBlacklist.enabled",
+  "icBlacklist.channelId",
   "icBlacklist.managerRoleIds",
   "icBlacklist.searchRoleIds",
   "invites.guildIds",
@@ -84,6 +89,8 @@ export async function GET() {
       panels: await listRolePanels(),
       forms,
       feedback: await listFeedbackTickets(),
+      webhookRequests: await listWebhookRequests({ limit: 40 }),
+      icBlacklist: await listIcBlacklistEntries({ limit: 40 }),
     });
   } catch (error) {
     return jsonError(error);
@@ -94,6 +101,11 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("archive-panel"), id: z.string().min(1) }),
   z.object({ action: z.literal("close-feedback"), id: z.string().min(1) }),
   z.object({ action: z.literal("reply-feedback"), id: z.string().min(1), content: z.string().trim().min(1).max(4000) }),
+  z.object({
+    action: z.literal("webhook-status"),
+    id: z.string().min(1),
+    status: z.enum(["PENDING", "FORM_BUILT", "CLOSED", "REJECTED"]),
+  }),
 ]);
 
 export async function PATCH(request: Request) {
@@ -106,6 +118,11 @@ export async function PATCH(request: Request) {
     }
     if (action.action === "close-feedback") {
       return Response.json(await closeFeedbackTicket(action.id, context));
+    }
+    if (action.action === "webhook-status") {
+      return Response.json(
+        await setWebhookRequestStatus(action.id, action.status as WebhookRequestStatus, undefined, context),
+      );
     }
     return Response.json(await addFeedbackMessage(action.id, session.user.id, action.content, context));
   } catch (error) {

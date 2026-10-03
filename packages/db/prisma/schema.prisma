@@ -474,9 +474,12 @@ model SentMessageLink {
   fine            Fine?           @relation("FineMessages", fields: [fineId], references: [id])
   personnelId     String?         @map("personnel_id")
   personnelEvent  PersonnelEvent? @relation("PersonnelMessages", fields: [personnelId], references: [id])
+  icBlacklistId   String?         @map("ic_blacklist_id")
+  icBlacklist     IcBlacklistEntry? @relation("IcBlacklistMessages", fields: [icBlacklistId], references: [id])
   createdAt       DateTime        @default(now()) @map("created_at")
 
   @@index([sentMessageId])
+  @@index([icBlacklistId])
   @@map("sent_message_links")
 }
 
@@ -649,18 +652,25 @@ model WebhookRequest {
   @@map("webhook_requests")
 }
 
+/// Government IC blacklist (/чс-гос), analogous to federal wanted.
 model IcBlacklistEntry {
-  id               String       @id @default(cuid())
-  staticId         String       @map("static_id")
-  fullName         String       @map("full_name")
-  reason           String
-  evidenceFileIds  String[]     @default([]) @map("evidence_file_ids")
-  expiresAt        DateTime?    @map("expires_at")
-  status           RecordStatus @default(ACTIVE)
-  createdByDiscordId String     @map("created_by_discord_id")
-  revokedByDiscordId String?    @map("revoked_by_discord_id")
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
+  id                 String            @id @default(cuid())
+  /// System-generated record number (BL-001 …).
+  number             String            @unique
+  /// Passport / static id (legacy «паспорт»).
+  staticId           String            @map("static_id")
+  fullName           String            @map("full_name")
+  reason             String
+  /// Forum evidence link (legacy «доказательства» / ссылка_на_форум).
+  forumLink          String            @map("forum_link")
+  expiresAt          DateTime?         @map("expires_at")
+  status             RecordStatus      @default(ACTIVE)
+  createdByDiscordId String            @map("created_by_discord_id")
+  closedByDiscordId  String?           @map("closed_by_discord_id")
+  closeReason        String?           @map("close_reason")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  sentMessages       SentMessageLink[] @relation("IcBlacklistMessages")
 
   @@index([staticId, status])
   @@index([status, expiresAt])
