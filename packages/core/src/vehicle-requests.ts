@@ -5,8 +5,10 @@
  * audit journal and handed to the job queue; the bot posts it into the channel chosen in the
  * dashboard (Настройки → Модули → Запрос ТС) and pings the roles chosen there.
  *
- * The command works on every faction's Discord server: whoever is on a server tied to a faction may
- * ask. Elsewhere it is for faction members and admins. The admins see which server it came from.
+ * Who may ask is chosen in the dashboard per server: the roles of that server that are allowed.
+ * While no role is chosen for a server, the general rule applies there: on a faction's server —
+ * everyone on it, elsewhere — faction members. Admins may always ask. The admins who receive the
+ * request see which server it came from.
  */
 import { RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
@@ -20,8 +22,12 @@ import { getSetting } from "./settings.js";
 const requestSchema = z.object({
   requesterDiscordId: z.string().regex(/^\d{17,20}$/),
   guildDiscordId: z.string().regex(/^\d{17,20}$/).nullable(),
-  /** Faction member by roles, or an admin: may ask from any server the bot is on. */
+  /** «Админ» and above: always allowed. */
+  requesterIsAdmin: z.boolean(),
+  /** Faction member by roles, or an admin: the general rule for a server without a faction. */
   requesterIsStaff: z.boolean(),
+  /** Roles the person holds on the server the command was used on. */
+  requesterRoleIds: z.array(z.string()).max(500),
   model: z.string().trim().min(1, "Укажите модель.").max(40),
   reason: z.string().trim().min(1, "Укажите причину.").max(500, "Причина длиннее 500 символов."),
   time: z.string().trim().min(1, "Укажите время.").max(100, "Время длиннее 100 символов."),
@@ -54,8 +60,24 @@ export async function createVehicleRequest(input: z.input<typeof requestSchema>,
     },
   });
   const factionCodes = guild?.factions.map((faction) => faction.code) ?? [];
-  if (factionCodes.length === 0 && !data.requesterIsStaff) {
-    throw new UserError("Запрос транспорта отправляется с сервера фракции.");
+
+  if (!data.requesterIsAdmin) {
+    // Of the roles chosen in the dashboard, those that belong to this server.
+    const chosen = await getSetting("vehicleRequests.requesterRoleIds");
+    const chosenHere =
+      chosen.length > 0
+        ? await prisma.discordRole.findMany({
+            where: { discordId: { in: chosen }, status: RecordStatus.ACTIVE, guild: { discordId: data.guildDiscordId } },
+            select: { discordId: true },
+          })
+        : [];
+    if (chosenHere.length > 0) {
+      if (!chosenHere.some((role) => data.requesterRoleIds.includes(role.discordId))) {
+        throw new UserError("На этом сервере запрос транспорта доступен только выбранным ролям — у вас такой роли нет.");
+      }
+    } else if (factionCodes.length === 0 && !data.requesterIsStaff) {
+      throw new UserError("Запрос транспорта отправляется с сервера фракции.");
+    }
   }
   if (!(await getSetting("vehicleRequests.channelId"))) {
     throw new UserError("Канал для запросов ТС не настроен. Сообщите администрации.");

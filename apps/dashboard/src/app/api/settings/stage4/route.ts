@@ -33,6 +33,7 @@ const settingKeys = [
   "transfers.pendingTtlDays",
   "vehicleRequests.channelId",
   "vehicleRequests.pingRoleIds",
+  "vehicleRequests.requesterRoleIds",
   "webhooks.notifyChannelId",
   "feedback.notifyChannelId",
   "feedback.categories",

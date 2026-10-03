@@ -555,7 +555,9 @@ async function handleVehicleRequest(interaction: ChatInputCommandInteraction, ct
     {
       requesterDiscordId: interaction.user.id,
       guildDiscordId: interaction.guildId,
+      requesterIsAdmin: canManageModules(identity),
       requesterIsStaff: isStaff(identity),
+      requesterRoleIds: interaction.inGuild() ? memberRoleIds(interaction) : [],
       model: interaction.options.getString("модель", true),
       reason: interaction.options.getString("причина", true),
       time: interaction.options.getString("время", true),

@@ -18,6 +18,7 @@ export type Stage4SettingsValues = {
   "transfers.pendingTtlDays": number;
   "vehicleRequests.channelId": string | null;
   "vehicleRequests.pingRoleIds": string[];
+  "vehicleRequests.requesterRoleIds": string[];
   "webhooks.notifyChannelId": string | null;
   "feedback.notifyChannelId": string | null;
   "feedback.categories": string[];
@@ -73,6 +74,8 @@ export function Stage4SettingsManager({
   const [values, setValues] = useState(initial);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  /** «Запрос ТС»: the server whose roles are being chosen. */
+  const [requesterGuildId, setRequesterGuildId] = useState(guilds[0]?.discordId ?? "");
 
   function patch<K extends keyof Stage4SettingsValues>(key: K, value: Stage4SettingsValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -112,6 +115,10 @@ export function Stage4SettingsManager({
   const channelEmpty = incidentGuildId ? "Выберите канал" : "Сначала задайте сервер ЧП";
   const vehicleRequestGuildId = channels.find((channel) => channel.discordId === values["vehicleRequests.channelId"])?.guildDiscordId;
   const vehicleRequestRoles = vehicleRequestGuildId ? allRoles.filter((role) => role.guildDiscordId === vehicleRequestGuildId) : [];
+  const requesterChosen = new Set(values["vehicleRequests.requesterRoleIds"]);
+  const requesterRoles = allRoles.filter((role) => role.guildDiscordId === requesterGuildId);
+  const requesterCount = (guildDiscordId: string) =>
+    allRoles.filter((role) => role.guildDiscordId === guildDiscordId && requesterChosen.has(role.discordId)).length;
   const incidentRolesEmpty = incidentGuildId
     ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
     : "Сначала задайте сервер ЧП";
@@ -345,6 +352,32 @@ export function Stage4SettingsManager({
                 onChange={(next) => patch("vehicleRequests.pingRoleIds", next)}
                 emptyHint={values["vehicleRequests.channelId"] ? "У сервера этого канала нет ролей в снимке." : "Сначала выберите канал."}
               />
+            </div>
+
+            <hr className="u-rule" />
+            <h2 className="panel-title">Запрос ТС — кто может запрашивать</h2>
+            <label className="field">
+              <span>Сервер</span>
+              <select value={requesterGuildId} onChange={(event) => setRequesterGuildId(event.target.value)}>
+                {guilds.map((guild) => {
+                  const count = requesterCount(guild.discordId);
+                  return (
+                    <option key={guild.discordId} value={guild.discordId}>
+                      {count > 0 ? `${guild.name} — ролей: ${count}` : guild.name}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <div className="field">
+              <span className="field-label">Роли этого сервера</span>
+              <RoleChipPicker
+                roles={requesterRoles}
+                selected={values["vehicleRequests.requesterRoleIds"]}
+                onChange={(next) => patch("vehicleRequests.requesterRoleIds", next)}
+                emptyHint="У этого сервера нет ролей в снимке."
+              />
+              <span className="field-hint">Без выбранных ролей на сервере фракции запросить может любой его участник.</span>
             </div>
           </>
         ) : null}

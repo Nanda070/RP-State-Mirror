@@ -45,7 +45,9 @@ describe("/запрос-тс", () => {
   const request = {
     requesterDiscordId: PLAYER,
     guildDiscordId: GUILD,
+    requesterIsAdmin: false,
     requesterIsStaff: false,
+    requesterRoleIds: [] as string[],
     model: "Police3",
     reason: "Патруль на мероприятии",
     time: "сегодня 20:00 МСК",
@@ -55,6 +57,7 @@ describe("/запрос-тс", () => {
   async function factionGuild() {
     const guild = await prisma.guild.create({ data: { discordId: GUILD, name: "FIB | Mirror" } });
     await prisma.faction.create({ data: { code: "FIB", name: "Federal Investigation Bureau", guildId: guild.id } });
+    return guild;
   }
 
   it("is refused until a channel is chosen in the dashboard", async () => {
@@ -101,6 +104,33 @@ describe("/запрос-тс", () => {
     await factionGuild();
     await prisma.faction.updateMany({ where: { code: "FIB" }, data: { status: RecordStatus.ARCHIVED } });
     await expect(createVehicleRequest(request, context)).rejects.toThrow(/с сервера фракции/);
+  });
+
+  it("lets the dashboard choose which roles may ask on which server", async () => {
+    await setSetting("vehicleRequests.channelId", CHANNEL, context);
+    const fib = await factionGuild();
+    const otherId = "920000000000000102";
+    const other = await prisma.guild.create({ data: { discordId: otherId, name: "LSPD | Mirror" } });
+    await prisma.faction.create({ data: { code: "LSPD", name: "Los Santos Police Department", guildId: other.id } });
+    const leader = "920000000000000301";
+    const foreign = "920000000000000302";
+    await prisma.discordRole.createMany({
+      data: [
+        { discordId: leader, guildId: fib.id, name: "Лидер" },
+        { discordId: foreign, guildId: other.id, name: "Шеф" },
+      ],
+    });
+
+    // A role is chosen for the FIB server only.
+    await setSetting("vehicleRequests.requesterRoleIds", [leader], context);
+    await expect(createVehicleRequest(request, context)).rejects.toThrow(/только выбранным ролям/);
+    // A role of another server does not count here, even if the person somehow lists it.
+    await expect(createVehicleRequest({ ...request, requesterRoleIds: [foreign] }, context)).rejects.toThrow(/только выбранным ролям/);
+    expect((await createVehicleRequest({ ...request, requesterRoleIds: [leader] }, context)).model).toBe("police3");
+    // An admin is not held to the list.
+    expect((await createVehicleRequest({ ...request, requesterIsAdmin: true }, context)).model).toBe("police3");
+    // The LSPD server has no role chosen: the general rule still applies there.
+    expect((await createVehicleRequest({ ...request, guildDiscordId: otherId }, context)).factionCodes).toEqual(["LSPD"]);
   });
 
   it("accepts only models from the list and needs a reason and a time", async () => {

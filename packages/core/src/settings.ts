@@ -131,6 +131,11 @@ export const settingDefinitions = {
     [],
     "Роли, которые бот упоминает в запросе на спавн ТС (роли того же сервера, что и канал)",
   ),
+  "vehicleRequests.requesterRoleIds": defineSetting(
+    z.array(snowflakeSchema).max(500).default([]),
+    [],
+    "Роли, которым разрешена команда /запрос-тс: выбираются по серверам; пока на сервере не выбрано ни одной, действует общее правило",
+  ),
   "webhooks.notifyChannelId": defineSetting(
     snowflakeSchema.nullable(),
     null,
