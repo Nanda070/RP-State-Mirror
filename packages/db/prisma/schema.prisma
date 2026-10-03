@@ -864,30 +864,6 @@ model FaqItem {
   @@map("faq_items")
 }
 
-/// Account recovery request (§5.3): moves project data from the old Discord account to the new one.
-/// One PENDING request per new account (partial index in SQL).
-model AccountRecovery {
-  id                 String         @id @default(cuid())
-  newDiscordId       String         @map("new_discord_id")
-  oldDiscordId       String         @map("old_discord_id")
-  characterName      String         @map("character_name")
-  staticId           String         @map("static_id")
-  reason             String
-  decision           DecisionStatus @default(PENDING)
-  decidedByDiscordId String?        @map("decided_by_discord_id")
-  decidedAt          DateTime?      @map("decided_at")
-  rejectionReason    String?        @map("rejection_reason")
-  /// Character ids moved on approval (for the audit trail and the admin card).
-  movedCharacterIds  String[]       @default([]) @map("moved_character_ids")
-  createdAt          DateTime       @default(now()) @map("created_at")
-  updatedAt          DateTime       @updatedAt @map("updated_at")
-
-  @@index([decision, createdAt])
-  @@index([newDiscordId])
-  @@index([oldDiscordId])
-  @@map("account_recoveries")
-}
-
 /// Public «share» link to a registry record (§5.8). Revoked links answer 404.
 model ShareLink {
   id                 String       @id @default(cuid())

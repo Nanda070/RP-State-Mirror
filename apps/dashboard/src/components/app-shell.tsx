@@ -19,8 +19,6 @@ type NavItem = {
   requiresSystemSettings?: boolean;
   /** Hide unless «Хелпер» or above (`canViewModules`). */
   requiresStaff?: boolean;
-  /** Hide unless «Админ» or above (`canManageModules`). */
-  requiresModuleManager?: boolean;
   icon:
     | "home"
     | "user"
@@ -41,8 +39,7 @@ type NavItem = {
     | "webhooks"
     | "modules"
     | "calculator"
-    | "faq"
-    | "recovery";
+    | "faq";
 };
 
 const NAV: NavItem[] = [
@@ -51,7 +48,6 @@ const NAV: NavItem[] = [
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "vehicle" },
   { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам", match: "prefix", icon: "calculator" },
   { href: "/faq", label: "FAQ", group: "Игрокам", match: "prefix", icon: "faq" },
-  { href: "/recovery", label: "Восстановление", group: "Игрокам", match: "prefix", icon: "recovery" },
   { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs", requiresStaff: true },
   { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted", requiresStaff: true },
   { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines", requiresStaff: true },
@@ -73,14 +69,6 @@ const NAV: NavItem[] = [
     requiresStaff: true,
   },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist", requiresStaff: true },
-  {
-    href: "/recoveries",
-    label: "Заявки на восстановление",
-    group: "Администрирование",
-    match: "prefix",
-    icon: "recovery",
-    requiresModuleManager: true,
-  },
   {
     href: "/feedback",
     label: "Обратная связь",
@@ -389,26 +377,6 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
           <path d="M12 16.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
       );
-    case "recovery":
-      return (
-        <svg {...common}>
-          <path d="M5 12a7 7 0 1 0 2.2-5.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          <path
-            d="M5 5.5v3.75h3.75"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M12 8.75V12l2.25 1.5"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      );
     case "modules":
       return (
         <svg {...common}>
@@ -430,7 +398,6 @@ export function AppShell({
   avatarUrl,
   canManageSystemSettings = false,
   canViewModules = false,
-  canManageModules = false,
 }: {
   children: ReactNode;
   displayName: string;
@@ -438,14 +405,12 @@ export function AppShell({
   avatarUrl: string | null;
   canManageSystemSettings?: boolean;
   canViewModules?: boolean;
-  canManageModules?: boolean;
 }) {
   const pathname = usePathname();
   const visibleNav = NAV.filter(
     (item) =>
       (!item.requiresSystemSettings || canManageSystemSettings) &&
-      (!item.requiresStaff || canViewModules) &&
-      (!item.requiresModuleManager || canManageModules),
+      (!item.requiresStaff || canViewModules),
   );
   const groups = [...new Set(visibleNav.map((item) => item.group))];
   const initial = (displayName.trim().charAt(0) || "?").toUpperCase();
@@ -575,7 +540,6 @@ export function AppShell({
       <CommandPalette
         canManageSystemSettings={canManageSystemSettings}
         canViewModules={canViewModules}
-        canManageModules={canManageModules}
       />
     </div>
   );

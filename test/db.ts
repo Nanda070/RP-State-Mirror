@@ -2,7 +2,6 @@ import { prisma } from "@mirror/db";
 
 const TABLES = [
   "share_links",
-  "account_recoveries",
   "faq_items",
   "faq_sections",
   "form_ip_bans",

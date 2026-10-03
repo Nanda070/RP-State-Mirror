@@ -1305,28 +1305,6 @@ const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", dm, requestId, requestStatus: request.status };
 };
 
-const accountRecoveryDecided: JobHandler = async (payload, { client, log }) => {
-  const recoveryId = String(payload.recoveryId ?? "");
-  const recovery = await prisma.accountRecovery.findUnique({ where: { id: recoveryId } });
-  if (!recovery) return { status: "skipped", reason: "recovery not found" };
-
-  let content: string;
-  if (recovery.decision === "APPROVED") {
-    content = [
-      "Ваша заявка на восстановление аккаунта одобрена.",
-      `Персонажи, нашивки, регистрации и переводы перенесены на этот аккаунт (перенесено персонажей: ${recovery.movedCharacterIds.length}).`,
-      "Роли на серверах фракций бот не переносит — обратитесь к лидеру или администрации.",
-    ].join("\n");
-  } else if (recovery.decision === "REJECTED") {
-    content = `Ваша заявка на восстановление аккаунта отклонена.\n**Причина:** ${recovery.rejectionReason ?? "—"}`;
-  } else {
-    return { status: "skipped", reason: "pending" };
-  }
-
-  const dm = await sendDirectMessage(client, recovery.newDiscordId, content, log);
-  return { status: "sent", dm, recoveryId, decision: recovery.decision };
-};
-
 const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
   const submissionId = String(payload.submissionId ?? "");
   const submission = await prisma.formSubmission.findUnique({
@@ -1437,7 +1415,6 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, formOpenPublish],
   [MODULE_JOB_TYPES.TOKEN_RECEIVE_PUBLISH, tokenReceivePublish],
   [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],
-  [MODULE_JOB_TYPES.ACCOUNT_RECOVERY_DECIDED, accountRecoveryDecided],
   [MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, icBlacklistPublish],
   [MODULE_JOB_TYPES.IC_BLACKLIST_EDIT_CLOSED, icBlacklistEditClosed],
 ]);

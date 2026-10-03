@@ -16,7 +16,6 @@ type PaletteItem = {
   group: string;
   requiresSystemSettings?: boolean;
   requiresStaff?: boolean;
-  requiresModuleManager?: boolean;
 };
 
 const ITEMS: PaletteItem[] = [
@@ -25,7 +24,6 @@ const ITEMS: PaletteItem[] = [
   { href: "/catalog", label: "Каталог ТС", group: "Игрокам" },
   { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам" },
   { href: "/faq", label: "FAQ и документация", group: "Игрокам" },
-  { href: "/recovery", label: "Восстановление аккаунта", group: "Игрокам" },
   { href: "/documents", label: "Документы", group: "Информация", requiresStaff: true },
   { href: "/wanted", label: "Розыск", group: "Информация", requiresStaff: true },
   { href: "/fines", label: "Штрафы", group: "Информация", requiresStaff: true },
@@ -33,12 +31,6 @@ const ITEMS: PaletteItem[] = [
   { href: "/registrations/vehicles", label: "Регистрации ТС", group: "Информация", requiresStaff: true },
   { href: "/registrations/uniforms", label: "Регистрации форм", group: "Информация", requiresStaff: true },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", requiresStaff: true },
-  {
-    href: "/recoveries",
-    label: "Заявки на восстановление",
-    group: "Администрирование",
-    requiresModuleManager: true,
-  },
   { href: "/feedback", label: "Обратная связь", group: "Администрирование", requiresStaff: true },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", requiresSystemSettings: true },
   { href: "/settings/forms", label: "Формы", group: "Администрирование", requiresSystemSettings: true },
@@ -99,11 +91,9 @@ const ITEMS: PaletteItem[] = [
 export function CommandPalette({
   canManageSystemSettings = false,
   canViewModules = false,
-  canManageModules = false,
 }: {
   canManageSystemSettings?: boolean;
   canViewModules?: boolean;
-  canManageModules?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -115,10 +105,9 @@ export function CommandPalette({
       ITEMS.filter(
         (item) =>
           (!item.requiresSystemSettings || canManageSystemSettings) &&
-          (!item.requiresStaff || canViewModules) &&
-          (!item.requiresModuleManager || canManageModules),
+          (!item.requiresStaff || canViewModules),
       ),
-    [canManageSystemSettings, canViewModules, canManageModules],
+    [canManageSystemSettings, canViewModules],
   );
 
   const results = useMemo(() => {

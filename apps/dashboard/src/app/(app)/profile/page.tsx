@@ -464,9 +464,6 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
               <Link href="/faq" className="btn btn-outline">
                 FAQ
               </Link>
-              <Link href="/recovery" className="btn btn-outline">
-                Восстановление аккаунта
-              </Link>
             </div>
           </div>
         </>

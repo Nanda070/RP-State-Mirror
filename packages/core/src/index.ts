@@ -1,5 +1,4 @@
 export * from "./access.js";
-export * from "./account-recovery.js";
 export * from "./audit.js";
 export * from "./cp-sync.js";
 export * from "./db.js";

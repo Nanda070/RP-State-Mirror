@@ -57,7 +57,7 @@ export async function requireIdentity() {
   return { session, identity };
 }
 
-/** «Админ» and above: may change module data (catalog, recovery decisions, share links). */
+/** «Админ» and above: may change module data (catalog, share links). */
 export async function requireModuleManager() {
   const { session, identity } = await requireIdentity();
   if (!canManageModules(identity)) {

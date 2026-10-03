@@ -1,4 +1,4 @@
-import { canManageModules, canManageSystemSettings, canViewModules } from "@mirror/core";
+import { canManageSystemSettings, canViewModules } from "@mirror/core";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
@@ -30,7 +30,6 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       avatarUrl={avatarUrl}
       canManageSystemSettings={canSystemSettings}
       canViewModules={identity ? canViewModules(identity) : false}
-      canManageModules={identity ? canManageModules(identity) : false}
     >
       {children}
     </AppShell>
