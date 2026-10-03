@@ -4,6 +4,8 @@ import { prisma } from "@mirror/db";
 import {
   botEnvSchema,
   createLogger,
+  expireDocuments,
+  expireRegistrations,
   markGuildUnavailable,
   markMemberLeft,
   parseEnv,
@@ -21,6 +23,7 @@ import { syncAllGuilds, syncGuild } from "./sync.js";
 import { JobWorker } from "./worker.js";
 
 const RECONCILE_INTERVAL_MS = 60 * 60_000;
+const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 
 const env = parseEnv(botEnvSchema);
 const log = createLogger("bot", env.LOG_LEVEL);
@@ -32,6 +35,13 @@ const client = new Client({
 
 const worker = new JobWorker(client, jobHandlers, log.child({ component: "worker" }), `${hostname()}:${process.pid}`);
 let reconcileTimer: NodeJS.Timeout | undefined;
+let maintenanceTimer: NodeJS.Timeout | undefined;
+
+/** Time-based status transitions; side effects (card edits, DMs) go through jobs. */
+async function runMaintenance() {
+  const [registrations, documents] = [await expireRegistrations(), await expireDocuments()];
+  if (registrations + documents > 0) log.info({ registrations, documents }, "maintenance: records expired");
+}
 
 function guarded(name: string, fn: () => Promise<unknown>) {
   fn().catch((error: unknown) => log.error({ err: error, event: name }, "event handler failed"));
@@ -54,6 +64,8 @@ client.once(Events.ClientReady, (ready) => {
       RECONCILE_INTERVAL_MS,
     );
     guarded("cp-reconcile-initial", () => reconcileCpAccess(ready, log.child({ component: "cp-sync" })));
+    maintenanceTimer = setInterval(() => guarded("maintenance", runMaintenance), MAINTENANCE_INTERVAL_MS);
+    guarded("maintenance-initial", runMaintenance);
   });
 });
 
@@ -151,6 +163,7 @@ client.on(Events.Error, (error) => log.error({ err: error }, "discord client err
 async function shutdown(signal: string) {
   log.info({ signal }, "shutting down");
   clearInterval(reconcileTimer);
+  clearInterval(maintenanceTimer);
   await worker.stop();
   await client.destroy();
   await prisma.$disconnect();

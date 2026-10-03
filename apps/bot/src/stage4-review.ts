@@ -12,6 +12,7 @@ import {
 } from "discord.js";
 import { prisma } from "@mirror/db";
 import {
+  mediaExtension,
   makeRegistrationReviewEmbed,
   makeTransferReviewEmbed,
   type RegistrationReviewButtons,
@@ -36,8 +37,22 @@ function jsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function httpUrl(value: unknown): string | null {
-  return typeof value === "string" && /^https?:\/\//i.test(value) ? value : null;
+/** Name under which a media file is attached to the review message (`attachment://<name>` in embeds). */
+export async function mediaAttachmentName(mediaFileId: string | undefined): Promise<string | null> {
+  if (!mediaFileId) return null;
+  const file = await prisma.mediaFile.findUnique({ where: { id: mediaFileId } });
+  return file ? `${file.id}.${mediaExtension(file.contentType)}` : null;
+}
+
+/** Re-render for edits: the photo stays attached to the original message, so the embed keeps referencing it. */
+export async function buildRegistrationReview(registration: LoadedRegistration): Promise<ReviewMessagePayload> {
+  const name = await mediaAttachmentName(registration.evidenceFileIds[0]);
+  return renderRegistrationReview(registration, { imageUrl: name ? `attachment://${name}` : null });
+}
+
+export async function buildTransferReview(transfer: LoadedTransfer): Promise<ReviewMessagePayload> {
+  const name = await mediaAttachmentName(transfer.documentFileIds[0]);
+  return renderTransferReview(transfer, { imageUrl: name ? `attachment://${name}` : null });
 }
 
 export function renderRegistrationReview(
@@ -56,7 +71,7 @@ export function renderRegistrationReview(
     rejectionReason: registration.rejectionReason,
     expiresAt: registration.expiresAt,
     expired: registration.status === "EXPIRED",
-    imageUrl: options.imageUrl ?? httpUrl(payload.photoUrl),
+    imageUrl: options.imageUrl ?? null,
   });
   const buttons = jsonRecord(registration.reviewButtons) as Partial<RegistrationReviewButtons>;
   const pending = registration.decision === "PENDING" && registration.status === "ACTIVE";

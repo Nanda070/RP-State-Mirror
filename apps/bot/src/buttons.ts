@@ -28,11 +28,11 @@ import {
 } from "@mirror/core";
 import { AuditActorType, DecisionStatus } from "@mirror/db";
 import {
+  buildRegistrationReview,
+  buildTransferReview,
   editStoredReviewMessage,
   loadRegistration,
   loadTransfer,
-  renderRegistrationReview,
-  renderTransferReview,
   type ReviewMessagePayload,
 } from "./stage4-review.js";
 
@@ -262,7 +262,7 @@ async function finishRegistrationDecision(
 ) {
   const registration = await loadRegistration(registrationId);
   if (!registration) throw new Error("Заявка не найдена.");
-  await applyReviewUpdate(interaction, ctx, registration, renderRegistrationReview(registration), confirmation);
+  await applyReviewUpdate(interaction, ctx, registration, await buildRegistrationReview(registration), confirmation);
 }
 
 async function finishTransferDecision(
@@ -273,7 +273,7 @@ async function finishTransferDecision(
 ) {
   const transfer = await loadTransfer(transferId);
   if (!transfer) throw new Error("Перевод не найден.");
-  await applyReviewUpdate(interaction, ctx, transfer, renderTransferReview(transfer), confirmation);
+  await applyReviewUpdate(interaction, ctx, transfer, await buildTransferReview(transfer), confirmation);
 }
 
 async function handleTransferDecision(

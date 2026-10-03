@@ -3,12 +3,20 @@
  * Mutations go through core APIs; Discord delivery is enqueued as jobs.
  */
 import {
+  type Attachment,
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   MessageFlags,
 } from "discord.js";
 import { AuditActorType, RegistrationKind } from "@mirror/db";
 import {
+  IMAGE_CONTENT_TYPES,
+  MAX_MEDIA_BYTES,
+  archiveMediaFile,
+  listVehicleModels,
+  normalizePlate,
+  resolveVehicleModelName,
+  storeMediaFromUrl,
   canActOnModuleRecord,
   canManageModules,
   closeWanted,
@@ -213,6 +221,16 @@ async function requireActiveFaction(code: string): Promise<string> {
 /** Autocomplete for «фракция» — always all ACTIVE factions from DB. */
 export async function handleFactionAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   const focused = interaction.options.getFocused(true);
+  if (focused.name === "модель") {
+    const models = await listVehicleModels(focused.value);
+    await interaction.respond(
+      models.map((model) => ({
+        name: [model.brand, model.name, model.year].filter(Boolean).join(" ").slice(0, 100),
+        value: model.name.slice(0, 100),
+      })),
+    );
+    return;
+  }
   if (focused.name !== "фракция") {
     await interaction.respond([]);
     return;
@@ -257,7 +275,7 @@ export async function handleSlashCommand(
         break;
       case "регистрация-тс":
       case "регистрация-формы":
-        await handleRegistration(interaction);
+        await handleRegistration(interaction, ctx);
         break;
       case "перевод-фракции":
         await handleTransfer(interaction);
@@ -344,33 +362,63 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
   await interaction.reply(ephemeral(`Выдан номер нашивки: **${token.number}**.`));
 }
 
-async function handleRegistration(interaction: ChatInputCommandInteraction) {
+/** Validates a slash attachment as an image ≤ 10 MB and stores it in media_files. */
+async function storeImageAttachment(
+  interaction: ChatInputCommandInteraction,
+  attachment: Attachment,
+  createdById: string,
+) {
+  const contentType = attachment.contentType?.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (!IMAGE_CONTENT_TYPES.has(contentType)) {
+    throw new Error("Приложите изображение PNG, JPEG, WEBP или GIF.");
+  }
+  if (attachment.size > MAX_MEDIA_BYTES) throw new Error("Файл превышает лимит 10 МБ.");
+  return storeMediaFromUrl(
+    attachment.url,
+    { originalName: attachment.name, createdById, allowedContentTypes: IMAGE_CONTENT_TYPES },
+    auditFromInteraction(interaction),
+  );
+}
+
+async function archiveOrphanMedia(interaction: ChatInputCommandInteraction, ids: string[], ctx: SlashHandlerContext) {
+  for (const id of ids) {
+    await archiveMediaFile(id, auditFromInteraction(interaction)).catch((error: unknown) =>
+      ctx.log.warn({ err: error, mediaFileId: id }, "failed to archive orphan media"),
+    );
+  }
+}
+
+async function handleRegistration(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { user } = await ensureUserByDiscordId(interaction.user.id);
   const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
   if (!character) {
-    await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+    await interaction.editReply("Персонаж с таким статиком не найден в вашем профиле.");
     return;
   }
 
   const isVehicle = interaction.commandName === "регистрация-тс";
-  const registration = await createRegistration(
-    {
-      kind: isVehicle ? RegistrationKind.VEHICLE : RegistrationKind.UNIFORM,
-      characterId: character.id,
-      payload: isVehicle
-        ? {
-            model: interaction.options.getString("модель", true),
-            plate: interaction.options.getString("госномер", true),
-            photoUrl: interaction.options.getString("фото", true),
-          }
-        : {
-            description: interaction.options.getString("описание", true),
-            photoUrl: interaction.options.getString("фото", true),
-          },
-    },
-    auditFromInteraction(interaction),
-  );
-  await interaction.reply(ephemeral(`Заявка **${registration.id}** создана и отправлена на рассмотрение.`));
+  const model = isVehicle ? await resolveVehicleModelName(interaction.options.getString("модель", true)) : null;
+  const plate = isVehicle ? normalizePlate(interaction.options.getString("госномер", true)) : undefined;
+  const photo = await storeImageAttachment(interaction, interaction.options.getAttachment("фото", true), user.id);
+  try {
+    const registration = await createRegistration(
+      {
+        kind: isVehicle ? RegistrationKind.VEHICLE : RegistrationKind.UNIFORM,
+        characterId: character.id,
+        payload: isVehicle ? { model } : { description: interaction.options.getString("описание", true) },
+        plate,
+        evidenceFileIds: [photo.id],
+      },
+      auditFromInteraction(interaction),
+    );
+    await interaction.editReply(
+      `Заявка на регистрацию ${isVehicle ? `ТС **${plate}**` : "униформы"} создана и отправлена на рассмотрение (\`${registration.id}\`).`,
+    );
+  } catch (error) {
+    await archiveOrphanMedia(interaction, [photo.id], ctx);
+    throw error;
+  }
 }
 
 async function handleTransfer(interaction: ChatInputCommandInteraction) {

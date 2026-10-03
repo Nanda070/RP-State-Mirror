@@ -280,16 +280,16 @@ export const vehicleRegistrationCommand = new SlashCommandBuilder()
   .setName("регистрация-тс")
   .setDescription("Подать заявку на регистрацию транспортного средства")
   .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
-  .addStringOption((o) => o.setName("модель").setDescription("Модель транспортного средства").setRequired(true).setMaxLength(128))
+  .addStringOption((o) => o.setName("модель").setDescription("Модель из каталога разрешённых ТС").setRequired(true).setMaxLength(128).setAutocomplete(true))
   .addStringOption((o) => o.setName("госномер").setDescription("Государственный номер").setRequired(true).setMaxLength(16))
-  .addStringOption((o) => o.setName("фото").setDescription("Ссылка на фото").setRequired(true).setMaxLength(1000));
+  .addAttachmentOption((o) => o.setName("фото").setDescription("Фото ТС (изображение до 10 МБ)").setRequired(true));
 
 export const uniformRegistrationCommand = new SlashCommandBuilder()
   .setName("регистрация-формы")
   .setDescription("Подать заявку на регистрацию униформы")
   .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
   .addStringOption((o) => o.setName("описание").setDescription("Описание комплекта униформы").setRequired(true).setMaxLength(1000))
-  .addStringOption((o) => o.setName("фото").setDescription("Ссылка на фото").setRequired(true).setMaxLength(1000));
+  .addAttachmentOption((o) => o.setName("фото").setDescription("Фото униформы (изображение до 10 МБ)").setRequired(true));
 
 export const transferCommand = new SlashCommandBuilder()
   .setName("перевод-фракции")

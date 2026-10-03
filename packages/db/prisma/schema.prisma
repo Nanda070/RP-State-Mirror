@@ -531,6 +531,9 @@ model Registration {
   characterId        String           @map("character_id")
   character          Character        @relation(fields: [characterId], references: [id])
   payload            Json
+  /// Normalized plate for VEHICLE; unique among ACTIVE vehicle registrations (partial index in SQL).
+  plate              String?
+  /// media_files ids (photo), never raw URLs.
   evidenceFileIds    String[]         @default([]) @map("evidence_file_ids")
   status             RecordStatus     @default(ACTIVE)
   decision           DecisionStatus   @default(PENDING)
@@ -541,6 +544,7 @@ model Registration {
   reviewGuildId      String?          @map("review_guild_id")
   reviewChannelId    String?          @map("review_channel_id")
   reviewMessageId    String?          @map("review_message_id")
+  reviewThreadId     String?          @map("review_thread_id")
   /// Button custom ids created at enqueue time: { approve, reject }.
   reviewButtons      Json             @default("{}") @map("review_buttons")
   createdAt          DateTime         @default(now()) @map("created_at")
@@ -548,7 +552,23 @@ model Registration {
 
   @@index([characterId, kind, status])
   @@index([decision, status])
+  @@index([status, expiresAt])
+  @@index([plate])
   @@map("registrations")
+}
+
+/// Allowed vehicle models (§4.5 / §5.3). Editing UI belongs to stage 5; empty catalog = free text.
+model VehicleModel {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  brand     String?
+  year      Int?
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@index([status, name])
+  @@map("vehicle_models")
 }
 
 model MediaFile {

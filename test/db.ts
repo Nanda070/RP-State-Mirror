@@ -11,6 +11,7 @@ const TABLES = [
   "webhook_requests",
   "transfers",
   "registrations",
+  "vehicle_models",
   "media_files",
   "tokens",
   "characters",

@@ -5,6 +5,7 @@
  */
 import {
   MessageFlags,
+  ThreadAutoArchiveDuration,
   type Client,
   type TextChannel,
 } from "discord.js";
@@ -37,6 +38,9 @@ import {
   resolveFinePaidDelivery,
   resolveWantedDelivery,
   sameDeliveryChannel,
+  readMediaFile,
+  registrationKindLabel,
+  setRegistrationReviewThread,
   setRegistrationReviewMessage,
   setTransferReviewMessage,
   type ClassicEmbed,
@@ -47,6 +51,8 @@ import {
 } from "@mirror/core";
 import { classicToEmbed, embedSpecToMessageOptions } from "./embed-payload.js";
 import {
+  buildRegistrationReview,
+  editStoredReviewMessage,
   fetchReviewChannel,
   loadRegistration,
   loadTransfer,
@@ -629,7 +635,7 @@ const messageDesignResend: JobHandler = async (payload, { client, log }) => {
   }
 };
 
-const registrationReview: JobHandler = async (payload, { client }) => {
+const registrationReview: JobHandler = async (payload, { client, log }) => {
   const registrationId = String(payload.registrationId ?? "");
   const registration = await loadRegistration(registrationId);
   if (!registration) throw new Error(`Registration ${registrationId} not found`);
@@ -643,13 +649,119 @@ const registrationReview: JobHandler = async (payload, { client }) => {
   if (!incidentGuildId || !channelId) return { status: "deferred", reason: "Канал заявок ЧП не настроен." };
 
   const channel = await fetchReviewChannel(client, incidentGuildId, channelId);
-  const message = await channel.send(renderRegistrationReview(registration));
+  const photo = registration.evidenceFileIds[0] ? await readMediaFile(registration.evidenceFileIds[0]) : null;
+  const pingRoleIds = await getSetting("registrations.coordinatorRoleIds");
+  const message = await channel.send({
+    ...renderRegistrationReview(registration, {
+      imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
+    }),
+    ...(pingRoleIds.length > 0 ? { content: formatRoleMentions(pingRoleIds) } : {}),
+    allowedMentions: { parse: [], roles: [...pingRoleIds] },
+    files: photo ? [{ attachment: photo.body, name: photo.attachmentName }] : [],
+  });
   await setRegistrationReviewMessage(registrationId, {
     guildId: incidentGuildId,
     channelId: channel.id,
     messageId: message.id,
   });
-  return { status: "sent", messageId: message.id, registrationId };
+
+  let threadId: string | null = null;
+  try {
+    const plate = registration.plate ? ` · ${registration.plate}` : "";
+    const thread = await message.startThread({
+      name: `${registration.kind === "VEHICLE" ? "ТС" : "Униформа"} · ${registration.character.staticId}${plate}`.slice(0, 100),
+      autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
+    });
+    threadId = thread.id;
+    await setRegistrationReviewThread(registrationId, thread.id);
+  } catch (error) {
+    log.warn({ err: error, registrationId }, "registration thread was not created (Create Public Threads permission?)");
+  }
+  return { status: "sent", messageId: message.id, threadId, registrationId };
+};
+
+async function sendDirectMessage(client: Client, discordId: string, content: string, log: Logger): Promise<boolean> {
+  try {
+    const user = await client.users.fetch(discordId);
+    await user.send({ content, allowedMentions: { parse: [] } });
+    return true;
+  } catch (error) {
+    log.info({ err: error, discordId }, "direct message not delivered (DMs closed?)");
+    return false;
+  }
+}
+
+async function postToThread(client: Client, threadId: string | null, content: string, log: Logger) {
+  if (!threadId) return false;
+  try {
+    const thread = await client.channels.fetch(threadId);
+    if (!thread?.isThread()) return false;
+    if (thread.archived) await thread.setArchived(false);
+    await thread.send({ content, allowedMentions: { parse: [] } });
+    return true;
+  } catch (error) {
+    log.warn({ err: error, threadId }, "failed to post to review thread");
+    return false;
+  }
+}
+
+const registrationDecided: JobHandler = async (payload, { client, log }) => {
+  const registrationId = String(payload.registrationId ?? "");
+  const registration = await loadRegistration(registrationId);
+  if (!registration) throw new Error(`Registration ${registrationId} not found`);
+  const what = `регистрацию ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""}`;
+  const who = `персонаж ${registration.character.name}, статик ${registration.character.staticId}`;
+  if (registration.decision === "REJECTED") {
+    const thread = await postToThread(
+      client,
+      registration.reviewThreadId,
+      `**Отказ.** Решение принял: <@${registration.decidedByDiscordId}>\n**Причина:** ${registration.rejectionReason ?? "—"}`,
+      log,
+    );
+    const dm = await sendDirectMessage(
+      client,
+      registration.character.user.discordId,
+      `Ваша заявка на ${what} (${who}) отклонена.\n**Причина:** ${registration.rejectionReason ?? "—"}`,
+      log,
+    );
+    return { status: "sent", decision: "REJECTED", thread, dm };
+  }
+  if (registration.decision === "APPROVED") {
+    const until = registration.expiresAt?.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }) ?? "—";
+    const thread = await postToThread(
+      client,
+      registration.reviewThreadId,
+      `**Одобрено.** Решение принял: <@${registration.decidedByDiscordId}>. Действует до ${until}.`,
+      log,
+    );
+    const dm = await sendDirectMessage(
+      client,
+      registration.character.user.discordId,
+      `Ваша заявка на ${what} (${who}) одобрена. Регистрация действует до ${until}.`,
+      log,
+    );
+    return { status: "sent", decision: "APPROVED", thread, dm };
+  }
+  return { status: "skipped", reason: "pending" };
+};
+
+const registrationExpired: JobHandler = async (payload, { client, log }) => {
+  const registrationId = String(payload.registrationId ?? "");
+  const registration = await loadRegistration(registrationId);
+  if (!registration) throw new Error(`Registration ${registrationId} not found`);
+  let edited = false;
+  try {
+    edited = await editStoredReviewMessage(client, registration, await buildRegistrationReview(registration));
+  } catch (error) {
+    log.warn({ err: error, registrationId }, "failed to edit expired registration card");
+  }
+  const dm = await sendDirectMessage(
+    client,
+    registration.character.user.discordId,
+    `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для персонажа ${registration.character.name} истёк. При необходимости подайте заявку заново.`,
+    log,
+  );
+  return { status: "sent", edited, dm };
 };
 
 const transferReview: JobHandler = async (payload, { client }) => {
@@ -689,5 +801,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, messageDesignSend],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND, messageDesignResend],
   [MODULE_JOB_TYPES.REGISTRATION_REVIEW, registrationReview],
+  [MODULE_JOB_TYPES.REGISTRATION_DECIDED, registrationDecided],
+  [MODULE_JOB_TYPES.REGISTRATION_EXPIRED, registrationExpired],
   [MODULE_JOB_TYPES.TRANSFER_REVIEW, transferReview],
 ]);

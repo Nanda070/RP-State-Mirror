@@ -1,4 +1,5 @@
 import {
+  AuditActorType,
   DecisionStatus,
   RecordStatus,
   RegistrationKind,
@@ -165,10 +166,39 @@ async function scheduleTransferReview(tx: Db, transfer: { id: string; fromFactio
   return updated;
 }
 
+const PLATE_RE = /^[0-9A-ZА-ЯЁ-]{2,12}$/;
+
+export function normalizePlate(raw: string): string {
+  const plate = raw.trim().toUpperCase().replace(/\s+/g, "");
+  if (!PLATE_RE.test(plate)) throw new Error("Госномер: 2–12 символов (буквы, цифры, дефис).");
+  return plate;
+}
+
+export async function listVehicleModels(query = "", limit = 25) {
+  return prisma.vehicleModel.findMany({
+    where: { status: RecordStatus.ACTIVE, ...(query ? { name: { contains: query, mode: "insensitive" } } : {}) },
+    orderBy: { name: "asc" },
+    take: limit,
+  });
+}
+
+/** With an empty catalog any model is accepted; otherwise the name must match an active catalog entry. */
+export async function resolveVehicleModelName(raw: string): Promise<string> {
+  const name = nonEmptyText(128).parse(raw);
+  const catalogSize = await prisma.vehicleModel.count({ where: { status: RecordStatus.ACTIVE } });
+  if (catalogSize === 0) return name;
+  const match = await prisma.vehicleModel.findFirst({
+    where: { status: RecordStatus.ACTIVE, name: { equals: name, mode: "insensitive" } },
+  });
+  if (!match) throw new Error(`Модели «${name}» нет в каталоге разрешённых ТС. Выберите модель из подсказок.`);
+  return match.name;
+}
+
 export const createRegistrationSchema = z.object({
   kind: z.nativeEnum(RegistrationKind),
   characterId: z.string().min(1),
   payload: z.record(z.unknown()),
+  plate: z.string().optional(),
   evidenceFileIds: z.array(z.string().min(1)).max(10).default([]),
 });
 
@@ -177,16 +207,27 @@ export async function createRegistration(
   context: AuditContext,
 ) {
   const data = createRegistrationSchema.parse(input);
+  const plateFromPayload = typeof data.payload.plate === "string" ? data.payload.plate : "";
+  const plate =
+    data.kind === RegistrationKind.VEHICLE ? normalizePlate(data.plate ?? plateFromPayload) : null;
   return auditedMutation(context, "registration.created", "registration", async (tx) => {
     const active = await tx.registration.findFirst({
       where: { characterId: data.characterId, kind: data.kind, status: RecordStatus.ACTIVE },
     });
     if (active) throw new Error("У персонажа уже есть активная регистрация этого типа.");
+    if (plate) {
+      const plateTaken = await tx.registration.findFirst({
+        where: { kind: RegistrationKind.VEHICLE, status: RecordStatus.ACTIVE, plate },
+        select: { id: true },
+      });
+      if (plateTaken) throw new Error(`Госномер ${plate} уже занят другой активной регистрацией.`);
+    }
     const created = await tx.registration.create({
       data: {
         kind: data.kind,
         characterId: data.characterId,
-        payload: toJsonValue(data.payload),
+        payload: toJsonValue(plate ? { ...data.payload, plate } : data.payload),
+        plate,
         evidenceFileIds: data.evidenceFileIds,
       },
     });
@@ -229,8 +270,42 @@ export async function decideRegistration(
     });
     if (count !== 1) throw new Error("Заявка уже обработана.");
     const updated = await tx.registration.findUniqueOrThrow({ where: { id } });
+    await enqueueJob({ type: MODULE_JOB_TYPES.REGISTRATION_DECIDED, payload: { registrationId: id } }, tx);
     return { entityId: id, before: current, after: updated, result: updated };
   });
+}
+
+/** Marks approved registrations past `expires_at` as EXPIRED and queues card edit + DM. Returns the count. */
+export async function expireRegistrations(now: Date = new Date(), batch = 100): Promise<number> {
+  const due = await prisma.registration.findMany({
+    where: { status: RecordStatus.ACTIVE, decision: DecisionStatus.APPROVED, expiresAt: { lte: now } },
+    select: { id: true },
+    take: batch,
+  });
+  let expired = 0;
+  for (const { id } of due) {
+    const done = await auditedMutation(
+      { actorType: AuditActorType.SYSTEM, source: "registrations.expiry" },
+      "registration.expired",
+      "registration",
+      async (tx) => {
+        const { count } = await tx.registration.updateMany({
+          where: { id, status: RecordStatus.ACTIVE, expiresAt: { lte: now } },
+          data: { status: RecordStatus.EXPIRED },
+        });
+        if (count === 1) {
+          await enqueueJob({ type: MODULE_JOB_TYPES.REGISTRATION_EXPIRED, payload: { registrationId: id } }, tx);
+        }
+        return { entityId: id, after: { status: RecordStatus.EXPIRED }, result: count === 1 };
+      },
+    );
+    if (done) expired += 1;
+  }
+  return expired;
+}
+
+export async function setRegistrationReviewThread(id: string, threadId: string) {
+  return prisma.registration.update({ where: { id }, data: { reviewThreadId: threadId } });
 }
 
 export const createTransferSchema = z.object({
