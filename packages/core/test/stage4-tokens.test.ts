@@ -6,6 +6,7 @@ import {
   findTokens,
   formatTokenDisplay,
   issueToken,
+  receiveTokenForStatic,
   updateCharacterStaticId,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
@@ -63,5 +64,36 @@ describe("token find access", () => {
     expect(canFindTokens({ adminLevel: AdminLevel.ADMIN, isSuperAdmin: false }, [], [])).toBe(true);
     expect(canFindTokens({ adminLevel: null, isSuperAdmin: false }, ["1"], ["1"])).toBe(true);
     expect(canFindTokens({ adminLevel: null, isSuperAdmin: false }, ["1"], ["2"])).toBe(false);
+  });
+});
+
+describe("token receive by static", () => {
+  it("creates a character when needed and issues a badge", async () => {
+    const user = await prisma.user.create({ data: { discordId: "702000000000000001" } });
+    const first = await receiveTokenForStatic(
+      { userId: user.id, staticId: "RECV-1", factionCode: "LSPD", department: "Patrol" },
+      context,
+    );
+    expect(first.created).toBe(true);
+    expect(first.character.staticId).toBe("RECV-1");
+    expect(first.character.slot).toBe(1);
+    expect(first.token.number.length).toBeGreaterThanOrEqual(4);
+
+    await expect(
+      receiveTokenForStatic({ userId: user.id, staticId: "RECV-1" }, context),
+    ).rejects.toThrow(/уже есть активная/);
+
+    const second = await receiveTokenForStatic({ userId: user.id, staticId: "RECV-2" }, context);
+    expect(second.created).toBe(true);
+    expect(second.character.slot).toBe(2);
+  });
+
+  it("rejects a static owned by another user", async () => {
+    const owner = await prisma.user.create({ data: { discordId: "703" } });
+    const other = await prisma.user.create({ data: { discordId: "704" } });
+    await createCharacter({ userId: owner.id, slot: 1, staticId: "TAKEN", name: "Owner" }, context);
+    await expect(
+      receiveTokenForStatic({ userId: other.id, staticId: "TAKEN" }, context),
+    ).rejects.toThrow(/другому персонажу/);
   });
 });

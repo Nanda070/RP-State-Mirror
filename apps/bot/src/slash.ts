@@ -56,7 +56,7 @@ import {
   findFactionOverlaps,
   markFinePaid,
   ensureUserByDiscordId,
-  issueToken,
+  receiveTokenForStatic,
   listCharacters,
   PERSONNEL_EVENT_LABELS_RU,
   PERSONNEL_EVENT_TYPES,
@@ -236,26 +236,42 @@ async function requireActiveFaction(code: string): Promise<string> {
   return faction.code;
 }
 
-/** Autocomplete for «фракция» — always all ACTIVE factions from DB. */
+const FACTION_AUTOCOMPLETE_OPTIONS = new Set(["фракция", "из", "в"]);
+
+/** Autocomplete for faction fields («фракция», transfer «из»/«в») and invite «сервер». */
 export async function handleFactionAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  const focused = interaction.options.getFocused(true);
-  if (focused.name === "сервер") {
-    const q = focused.value.trim().toLowerCase();
-    const guilds = await listInviteGuilds();
-    await interaction.respond(
-      guilds
-        .filter((g) => !q || g.name.toLowerCase().includes(q) || g.discordId.includes(q))
-        .slice(0, 25)
-        .map((g) => ({ name: g.label.slice(0, 100), value: g.discordId })),
-    );
-    return;
+  try {
+    const focused = interaction.options.getFocused(true);
+    if (focused.name === "сервер") {
+      const q = String(focused.value ?? "")
+        .trim()
+        .toLowerCase();
+      const guilds = await listInviteGuilds();
+      await interaction.respond(
+        guilds
+          .filter((g) => !q || g.name.toLowerCase().includes(q) || g.discordId.includes(q))
+          .slice(0, 25)
+          .map((g) => ({ name: g.label.slice(0, 100), value: g.discordId })),
+      );
+      return;
+    }
+    if (!FACTION_AUTOCOMPLETE_OPTIONS.has(focused.name)) {
+      await interaction.respond([]);
+      return;
+    }
+    // Same source as /пост «фракция»: every ACTIVE faction, capped at 25.
+    const choices = await listActiveFactionsForAutocomplete(String(focused.value ?? ""));
+    await interaction.respond(choices);
+  } catch {
+    // Discord requires a response within ~3s; never leave autocomplete hanging.
+    if (!interaction.responded) {
+      try {
+        await interaction.respond([]);
+      } catch {
+        // Interaction already expired.
+      }
+    }
   }
-  if (focused.name !== "фракция" && focused.name !== "из" && focused.name !== "в") {
-    await interaction.respond([]);
-    return;
-  }
-  const choices = await listActiveFactionsForAutocomplete(focused.value);
-  await interaction.respond(choices);
 }
 
 export async function handleSlashCommand(
@@ -451,12 +467,13 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     return;
   }
 
-  const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
-  if (!character) {
-    await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
-    return;
-  }
+  const staticId = interaction.options.getString("статик", true);
   if (subcommand === "get") {
+    const character = await getCharacterForUser(user.id, staticId);
+    if (!character) {
+      await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+      return;
+    }
     const token = character.tokens[0];
     await interaction.reply(
       ephemeral(
@@ -471,7 +488,18 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     );
     return;
   }
-  const token = await issueToken(character.id, auditFromInteraction(interaction));
+
+  // receive — create character from static if needed, then issue badge
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  const factionCode = primaryFactionCode(identity);
+  const { character, token } = await receiveTokenForStatic(
+    {
+      userId: user.id,
+      staticId,
+      ...(factionCode ? { factionCode } : {}),
+    },
+    auditFromInteraction(interaction),
+  );
   await interaction.reply(
     ephemeral(
       `Выдан номер нашивки: **${formatTokenDisplay({

@@ -18,12 +18,11 @@ import {
   canManageModules,
   ensureUserByDiscordId,
   formatTokenDisplay,
-  getCharacterForUser,
   getSetting,
   getDiscordForm,
   getButtonAction,
-  issueToken,
   parseCustomId,
+  receiveTokenForStatic,
   submitDiscordForm,
   resolveIdentity,
   writeAuditEvent,
@@ -425,12 +424,16 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     if (!(await getButtonAction(parsed.id))) throw new Error("Кнопка устарела или отключена.");
     const staticId = interaction.fields.getTextInputValue("static").trim();
     const { user } = await ensureUserByDiscordId(interaction.user.id);
-    const character = await getCharacterForUser(user.id, staticId);
-    if (!character) {
-      await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
-      return true;
-    }
-    const token = await issueToken(character.id, auditContext(interaction, "discord.modal"));
+    const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
+    const factionCode = identity.factions[0]?.code;
+    const { character, token } = await receiveTokenForStatic(
+      {
+        userId: user.id,
+        staticId,
+        ...(factionCode ? { factionCode } : {}),
+      },
+      auditContext(interaction, "discord.modal"),
+    );
     await interaction.reply(
       ephemeral(
         `Выдан номер нашивки: **${formatTokenDisplay({

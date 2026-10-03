@@ -277,8 +277,10 @@ export const tokenCommand = new SlashCommandBuilder()
   .addSubcommand((sub) =>
     sub
       .setName("receive")
-      .setDescription("Получить номер нашивки для своего персонажа")
-      .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32)),
+      .setDescription("Получить нашивку по статику (персонаж создаётся при необходимости)")
+      .addStringOption((o) =>
+        o.setName("статик").setDescription("Статик — единственное поле; персонаж создаётся автоматически").setRequired(true).setMaxLength(32),
+      ),
   )
   .addSubcommand((sub) =>
     sub
@@ -316,12 +318,29 @@ export const uniformRegistrationCommand = new SlashCommandBuilder()
   .addStringOption((o) => o.setName("описание").setDescription("Описание комплекта униформы").setRequired(true).setMaxLength(1000))
   .addAttachmentOption((o) => o.setName("фото").setDescription("Фото униформы (изображение до 10 МБ)").setRequired(true));
 
-export const transferCommand = new SlashCommandBuilder()
-  .setName("перевод-фракции")
-  .setDescription("Подать заявку на перевод между фракциями")
-  .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
-  .addStringOption((o) => o.setName("из").setDescription("Текущая фракция").setRequired(true).setMaxLength(32).setAutocomplete(true))
-  .addStringOption((o) => o.setName("в").setDescription("Принимающая фракция").setRequired(true).setMaxLength(32).setAutocomplete(true))
+function transferFactionOption<T extends SlashBuilder>(
+  builder: T,
+  name: "из" | "в",
+  description: string,
+) {
+  // Same autocomplete wiring as factionOption («фракция»): ACTIVE factions from DB.
+  return builder.addStringOption((o) =>
+    o.setName(name).setDescription(description).setRequired(true).setAutocomplete(true).setMaxLength(32),
+  );
+}
+
+export const transferCommand = transferFactionOption(
+  transferFactionOption(
+    new SlashCommandBuilder()
+      .setName("перевод-фракции")
+      .setDescription("Подать заявку на перевод между фракциями")
+      .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32)),
+    "из",
+    "Текущая фракция",
+  ),
+  "в",
+  "Принимающая фракция",
+)
   .addIntegerOption((o) => o.setName("с_ранга").setDescription("Текущий ранг").setRequired(true).setMinValue(0).setMaxValue(100))
   .addIntegerOption((o) => o.setName("на_ранг").setDescription("Новый ранг (по таблице переводов)").setRequired(true).setMinValue(0).setMaxValue(100))
   .addAttachmentOption((o) => o.setName("документы").setDescription("Фото документов (изображение до 10 МБ)").setRequired(true));

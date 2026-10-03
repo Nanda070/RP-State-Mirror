@@ -244,6 +244,58 @@ export async function issueToken(characterId: string, context: AuditContext) {
   });
 }
 
+export const receiveTokenForStaticSchema = z.object({
+  userId: z.string().min(1),
+  staticId: nonEmptyText(32),
+  /** Optional IC display name; defaults to the static id. */
+  name: nonEmptyText(128).optional(),
+  factionCode: z.string().trim().max(32).optional(),
+  department: z.string().trim().max(128).optional(),
+});
+export type ReceiveTokenForStaticInput = z.infer<typeof receiveTokenForStaticSchema>;
+
+/**
+ * `/token receive` and the receive button: user enters only a static.
+ * Creates an ACTIVE character in the next free slot when needed, then issues a badge.
+ */
+export async function receiveTokenForStatic(input: ReceiveTokenForStaticInput, context: AuditContext) {
+  const data = receiveTokenForStaticSchema.parse(input);
+  let character = await getCharacterForUser(data.userId, data.staticId);
+  let created = false;
+  if (!character) {
+    const taken = await prisma.character.findFirst({
+      where: { staticId: data.staticId, status: RecordStatus.ACTIVE },
+      select: { id: true, userId: true },
+    });
+    if (taken) throw new Error("Этот статик уже привязан к другому персонажу.");
+    const active = await prisma.character.findMany({
+      where: { userId: data.userId, status: RecordStatus.ACTIVE },
+      select: { slot: true },
+    });
+    if (active.length >= 3) throw new Error("У Discord-аккаунта уже три активных персонажа.");
+    const used = new Set(active.map((row) => row.slot));
+    const slot = ([1, 2, 3] as const).find((value) => !used.has(value));
+    if (slot == null) throw new Error("У Discord-аккаунта уже три активных персонажа.");
+    character = {
+      ...(await createCharacter(
+        {
+          userId: data.userId,
+          slot,
+          staticId: data.staticId,
+          name: data.name ?? data.staticId,
+          ...(data.factionCode ? { factionCode: data.factionCode } : {}),
+          ...(data.department ? { department: data.department } : {}),
+        },
+        context,
+      )),
+      tokens: [],
+    };
+    created = true;
+  }
+  const token = await issueToken(character.id, context);
+  return { character, token, created };
+}
+
 export async function revokeToken(tokenNumber: string, context: AuditContext) {
   return auditedMutation(context, "token.revoked", "token", async (tx) => {
     const token = await tx.token.findUnique({ where: { number: tokenNumber } });
