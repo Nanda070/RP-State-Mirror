@@ -31,6 +31,7 @@ export const MODULE_JOB_TYPES = {
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
   IC_BLACKLIST_PUBLISH: "ic_blacklist.publish",
   IC_BLACKLIST_EDIT_CLOSED: "ic_blacklist.edit_closed",
+  ACCOUNT_RECOVERY_DECIDED: "account_recovery.decided",
 } as const;
 
 export type ModuleJobType = (typeof MODULE_JOB_TYPES)[keyof typeof MODULE_JOB_TYPES];
@@ -170,3 +171,10 @@ export function enqueueIcBlacklistEditClosed(entryId: string, db?: Db) {
   );
 }
 
+
+export function enqueueAccountRecoveryDecided(recoveryId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.ACCOUNT_RECOVERY_DECIDED, payload: { recoveryId } },
+    db,
+  );
+}
