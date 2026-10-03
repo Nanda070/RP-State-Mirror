@@ -1,7 +1,7 @@
 import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
 import { DiscordFormsManager } from "@/components/discord-forms-manager";
-import { getActiveChannelOptions } from "@/lib/catalog";
+import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export default async function SettingsFormsPage({
@@ -16,7 +16,7 @@ export default async function SettingsFormsPage({
       ? params.webhookUrl
       : "";
 
-  const [forms, channels] = await Promise.all([
+  const [forms, channels, guilds] = await Promise.all([
     prisma.discordForm.findMany({
       where: { status: RecordStatus.ACTIVE },
       include: {
@@ -27,6 +27,7 @@ export default async function SettingsFormsPage({
       take: 50,
     }),
     getActiveChannelOptions(),
+    getActiveGuildOptions(),
   ]);
 
   return (
@@ -34,7 +35,8 @@ export default async function SettingsFormsPage({
       <div className="section-head">
         <h1>Discord-формы</h1>
         <p className="muted">
-          Создание и просмотр modal-форм Discord. Доставка ответов — в канал и/или webhook.
+          Создание modal-форм Discord, публикация кнопки «Открыть форму» и ссылка на сообщение.
+          Доставка ответов — в канал и/или webhook.
         </p>
         <div className="status-link-row">
           <span className="stub-badge" data-ready>
@@ -48,6 +50,7 @@ export default async function SettingsFormsPage({
       <DiscordFormsManager
         initialForms={forms}
         initialWebhookUrl={initialWebhookUrl}
+        guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         channels={channels.map((c) => ({
           discordId: c.discordId,
           name: c.name,

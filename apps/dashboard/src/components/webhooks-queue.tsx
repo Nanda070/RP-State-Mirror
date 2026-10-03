@@ -42,9 +42,9 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, status } : item)));
     setMessage(
       status === "FORM_BUILT"
-        ? "Запрос отмечен: форма собрана."
+        ? "Запрос отмечен: форма собрана. Заявителю отправлено уведомление в ЛС."
         : status === "REJECTED"
-          ? "Запрос отклонён."
+          ? "Запрос отклонён. Заявителю отправлено уведомление в ЛС."
           : "Запрос закрыт.",
     );
   }
@@ -55,7 +55,8 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
         <h2 className="panel-title">Очередь запросов webhook</h2>
         <p className="muted" style={{ marginTop: 0 }}>
           Запросы из <code>/создать-webhook</code>. URL создаёт бот — подставьте его при сборке
-          Discord-формы и отметьте статус.
+          Discord-формы, опубликуйте кнопку формы (чтобы в ЛС была ссылка), затем отметьте «Форма
+          собрана» — заявитель получит уведомление в личные сообщения.
         </p>
         <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
           <Link href="/settings/forms" className="btn btn-secondary">

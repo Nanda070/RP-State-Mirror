@@ -19,17 +19,25 @@ import {
   enqueueFeedbackClosedSend,
   enqueueFeedbackReplySend,
   enqueueFeedbackTicketNotify,
+  enqueueFormOpenPublish,
   enqueueFormSubmissionDeliver,
   enqueueIcBlacklistEditClosed,
   enqueueIcBlacklistPublish,
   enqueueRolePanelArchive,
   enqueueRolePanelPublish,
+  enqueueWebhookRequestNotify,
 } from "./module-jobs.js";
 import { embedSpecSchema } from "./embeds.js";
 import { getSetting } from "./settings.js";
 
 const snowflakeLike = z.string().min(1).max(32);
+const snowflakeStrict = z.string().regex(/^\d{17,20}$/);
 const nonEmptyText = (max: number) => z.string().trim().min(1).max(max);
+
+/** Canonical Discord client link to a guild channel message. */
+export function discordMessageUrl(guildId: string, channelId: string, messageId: string): string {
+  return `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
+}
 
 const ACTIVE_TOKEN = { where: { status: RecordStatus.ACTIVE }, take: 1 } as const;
 
@@ -681,7 +689,23 @@ export async function setWebhookRequestStatus(
         ...(webhookUrl !== undefined ? { webhookUrl } : {}),
       },
     });
+    // DM заявителю при смене статуса (форма собрана / отклонён).
+    if (
+      updated.status !== current.status &&
+      (updated.status === "FORM_BUILT" || updated.status === "REJECTED")
+    ) {
+      await enqueueWebhookRequestNotify(updated.id, tx);
+    }
     return { entityId: id, before: current, after: updated, result: updated };
+  });
+}
+
+/** Active form bound to the same webhook URL as a request (newest first). */
+export async function findFormForWebhookRequest(webhookUrl: string | null | undefined) {
+  if (!webhookUrl) return null;
+  return prisma.discordForm.findFirst({
+    where: { webhookUrl, status: RecordStatus.ACTIVE },
+    orderBy: { updatedAt: "desc" },
   });
 }
 
@@ -1020,6 +1044,51 @@ export async function createDiscordForm(input: CreateDiscordFormInput, context: 
       include: { fields: { orderBy: { position: "asc" } } },
     });
     return { entityId: form.id, after: form, result: form };
+  });
+}
+
+export const publishDiscordFormOpenSchema = z.object({
+  formId: z.string().min(1),
+  guildDiscordId: snowflakeStrict,
+  channelDiscordId: snowflakeStrict,
+});
+export type PublishDiscordFormOpenInput = z.infer<typeof publishDiscordFormOpenSchema>;
+
+/** Queue bot delivery of a channel message with a form.open button. */
+export async function publishDiscordFormOpen(
+  input: z.input<typeof publishDiscordFormOpenSchema>,
+  context: AuditContext,
+) {
+  const data = publishDiscordFormOpenSchema.parse(input);
+  return auditedMutation(context, "form.open_publish_queued", "form", async (tx) => {
+    const form = await tx.discordForm.findFirst({
+      where: { id: data.formId, status: RecordStatus.ACTIVE },
+    });
+    if (!form) throw new Error("Форма не найдена.");
+    await enqueueFormOpenPublish(
+      {
+        formId: form.id,
+        guildDiscordId: data.guildDiscordId,
+        channelDiscordId: data.channelDiscordId,
+      },
+      tx,
+    );
+    return { entityId: form.id, after: form, result: form };
+  });
+}
+
+/** Persist the last published form.open message coordinates (called by the bot worker). */
+export async function setDiscordFormOpenMessage(
+  formId: string,
+  message: { guildDiscordId: string; channelDiscordId: string; messageDiscordId: string },
+) {
+  return prisma.discordForm.update({
+    where: { id: formId },
+    data: {
+      openGuildDiscordId: message.guildDiscordId,
+      openChannelDiscordId: message.channelDiscordId,
+      openMessageDiscordId: message.messageDiscordId,
+    },
   });
 }
 

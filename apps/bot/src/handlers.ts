@@ -27,8 +27,11 @@ import {
   makeIcBlacklistEmbed,
   makeWantedDoneEmbed,
   makeWantedEmbed,
+  discordMessageUrl,
+  findFormForWebhookRequest,
   materializeEmbedSpecButtons,
   recordSentMessage,
+  setDiscordFormOpenMessage,
   resolveDocumentResponseDelivery,
   resolveDocumentResponseLocalDelivery,
   resolveFactionDocumentDelivery,
@@ -1048,6 +1051,123 @@ const feedbackClosedSend: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", dm, ticketId };
 };
 
+const formOpenPublish: JobHandler = async (payload, { client, log }) => {
+  const formId = String(payload.formId ?? "");
+  const guildDiscordId = String(payload.guildDiscordId ?? "");
+  const channelDiscordId = String(payload.channelDiscordId ?? "");
+  const form = await prisma.discordForm.findUnique({ where: { id: formId } });
+  if (!form || form.status !== RecordStatus.ACTIVE) {
+    return { status: "skipped", reason: "form not found or not active" };
+  }
+
+  const spec: EmbedSpec = {
+    version: 1,
+    embeds: [
+      {
+        type: "embed",
+        title: form.name.slice(0, 256),
+        description: (form.description?.trim() || "Нажмите кнопку ниже, чтобы открыть форму.").slice(0, 4096),
+        color: 0x5865f2,
+      },
+    ],
+    components: [
+      {
+        type: "action_row",
+        components: [
+          {
+            type: "button",
+            label: "Открыть форму",
+            style: "primary",
+            action: "form.open",
+            params: { formId: form.id },
+          },
+        ],
+      },
+    ],
+  };
+
+  const ready = await materializeEmbedSpecButtons(spec);
+  const options = embedSpecToMessageOptions(ready);
+
+  const guild = await client.guilds.fetch(guildDiscordId);
+  const channel = (await guild.channels.fetch(channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) {
+    throw new Error(`Канал ${channelDiscordId} недоступен`);
+  }
+
+  let message = null;
+  if (form.openMessageDiscordId && form.openChannelDiscordId === channelDiscordId) {
+    const existing = await channel.messages.fetch(form.openMessageDiscordId).catch(() => null);
+    if (existing) {
+      message = await existing.edit(options as Parameters<typeof existing.edit>[0]);
+    }
+  }
+  if (!message) {
+    message = await channel.send(options);
+  }
+
+  await setDiscordFormOpenMessage(form.id, {
+    guildDiscordId: guild.id,
+    channelDiscordId: channel.id,
+    messageDiscordId: message.id,
+  });
+  await recordSentMessage({
+    guildDiscordId: guild.id,
+    channelDiscordId: channel.id,
+    messageDiscordId: message.id,
+    spec: ready,
+  });
+
+  const messageUrl = discordMessageUrl(guild.id, channel.id, message.id);
+  log.info({ formId: form.id, messageId: message.id, messageUrl }, "form open button published");
+  return { status: "sent", formId: form.id, messageId: message.id, messageUrl };
+};
+
+const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
+  const requestId = String(payload.requestId ?? "");
+  const request = await prisma.webhookRequest.findUnique({ where: { id: requestId } });
+  if (!request) return { status: "skipped", reason: "request not found" };
+
+  let content: string;
+  if (request.status === "FORM_BUILT") {
+    const form = await findFormForWebhookRequest(request.webhookUrl);
+    const lines = ["Ваш запрос на Discord-форму выполнен."];
+    if (form) {
+      lines.push(`Форма: **${form.name}**`);
+    }
+    if (request.description.trim()) {
+      lines.push(`Описание запроса: ${request.description}`);
+    }
+    if (form?.openGuildDiscordId && form.openChannelDiscordId && form.openMessageDiscordId) {
+      const url = discordMessageUrl(
+        form.openGuildDiscordId,
+        form.openChannelDiscordId,
+        form.openMessageDiscordId,
+      );
+      lines.push(`Открыть форму: ${url}`);
+      lines.push("Нажмите кнопку на сообщении, чтобы заполнить форму.");
+    } else {
+      lines.push(
+        "Форма готова. Откройте её через кнопку «Открыть форму» в Discord (администратор публикует кнопку на странице Discord-форм).",
+      );
+    }
+    content = lines.join("\n");
+  } else if (request.status === "REJECTED") {
+    content = [
+      "Ваш запрос на Discord-форму отклонён.",
+      request.description.trim() ? `Описание запроса: ${request.description}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } else {
+    return { status: "skipped", reason: "status not notifiable" };
+  }
+
+  const dm = await sendDirectMessage(client, request.requesterDiscordId, content, log);
+  log.info({ requestId, status: request.status, dm }, "webhook request status DM delivered");
+  return { status: "sent", dm, requestId, requestStatus: request.status };
+};
+
 const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
   const submissionId = String(payload.submissionId ?? "");
   const submission = await prisma.formSubmission.findUnique({
@@ -1149,6 +1269,8 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND, feedbackReplySend],
   [MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, feedbackClosedSend],
   [MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, formSubmissionDeliver],
+  [MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, formOpenPublish],
+  [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],
   [MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, icBlacklistPublish],
   [MODULE_JOB_TYPES.IC_BLACKLIST_EDIT_CLOSED, icBlacklistEditClosed],
 ]);

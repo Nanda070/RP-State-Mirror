@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 
 type FormField = {
@@ -17,9 +18,14 @@ type FormRow = {
   name: string;
   webhookUrl?: string | null;
   deliveryChannelId?: string | null;
+  openGuildDiscordId?: string | null;
+  openChannelDiscordId?: string | null;
+  openMessageDiscordId?: string | null;
   fields: Array<{ key: string; label: string }>;
   _count: { submissions: number };
 };
+
+type GuildOption = { discordId: string; name: string };
 
 function createEmptyField(overrides?: Partial<Omit<FormField, "clientId">>): FormField {
   return {
@@ -32,15 +38,25 @@ function createEmptyField(overrides?: Partial<Omit<FormField, "clientId">>): For
   };
 }
 
+function formMessageUrl(form: FormRow): string | null {
+  if (!form.openGuildDiscordId || !form.openChannelDiscordId || !form.openMessageDiscordId) {
+    return null;
+  }
+  return `https://discord.com/channels/${form.openGuildDiscordId}/${form.openChannelDiscordId}/${form.openMessageDiscordId}`;
+}
+
 export function DiscordFormsManager({
   initialForms,
   channels,
+  guilds,
   initialWebhookUrl = "",
 }: {
   initialForms: FormRow[];
   channels: ChannelOption[];
+  guilds: GuildOption[];
   initialWebhookUrl?: string;
 }) {
+  const router = useRouter();
   const [forms, setForms] = useState(initialForms);
   const [formName, setFormName] = useState("");
   const [formWebhookUrl, setFormWebhookUrl] = useState(initialWebhookUrl);
@@ -49,6 +65,13 @@ export function DiscordFormsManager({
   const [formFields, setFormFields] = useState<FormField[]>(() => [createEmptyField()]);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [publishFormId, setPublishFormId] = useState<string | null>(null);
+  const [publishGuildId, setPublishGuildId] = useState(guilds[0]?.discordId ?? "");
+  const [publishChannelId, setPublishChannelId] = useState("");
+
+  useEffect(() => {
+    setForms(initialForms);
+  }, [initialForms]);
 
   async function createForm() {
     setPending(true);
@@ -90,9 +113,41 @@ export function DiscordFormsManager({
       setFormDeliveryChannelId("");
       setFormResponseLimit("");
       setFormFields([createEmptyField()]);
-      setMessage("Форма создана.");
+      setMessage("Форма создана. Опубликуйте кнопку формы, чтобы получить ссылку на сообщение.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка создания формы");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function publishFormOpen(formId: string) {
+    if (!publishGuildId || !publishChannelId) {
+      setMessage("Выберите сервер и канал для публикации кнопки.");
+      return;
+    }
+    setPending(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/stage4", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "publish-form-open",
+          formId,
+          guildDiscordId: publishGuildId,
+          channelDiscordId: publishChannelId,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Ошибка публикации");
+      setPublishFormId(null);
+      setMessage(
+        "Кнопка формы поставлена в очередь. Обновите список через несколько секунд — появится ссылка на сообщение Discord.",
+      );
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Ошибка публикации");
     } finally {
       setPending(false);
     }
@@ -102,12 +157,20 @@ export function DiscordFormsManager({
     setFormFields((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
+  function openPublish(form: FormRow) {
+    setPublishFormId(form.id);
+    setPublishGuildId(form.openGuildDiscordId || guilds[0]?.discordId || "");
+    setPublishChannelId(form.openChannelDiscordId || "");
+    setMessage(null);
+  }
+
   return (
     <div className="stack">
       <section className="panel stack">
         <h2 className="panel-title">Новая Discord-форма</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          До 5 полей на форму (лимит Discord modal). Доставка ответа — в канал и/или webhook.
+          До 5 полей на форму (лимит Discord modal). Доставка ответа — в канал и/или webhook. Чтобы
+          игроки могли открыть форму, опубликуйте кнопку ниже в списке форм.
         </p>
 
         <label className="field">
@@ -228,41 +291,109 @@ export function DiscordFormsManager({
         ) : null}
       </section>
 
-      <section className="panel">
-        <h2 className="panel-title" style={{ marginTop: 0 }}>
-          Существующие формы
-        </h2>
+      <section className="panel stack">
+        <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+          <h2 className="panel-title" style={{ marginTop: 0, marginBottom: 0 }}>
+            Существующие формы
+          </h2>
+          <button className="btn btn-ghost" type="button" onClick={() => router.refresh()}>
+            Обновить
+          </button>
+        </div>
         {forms.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>
             Форм пока нет.
           </p>
         ) : (
-          <div className="registry-table-wrap">
-            <table className="registry-table">
-              <thead>
-                <tr>
-                  <th>Название</th>
-                  <th>Поля</th>
-                  <th>Ответов</th>
-                  <th>Доставка</th>
-                </tr>
-              </thead>
-              <tbody>
-                {forms.map((form) => (
-                  <tr key={form.id}>
-                    <td>{form.name}</td>
-                    <td>{form.fields.map((f) => f.label).join(", ")}</td>
-                    <td>{form._count.submissions}</td>
-                    <td>
-                      {form.deliveryChannelId ? "канал" : ""}
-                      {form.deliveryChannelId && form.webhookUrl ? " · " : ""}
-                      {form.webhookUrl ? "webhook" : ""}
-                      {!form.deliveryChannelId && !form.webhookUrl ? "—" : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="stack" style={{ gap: "0.85rem" }}>
+            {forms.map((form) => {
+              const link = formMessageUrl(form);
+              const publishing = publishFormId === form.id;
+              return (
+                <div key={form.id} className="stack" style={{ gap: "0.45rem" }}>
+                  <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                    <div>
+                      <strong>{form.name}</strong>
+                      <span className="muted">
+                        {" "}
+                        · {form.fields.map((f) => f.label).join(", ") || "без полей"} · ответов:{" "}
+                        {form._count.submissions}
+                      </span>
+                    </div>
+                    <button
+                      className="btn btn-secondary"
+                      type="button"
+                      disabled={pending}
+                      onClick={() => (publishing ? setPublishFormId(null) : openPublish(form))}
+                    >
+                      {publishing ? "Скрыть" : "Опубликовать кнопку формы"}
+                    </button>
+                  </div>
+                  <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                    Доставка:{" "}
+                    {[
+                      form.deliveryChannelId ? "канал" : null,
+                      form.webhookUrl ? "webhook" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
+                  </p>
+                  {link ? (
+                    <p style={{ margin: 0, fontSize: "0.9rem" }}>
+                      Ссылка на сообщение:{" "}
+                      <a href={link} target="_blank" rel="noreferrer">
+                        {link}
+                      </a>
+                    </p>
+                  ) : (
+                    <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                      Кнопка ещё не опубликована — без неё форму нельзя открыть в Discord.
+                    </p>
+                  )}
+                  {publishing ? (
+                    <div className="stack" style={{ gap: "0.5rem" }}>
+                      <div className="form-grid-3">
+                        <label className="field">
+                          <span>Сервер</span>
+                          <select
+                            value={publishGuildId}
+                            onChange={(e) => {
+                              setPublishGuildId(e.target.value);
+                              setPublishChannelId("");
+                            }}
+                          >
+                            {guilds.map((g) => (
+                              <option key={g.discordId} value={g.discordId}>
+                                {g.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Канал</span>
+                          <ChannelSelect
+                            id={`form-open-channel-${form.id}`}
+                            value={publishChannelId}
+                            onChange={setPublishChannelId}
+                            channels={channels}
+                            guildDiscordId={publishGuildId}
+                            emptyLabel="Выберите канал"
+                          />
+                        </label>
+                      </div>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={pending || !publishGuildId || !publishChannelId}
+                        onClick={() => void publishFormOpen(form.id)}
+                      >
+                        {pending ? "Публикация…" : "Опубликовать в канал"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

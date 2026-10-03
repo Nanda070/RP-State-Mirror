@@ -730,21 +730,26 @@ model FeedbackMessage {
 }
 
 model DiscordForm {
-  id                 String       @id @default(cuid())
-  name               String
-  description        String?
-  webhookUrl         String?      @map("webhook_url")
-  deliveryChannelId  String?      @map("delivery_channel_id")
-  status             RecordStatus @default(ACTIVE)
-  expiresAt          DateTime?    @map("expires_at")
-  responseLimit      Int?         @map("response_limit")
-  createdByDiscordId String       @map("created_by_discord_id")
-  createdAt          DateTime     @default(now()) @map("created_at")
-  updatedAt          DateTime     @updatedAt @map("updated_at")
-  fields             FormField[]
-  submissions        FormSubmission[]
+  id                   String       @id @default(cuid())
+  name                 String
+  description          String?
+  webhookUrl           String?      @map("webhook_url")
+  deliveryChannelId    String?      @map("delivery_channel_id")
+  /// Last published message with a form.open button (Discord message link).
+  openGuildDiscordId   String?      @map("open_guild_discord_id")
+  openChannelDiscordId String?      @map("open_channel_discord_id")
+  openMessageDiscordId String?      @map("open_message_discord_id")
+  status               RecordStatus @default(ACTIVE)
+  expiresAt            DateTime?    @map("expires_at")
+  responseLimit        Int?         @map("response_limit")
+  createdByDiscordId   String       @map("created_by_discord_id")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+  fields               FormField[]
+  submissions          FormSubmission[]
 
   @@index([status, expiresAt])
+  @@index([webhookUrl])
   @@map("forms")
 }
 

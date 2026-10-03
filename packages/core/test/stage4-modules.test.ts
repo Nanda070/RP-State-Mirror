@@ -8,6 +8,7 @@ import {
   createFeedbackTicket,
   createRegistration,
   createTransfer,
+  createWebhookRequest,
   addFeedbackMessage,
   closeFeedbackTicket,
   createRolePanel,
@@ -15,7 +16,9 @@ import {
   decideRegistration,
   decideTransfer,
   issueToken,
+  publishDiscordFormOpen,
   revokeToken,
+  setWebhookRequestStatus,
   submitDiscordForm,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
@@ -296,6 +299,57 @@ describe("stage 4 modules", () => {
     const archiveJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.ROLE_PANEL_ARCHIVE } });
     expect(archiveJobs).toHaveLength(1);
     expect(archiveJobs[0]?.payload).toEqual({ rolePanelId: panel.id });
+  });
+
+  it("enqueues requester DM when webhook request is marked FORM_BUILT or REJECTED", async () => {
+    const request = await createWebhookRequest(
+      {
+        requesterDiscordId: "600000000000000001",
+        guildDiscordId: "100000000000000001",
+        channelDiscordId: "200000000000000001",
+        description: "Нужна форма заявки",
+        webhookUrl: "https://discord.com/api/webhooks/1/abc",
+      },
+      context,
+    );
+    await setWebhookRequestStatus(request.id, "FORM_BUILT", undefined, context);
+    const builtJobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY } });
+    expect(builtJobs).toHaveLength(1);
+    expect(builtJobs[0]?.payload).toEqual({ requestId: request.id });
+
+    await setWebhookRequestStatus(request.id, "REJECTED", undefined, context);
+    const notifyJobs = await prisma.job.findMany({
+      where: { type: MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(notifyJobs).toHaveLength(2);
+    expect(notifyJobs[1]?.payload).toEqual({ requestId: request.id });
+  });
+
+  it("enqueues form.open publish job for an existing form", async () => {
+    const form = await createDiscordForm(
+      {
+        name: "Заявка",
+        fields: [{ key: "text", label: "Текст", type: "short", required: true }],
+        createdByDiscordId: "300000000000000099",
+      },
+      context,
+    );
+    await publishDiscordFormOpen(
+      {
+        formId: form.id,
+        guildDiscordId: "100000000000000001",
+        channelDiscordId: "200000000000000001",
+      },
+      context,
+    );
+    const jobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.FORM_OPEN_PUBLISH } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.payload).toEqual({
+      formId: form.id,
+      guildDiscordId: "100000000000000001",
+      channelDiscordId: "200000000000000001",
+    });
   });
 
   it("enqueues notification on feedback ticket creation, DM on admin reply, and DM on close", async () => {

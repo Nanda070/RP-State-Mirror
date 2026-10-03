@@ -7,6 +7,7 @@ import {
   listWebhookRequests,
   getSetting,
   isSettingKey,
+  publishDiscordFormOpen,
   setSetting,
   setWebhookRequestStatus,
   type SettingKey,
@@ -95,6 +96,12 @@ const actionSchema = z.discriminatedUnion("action", [
     id: z.string().min(1),
     status: z.enum(["PENDING", "FORM_BUILT", "CLOSED", "REJECTED"]),
   }),
+  z.object({
+    action: z.literal("publish-form-open"),
+    formId: z.string().min(1),
+    guildDiscordId: snowflake,
+    channelDiscordId: snowflake,
+  }),
 ]);
 
 export async function PATCH(request: Request) {
@@ -108,6 +115,18 @@ export async function PATCH(request: Request) {
     if (action.action === "webhook-status") {
       return Response.json(
         await setWebhookRequestStatus(action.id, action.status as WebhookRequestStatus, undefined, context),
+      );
+    }
+    if (action.action === "publish-form-open") {
+      return Response.json(
+        await publishDiscordFormOpen(
+          {
+            formId: action.formId,
+            guildDiscordId: action.guildDiscordId,
+            channelDiscordId: action.channelDiscordId,
+          },
+          context,
+        ),
       );
     }
     return Response.json(await addFeedbackMessage(action.id, session.user.id, action.content, context));
