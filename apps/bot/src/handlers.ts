@@ -37,6 +37,8 @@ import {
   resolveFinePaidDelivery,
   resolveWantedDelivery,
   sameDeliveryChannel,
+  setRegistrationReviewMessage,
+  setTransferReviewMessage,
   type ClassicEmbed,
   type DeliveryTarget,
   type EmbedSpec,
@@ -44,6 +46,13 @@ import {
   type PersonnelEventType,
 } from "@mirror/core";
 import { classicToEmbed, embedSpecToMessageOptions } from "./embed-payload.js";
+import {
+  fetchReviewChannel,
+  loadRegistration,
+  loadTransfer,
+  renderRegistrationReview,
+  renderTransferReview,
+} from "./stage4-review.js";
 import type { JobHandler } from "./worker.js";
 
 type EmbedSendResult =
@@ -620,6 +629,46 @@ const messageDesignResend: JobHandler = async (payload, { client, log }) => {
   }
 };
 
+const registrationReview: JobHandler = async (payload, { client }) => {
+  const registrationId = String(payload.registrationId ?? "");
+  const registration = await loadRegistration(registrationId);
+  if (!registration) throw new Error(`Registration ${registrationId} not found`);
+  // Idempotent: a retry after a successful post must not post a second copy.
+  if (registration.reviewMessageId) {
+    return { status: "skipped", reason: "already posted", messageId: registration.reviewMessageId };
+  }
+
+  const incidentGuildId = await getSetting("core.incidentGuildId");
+  const channelId = await getSetting("registrations.channelId");
+  if (!incidentGuildId || !channelId) return { status: "deferred", reason: "Канал заявок ЧП не настроен." };
+
+  const channel = await fetchReviewChannel(client, incidentGuildId, channelId);
+  const message = await channel.send(renderRegistrationReview(registration));
+  await setRegistrationReviewMessage(registrationId, {
+    guildId: incidentGuildId,
+    channelId: channel.id,
+    messageId: message.id,
+  });
+  return { status: "sent", messageId: message.id, registrationId };
+};
+
+const transferReview: JobHandler = async (payload, { client }) => {
+  const transferId = String(payload.transferId ?? "");
+  const transfer = await loadTransfer(transferId);
+  if (!transfer) throw new Error(`Transfer ${transferId} not found`);
+  if (transfer.reviewMessageId) {
+    return { status: "skipped", reason: "already posted", messageId: transfer.reviewMessageId };
+  }
+  const channelId = await getSetting("transfers.channelId");
+  const guildId = await getSetting("core.incidentGuildId");
+  if (!guildId || !channelId) return { status: "deferred", reason: "Канал переводов не настроен." };
+
+  const channel = await fetchReviewChannel(client, guildId, channelId);
+  const message = await channel.send(renderTransferReview(transfer));
+  await setTransferReviewMessage(transferId, { guildId, channelId: channel.id, messageId: message.id });
+  return { status: "sent", messageId: message.id, transferId };
+};
+
 export const jobHandlers = new Map<string, JobHandler>([
   [
     "system.ping",
@@ -639,4 +688,6 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.PERSONNEL_PUBLISH, personnelPublish],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, messageDesignSend],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND, messageDesignResend],
+  [MODULE_JOB_TYPES.REGISTRATION_REVIEW, registrationReview],
+  [MODULE_JOB_TYPES.TRANSFER_REVIEW, transferReview],
 ]);

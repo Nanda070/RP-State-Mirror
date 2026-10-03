@@ -6,6 +6,7 @@
  * Field names match the legacy Python bot where applicable.
  */
 import {
+  ChannelType,
   REST,
   Routes,
   SlashCommandBuilder,
@@ -240,6 +241,85 @@ export const personnelCommand = factionOption(
   { required: false, description: "Код фракции (если не из вашей роли)" },
 );
 
+export const characterCommand = new SlashCommandBuilder()
+  .setName("персонаж")
+  .setDescription("Управление своими персонажами")
+  .addSubcommand((sub) =>
+    sub
+      .setName("создать")
+      .setDescription("Добавить персонажа")
+      .addIntegerOption((o) => o.setName("слот").setDescription("Слот от 1 до 3").setRequired(true).setMinValue(1).setMaxValue(3))
+      .addStringOption((o) => o.setName("статик").setDescription("Уникальный статик персонажа").setRequired(true).setMaxLength(32))
+      .addStringOption((o) => o.setName("имя").setDescription("Имя персонажа").setRequired(true).setMaxLength(128)),
+  )
+  .addSubcommand((sub) => sub.setName("список").setDescription("Показать своих персонажей"));
+
+export const tokenCommand = new SlashCommandBuilder()
+  .setName("token")
+  .setDescription("Управление номерами нашивок")
+  .addSubcommand((sub) =>
+    sub
+      .setName("receive")
+      .setDescription("Получить номер нашивки для своего персонажа")
+      .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32)),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("get")
+      .setDescription("Показать номер нашивки")
+      .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32)),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("remove")
+      .setDescription("Отозвать номер нашивки (только администратор)")
+      .addStringOption((o) => o.setName("номер").setDescription("Номер нашивки").setRequired(true).setMaxLength(16)),
+  );
+
+export const vehicleRegistrationCommand = new SlashCommandBuilder()
+  .setName("регистрация-тс")
+  .setDescription("Подать заявку на регистрацию транспортного средства")
+  .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
+  .addStringOption((o) => o.setName("модель").setDescription("Модель транспортного средства").setRequired(true).setMaxLength(128))
+  .addStringOption((o) => o.setName("госномер").setDescription("Государственный номер").setRequired(true).setMaxLength(16))
+  .addStringOption((o) => o.setName("фото").setDescription("Ссылка на фото").setRequired(true).setMaxLength(1000));
+
+export const uniformRegistrationCommand = new SlashCommandBuilder()
+  .setName("регистрация-формы")
+  .setDescription("Подать заявку на регистрацию униформы")
+  .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
+  .addStringOption((o) => o.setName("описание").setDescription("Описание комплекта униформы").setRequired(true).setMaxLength(1000))
+  .addStringOption((o) => o.setName("фото").setDescription("Ссылка на фото").setRequired(true).setMaxLength(1000));
+
+export const transferCommand = new SlashCommandBuilder()
+  .setName("перевод-фракции")
+  .setDescription("Подать заявку на перевод между фракциями")
+  .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32))
+  .addStringOption((o) => o.setName("из").setDescription("Текущая фракция").setRequired(true).setMaxLength(32))
+  .addStringOption((o) => o.setName("в").setDescription("Принимающая фракция").setRequired(true).setMaxLength(32))
+  .addIntegerOption((o) => o.setName("с_ранга").setDescription("Текущий ранг").setRequired(true).setMinValue(0).setMaxValue(100))
+  .addIntegerOption((o) => o.setName("на_ранг").setDescription("Новый ранг").setRequired(true).setMinValue(0).setMaxValue(100))
+  .addStringOption((o) => o.setName("документы").setDescription("Ссылки на документы через запятую").setMaxLength(2000));
+
+export const webhookRequestCommand = new SlashCommandBuilder()
+  .setName("создать-webhook")
+  .setDescription("Запросить webhook для будущей формы")
+  .addChannelOption((o) => o.setName("канал").setDescription("Канал для webhook").setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))
+  .addStringOption((o) => o.setName("описание").setDescription("Для чего нужна форма").setRequired(true).setMaxLength(2000));
+
+export const blacklistAddCommand = new SlashCommandBuilder()
+  .setName("чс-добавить")
+  .setDescription("Добавить гражданина в IC чёрный список GOV")
+  .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32))
+  .addStringOption((o) => o.setName("фио").setDescription("ФИО").setRequired(true).setMaxLength(128))
+  .addStringOption((o) => o.setName("причина").setDescription("Причина").setRequired(true).setMaxLength(2000))
+  .addStringOption((o) => o.setName("срок").setDescription("Дата окончания ISO или пусто для бессрочного").setMaxLength(32));
+
+export const blacklistRemoveCommand = new SlashCommandBuilder()
+  .setName("чс-снять")
+  .setDescription("Снять запись гражданина с IC чёрного списка")
+  .addStringOption((o) => o.setName("статик").setDescription("Статик гражданина").setRequired(true).setMaxLength(32));
+
 // ──────────────────────────────────────────────────────────────
 // Collect all commands for registration
 // ──────────────────────────────────────────────────────────────
@@ -252,6 +332,14 @@ export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   fineCommand.toJSON(),
   finePaidCommand.toJSON(),
   personnelCommand.toJSON(),
+  characterCommand.toJSON(),
+  tokenCommand.toJSON(),
+  vehicleRegistrationCommand.toJSON(),
+  uniformRegistrationCommand.toJSON(),
+  transferCommand.toJSON(),
+  webhookRequestCommand.toJSON(),
+  blacklistAddCommand.toJSON(),
+  blacklistRemoveCommand.toJSON(),
 ];
 
 // ──────────────────────────────────────────────────────────────

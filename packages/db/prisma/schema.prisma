@@ -46,6 +46,38 @@ enum RoleMappingKind {
   PERMISSION
 }
 
+enum RegistrationKind {
+  VEHICLE
+  UNIFORM
+}
+
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+enum WebhookRequestStatus {
+  PENDING
+  FORM_BUILT
+  CLOSED
+  REJECTED
+}
+
+enum FeedbackTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
 model User {
   id            String     @id @default(cuid())
   discordId     String     @unique @map("discord_id")
@@ -53,6 +85,7 @@ model User {
   updatedAt     DateTime   @updatedAt @map("updated_at")
   auditEvents   AuditLog[] @relation("AuditActor")
   initiatedJobs Job[]      @relation("JobInitiator")
+  characters    Character[]
 
   @@map("users")
 }
@@ -445,4 +478,250 @@ model SentMessageLink {
 
   @@index([sentMessageId])
   @@map("sent_message_links")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Stage 4: characters, tokens and registrations
+// ──────────────────────────────────────────────────────────────
+
+model Character {
+  id              String           @id @default(cuid())
+  userId          String           @map("user_id")
+  user            User             @relation(fields: [userId], references: [id])
+  slot            Int
+  /// Unique among ACTIVE characters only (partial index `characters_static_id_active_key` in SQL).
+  staticId        String           @map("static_id")
+  name            String
+  factionCode     String?          @map("faction_code")
+  department      String?
+  rank            Int?
+  status          RecordStatus     @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  tokens          Token[]
+  registrations   Registration[]
+  outgoingTransfers Transfer[]     @relation("TransferCharacter")
+
+  /// (user_id, slot) is unique among ACTIVE characters only (partial index in SQL).
+  @@index([staticId])
+  @@index([userId, status])
+  @@index([factionCode, status])
+  @@map("characters")
+}
+
+model Token {
+  id              String       @id @default(cuid())
+  number          String       @unique
+  /// One ACTIVE token per character (partial index `tokens_character_id_active_key` in SQL).
+  characterId     String       @map("character_id")
+  character       Character    @relation(fields: [characterId], references: [id])
+  status          RecordStatus @default(ACTIVE)
+  issuedAt        DateTime     @default(now()) @map("issued_at")
+  revokedAt       DateTime?    @map("revoked_at")
+  revokedById     String?      @map("revoked_by_id")
+
+  @@index([characterId, status])
+  @@index([status])
+  @@map("tokens")
+}
+
+model Registration {
+  id                 String           @id @default(cuid())
+  kind               RegistrationKind
+  characterId        String           @map("character_id")
+  character          Character        @relation(fields: [characterId], references: [id])
+  payload            Json
+  evidenceFileIds    String[]         @default([]) @map("evidence_file_ids")
+  status             RecordStatus     @default(ACTIVE)
+  decision           DecisionStatus   @default(PENDING)
+  decidedByDiscordId String?          @map("decided_by_discord_id")
+  rejectionReason    String?          @map("rejection_reason")
+  decidedAt          DateTime?        @map("decided_at")
+  expiresAt          DateTime?        @map("expires_at")
+  reviewGuildId      String?          @map("review_guild_id")
+  reviewChannelId    String?          @map("review_channel_id")
+  reviewMessageId    String?          @map("review_message_id")
+  /// Button custom ids created at enqueue time: { approve, reject }.
+  reviewButtons      Json             @default("{}") @map("review_buttons")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  @@index([characterId, kind, status])
+  @@index([decision, status])
+  @@map("registrations")
+}
+
+model MediaFile {
+  id           String       @id @default(cuid())
+  objectKey    String       @unique @map("object_key")
+  originalName String       @map("original_name")
+  contentType  String       @map("content_type")
+  sizeBytes    Int          @map("size_bytes")
+  status       RecordStatus @default(ACTIVE)
+  createdById  String?      @map("created_by_id")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@map("media_files")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Stage 4: transfers, webhook requests and IC blacklist
+// ──────────────────────────────────────────────────────────────
+
+model Transfer {
+  id                    String         @id @default(cuid())
+  characterId           String         @map("character_id")
+  character             Character      @relation("TransferCharacter", fields: [characterId], references: [id])
+  fromFactionCode       String         @map("from_faction_code")
+  toFactionCode         String         @map("to_faction_code")
+  fromRank               Int           @map("from_rank")
+  toRank                 Int           @map("to_rank")
+  documentFileIds        String[]      @default([]) @map("document_file_ids")
+  sourceDecision         DecisionStatus @default(PENDING) @map("source_decision")
+  targetDecision         DecisionStatus @default(PENDING) @map("target_decision")
+  status                 TransferStatus @default(PENDING)
+  rejectionReason        String?       @map("rejection_reason")
+  sourceDecidedByDiscordId String?     @map("source_decided_by_discord_id")
+  targetDecidedByDiscordId String?     @map("target_decided_by_discord_id")
+  reviewGuildId          String?       @map("review_guild_id")
+  reviewChannelId        String?       @map("review_channel_id")
+  reviewMessageId        String?       @map("review_message_id")
+  /// Button custom ids created at enqueue time: { sourceApprove, sourceReject, targetApprove, targetReject }.
+  reviewButtons          Json          @default("{}") @map("review_buttons")
+  createdByDiscordId     String        @map("created_by_discord_id")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+
+  @@index([characterId, status])
+  @@index([fromFactionCode, status])
+  @@index([toFactionCode, status])
+  @@map("transfers")
+}
+
+model WebhookRequest {
+  id                 String              @id @default(cuid())
+  requesterDiscordId String              @map("requester_discord_id")
+  guildDiscordId     String              @map("guild_discord_id")
+  channelDiscordId   String              @map("channel_discord_id")
+  description        String
+  webhookUrl         String?             @map("webhook_url")
+  status             WebhookRequestStatus @default(PENDING)
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("webhook_requests")
+}
+
+model IcBlacklistEntry {
+  id               String       @id @default(cuid())
+  staticId         String       @map("static_id")
+  fullName         String       @map("full_name")
+  reason           String
+  evidenceFileIds  String[]     @default([]) @map("evidence_file_ids")
+  expiresAt        DateTime?    @map("expires_at")
+  status           RecordStatus @default(ACTIVE)
+  createdByDiscordId String     @map("created_by_discord_id")
+  revokedByDiscordId String?    @map("revoked_by_discord_id")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@index([staticId, status])
+  @@index([status, expiresAt])
+  @@map("ic_blacklist")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Stage 4: role panels, feedback and Discord forms
+// ──────────────────────────────────────────────────────────────
+
+model RolePanel {
+  id                 String       @id @default(cuid())
+  guildDiscordId     String       @map("guild_discord_id")
+  channelDiscordId   String       @map("channel_discord_id")
+  messageDiscordId   String?      @map("message_discord_id")
+  spec               Json
+  status             RecordStatus @default(ACTIVE)
+  createdByDiscordId String       @map("created_by_discord_id")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  @@index([guildDiscordId, channelDiscordId, status])
+  @@map("role_panels")
+}
+
+model FeedbackTicket {
+  id                 String               @id @default(cuid())
+  authorDiscordId    String               @map("author_discord_id")
+  category           String
+  status             FeedbackTicketStatus @default(OPEN)
+  assignedToDiscordId String?             @map("assigned_to_discord_id")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  messages           FeedbackMessage[]
+
+  @@index([status, createdAt])
+  @@index([authorDiscordId])
+  @@map("feedback_tickets")
+}
+
+model FeedbackMessage {
+  id               String         @id @default(cuid())
+  ticketId         String         @map("ticket_id")
+  ticket           FeedbackTicket @relation(fields: [ticketId], references: [id])
+  authorDiscordId  String         @map("author_discord_id")
+  content          String
+  attachmentFileIds String[]      @default([]) @map("attachment_file_ids")
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  @@index([ticketId, createdAt])
+  @@map("feedback_messages")
+}
+
+model DiscordForm {
+  id                 String       @id @default(cuid())
+  name               String
+  description        String?
+  webhookUrl         String?      @map("webhook_url")
+  status             RecordStatus @default(ACTIVE)
+  expiresAt          DateTime?    @map("expires_at")
+  responseLimit      Int?         @map("response_limit")
+  createdByDiscordId String       @map("created_by_discord_id")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  fields             FormField[]
+  submissions        FormSubmission[]
+
+  @@index([status, expiresAt])
+  @@map("forms")
+}
+
+model FormField {
+  id          String      @id @default(cuid())
+  formId      String      @map("form_id")
+  form        DiscordForm @relation(fields: [formId], references: [id])
+  position    Int
+  key         String
+  label       String
+  type        String
+  required    Boolean     @default(false)
+  validation  Json        @default("{}")
+
+  @@unique([formId, key])
+  @@unique([formId, position])
+  @@map("form_fields")
+}
+
+model FormSubmission {
+  id             String      @id @default(cuid())
+  formId         String      @map("form_id")
+  form           DiscordForm @relation(fields: [formId], references: [id])
+  authorDiscordId String?    @map("author_discord_id")
+  source         String      @default("discord")
+  values         Json
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@index([formId, createdAt])
+  @@map("form_submissions")
 }

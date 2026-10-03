@@ -7,11 +7,16 @@ import {
   type ChatInputCommandInteraction,
   MessageFlags,
 } from "discord.js";
-import { AuditActorType } from "@mirror/db";
+import { AuditActorType, RegistrationKind } from "@mirror/db";
 import {
   canActOnModuleRecord,
   canManageModules,
   closeWanted,
+  createCharacter,
+  createRegistration,
+  createTransfer,
+  createWebhookRequest,
+  createIcBlacklistEntry,
   createDocument,
   createDocumentResponse,
   createFine,
@@ -27,10 +32,14 @@ import {
   enqueueWantedPublish,
   formatMoney,
   getActiveFactionByCode,
+  getCharacterForUser,
   getDocumentByNumber,
   getSetting,
   listActiveFactionsForAutocomplete,
   markFinePaid,
+  ensureUserByDiscordId,
+  issueToken,
+  listCharacters,
   PERSONNEL_EVENT_LABELS_RU,
   PERSONNEL_EVENT_TYPES,
   resolveDocumentResponseDelivery,
@@ -41,6 +50,8 @@ import {
   resolveFinePaidDelivery,
   resolveIdentity,
   resolveWantedDelivery,
+  revokeToken,
+  revokeIcBlacklistByStatic,
   sameDeliveryChannel,
   type Identity,
   type Logger,
@@ -238,6 +249,26 @@ export async function handleSlashCommand(
       case "кадровый-аудит":
         await handlePersonnel(interaction, ctx);
         break;
+      case "персонаж":
+        await handleCharacter(interaction);
+        break;
+      case "token":
+        await handleToken(interaction, ctx);
+        break;
+      case "регистрация-тс":
+      case "регистрация-формы":
+        await handleRegistration(interaction);
+        break;
+      case "перевод-фракции":
+        await handleTransfer(interaction);
+        break;
+      case "создать-webhook":
+        await handleWebhookRequest(interaction, ctx);
+        break;
+      case "чс-добавить":
+      case "чс-снять":
+        await handleIcBlacklist(interaction, ctx);
+        break;
       default:
         await interaction.reply(ephemeral("Неизвестная команда."));
     }
@@ -251,6 +282,176 @@ export async function handleSlashCommand(
       await interaction.reply(payload);
     }
   }
+}
+
+async function handleCharacter(interaction: ChatInputCommandInteraction) {
+  const { user } = await ensureUserByDiscordId(interaction.user.id);
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === "создать") {
+    const character = await createCharacter(
+      {
+        userId: user.id,
+        slot: interaction.options.getInteger("слот", true),
+        staticId: interaction.options.getString("статик", true),
+        name: interaction.options.getString("имя", true),
+      },
+      auditFromInteraction(interaction),
+    );
+    await interaction.reply(ephemeral(`Персонаж **${character.name}** создан. Статик: **${character.staticId}**.`));
+    return;
+  }
+
+  const characters = await listCharacters(user.id);
+  await interaction.reply(
+    ephemeral(
+      characters.length === 0
+        ? "Персонажей пока нет."
+        : characters
+            .map(
+              (character) =>
+                `${character.slot}. **${character.name}** · статик ${character.staticId}${character.tokens[0] ? ` · нашивка ${character.tokens[0].number}` : ""}`,
+            )
+            .join("\n"),
+    ),
+  );
+}
+
+async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  const { user } = await ensureUserByDiscordId(interaction.user.id);
+  const subcommand = interaction.options.getSubcommand();
+  if (subcommand === "remove") {
+    const identity = await loadIdentity(interaction.user.id, ctx);
+    if (!canManageModules(identity)) {
+      await interaction.reply(ephemeral("Отозвать нашивку могут только администраторы."));
+      return;
+    }
+    await revokeToken(interaction.options.getString("номер", true), auditFromInteraction(interaction));
+    await interaction.reply(ephemeral("Нашивка отозвана."));
+    return;
+  }
+
+  const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
+  if (!character) {
+    await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+    return;
+  }
+  if (subcommand === "get") {
+    const token = character.tokens[0];
+    await interaction.reply(ephemeral(token ? `Номер нашивки: **${token.number}**.` : "У персонажа ещё нет нашивки."));
+    return;
+  }
+  const token = await issueToken(character.id, auditFromInteraction(interaction));
+  await interaction.reply(ephemeral(`Выдан номер нашивки: **${token.number}**.`));
+}
+
+async function handleRegistration(interaction: ChatInputCommandInteraction) {
+  const { user } = await ensureUserByDiscordId(interaction.user.id);
+  const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
+  if (!character) {
+    await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+    return;
+  }
+
+  const isVehicle = interaction.commandName === "регистрация-тс";
+  const registration = await createRegistration(
+    {
+      kind: isVehicle ? RegistrationKind.VEHICLE : RegistrationKind.UNIFORM,
+      characterId: character.id,
+      payload: isVehicle
+        ? {
+            model: interaction.options.getString("модель", true),
+            plate: interaction.options.getString("госномер", true),
+            photoUrl: interaction.options.getString("фото", true),
+          }
+        : {
+            description: interaction.options.getString("описание", true),
+            photoUrl: interaction.options.getString("фото", true),
+          },
+    },
+    auditFromInteraction(interaction),
+  );
+  await interaction.reply(ephemeral(`Заявка **${registration.id}** создана и отправлена на рассмотрение.`));
+}
+
+async function handleTransfer(interaction: ChatInputCommandInteraction) {
+  const { user } = await ensureUserByDiscordId(interaction.user.id);
+  const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
+  if (!character) {
+    await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+    return;
+  }
+  const documents = (interaction.options.getString("документы") ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const transfer = await createTransfer(
+    {
+      characterId: character.id,
+      fromFactionCode: interaction.options.getString("из", true),
+      toFactionCode: interaction.options.getString("в", true),
+      fromRank: interaction.options.getInteger("с_ранга", true),
+      toRank: interaction.options.getInteger("на_ранг", true),
+      documentFileIds: documents,
+      createdByDiscordId: interaction.user.id,
+    },
+    auditFromInteraction(interaction),
+  );
+  await interaction.reply(ephemeral(`Заявка на перевод **${transfer.id}** создана. Требуется одобрение обеих фракций.`));
+}
+
+async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  if (!interaction.inGuild()) {
+    await interaction.reply(ephemeral("Команда работает только на сервере."));
+    return;
+  }
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  if (!canPostDocument(identity)) {
+    await interaction.reply(ephemeral("Запрос webhook доступен сотрудникам фракций и администраторам."));
+    return;
+  }
+  const channel = interaction.options.getChannel("канал", true);
+  const request = await createWebhookRequest(
+    {
+      requesterDiscordId: interaction.user.id,
+      guildDiscordId: interaction.guildId,
+      channelDiscordId: channel.id,
+      description: interaction.options.getString("описание", true),
+    },
+    auditFromInteraction(interaction),
+  );
+  await interaction.reply(ephemeral(`Запрос webhook **${request.id}** принят админами.`));
+}
+
+async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  const identity = await loadIdentity(interaction.user.id, ctx);
+  if (!canManageModules(identity) && !hasFactionMembership(identity, "GOV")) {
+    await interaction.reply(ephemeral("IC чёрным списком могут управлять только GOV и администраторы."));
+    return;
+  }
+  if (interaction.commandName === "чс-снять") {
+    await revokeIcBlacklistByStatic(
+      interaction.options.getString("статик", true),
+      interaction.user.id,
+      auditFromInteraction(interaction),
+    );
+    await interaction.reply(ephemeral("Запись снята с IC чёрного списка."));
+    return;
+  }
+  const rawExpiresAt = interaction.options.getString("срок");
+  const expiresAt = rawExpiresAt ? new Date(rawExpiresAt) : null;
+  if (expiresAt && Number.isNaN(expiresAt.getTime())) throw new Error("Срок должен быть датой ISO.");
+  const entry = await createIcBlacklistEntry(
+    {
+      staticId: interaction.options.getString("статик", true),
+      fullName: interaction.options.getString("фио", true),
+      reason: interaction.options.getString("причина", true),
+      expiresAt,
+      createdByDiscordId: interaction.user.id,
+      evidenceFileIds: [],
+    },
+    auditFromInteraction(interaction),
+  );
+  await interaction.reply(ephemeral(`Гражданин добавлен в IC чёрный список. Запись: **${entry.id}**.`));
 }
 
 async function handlePost(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {

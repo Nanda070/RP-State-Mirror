@@ -12,7 +12,7 @@ import {
   upsertGuild,
   upsertMember,
 } from "@mirror/core";
-import { handleButtonInteraction } from "./buttons.js";
+import { handleButtonInteraction, handleModalSubmit } from "./buttons.js";
 import { evaluateMemberCpAccess, isCpRelevantGuild, reconcileCpAccess } from "./cp-sync.js";
 import { jobHandlers } from "./handlers.js";
 import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
@@ -41,9 +41,9 @@ client.once(Events.ClientReady, (ready) => {
   log.info({ user: ready.user.tag, guilds: ready.guilds.cache.size }, "connected to Discord");
   guarded("ready", async () => {
     await syncAllGuilds(ready, log);
-    const { registerCommands } = await import("./commands.js");
+    const { ALL_COMMANDS, registerCommands } = await import("./commands.js");
     await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
-    log.info({ commands: 7 }, "slash commands registered");
+    log.info({ commands: ALL_COMMANDS.length }, "slash commands registered");
     worker.start();
     reconcileTimer = setInterval(
       () =>
@@ -64,7 +64,21 @@ client.on(Events.InteractionCreate, (interaction) => {
   }
   if (interaction.isButton()) {
     guarded("button", () =>
-      handleButtonInteraction(interaction, client, log.child({ component: "buttons" })),
+      handleButtonInteraction(interaction, {
+        client,
+        superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+        log: log.child({ component: "buttons" }),
+      }),
+    );
+    return;
+  }
+  if (interaction.isModalSubmit()) {
+    guarded("modalSubmit", () =>
+      handleModalSubmit(interaction, {
+        client,
+        superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+        log: log.child({ component: "modals" }),
+      }),
     );
     return;
   }

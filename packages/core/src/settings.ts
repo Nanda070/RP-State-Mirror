@@ -55,6 +55,21 @@ export const settingDefinitions = {
     [],
     "Роли на сервере ЧП: право объявлять и закрывать розыск (Координатор)",
   ),
+  "registrations.channelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал на сервере ЧП для заявок ТС и униформы",
+  ),
+  "registrations.coordinatorRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли на сервере ЧП: обработка заявок ТС и униформы",
+  ),
+  "transfers.channelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал для заявок переводов между фракциями",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),

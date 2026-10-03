@@ -24,7 +24,9 @@ export const auditEventSchema = auditContextSchema.extend({
 
 export type AuditEvent = z.input<typeof auditEventSchema>;
 
-function toAuditCreateInput(event: AuditEvent): Prisma.AuditLogUncheckedCreateInput {
+function toAuditCreateInput(
+  event: AuditEvent,
+): Prisma.AuditLogUncheckedCreateInput {
   const data = auditEventSchema.parse(event);
   return {
     actorType: data.actorType,
@@ -70,20 +72,24 @@ export async function auditedMutation<T>(
   run: (tx: Prisma.TransactionClient) => Promise<AuditedChange<T>>,
 ): Promise<T> {
   const ctx = auditContextSchema.parse(context);
-  return prisma.$transaction(async (tx) => {
-    const change = await run(tx);
-    await writeAuditEvent(
-      {
-        ...context,
-        action,
-        entityType,
-        entityId: change.entityId,
-        before: change.before,
-        after: change.after,
-        metadata: { ...ctx.metadata, ...change.metadata },
-      },
-      tx,
-    );
-    return change.result;
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      const change = await run(tx);
+      await writeAuditEvent(
+        {
+          ...context,
+          action,
+          entityType,
+          entityId: change.entityId,
+          before: change.before,
+          after: change.after,
+          metadata: { ...ctx.metadata, ...change.metadata },
+        },
+        tx,
+      );
+      return change.result;
+    },
+    // Row-locking mutations (decisions, form limits) may queue behind each other.
+    { maxWait: 10_000, timeout: 15_000 },
+  );
 }

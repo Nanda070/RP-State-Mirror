@@ -154,8 +154,8 @@ export async function archiveSentMessage(id: string, context: AuditContext) {
 // Button actions
 // ──────────────────────────────────────────────────────────────
 
-export async function createButtonAction(action: string, params: Record<string, unknown>) {
-  const btn = await prisma.buttonAction.create({
+export async function createButtonAction(action: string, params: Record<string, unknown>, db: Db = prisma) {
+  const btn = await db.buttonAction.create({
     data: { action, params: toJsonValue(params), status: RecordStatus.ACTIVE },
   });
   return { id: btn.id, customId: makeCustomId(action, btn.id) };

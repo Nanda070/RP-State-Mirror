@@ -14,6 +14,8 @@ export const MODULE_JOB_TYPES = {
   PERSONNEL_PUBLISH: "personnel.publish",
   MESSAGE_DESIGN_SEND: "message_design.send",
   MESSAGE_DESIGN_RESEND: "message_design.resend",
+  REGISTRATION_REVIEW: "registration.review",
+  TRANSFER_REVIEW: "transfer.review",
 } as const;
 
 export type ModuleJobType = (typeof MODULE_JOB_TYPES)[keyof typeof MODULE_JOB_TYPES];

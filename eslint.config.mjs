@@ -27,4 +27,9 @@ export default tseslint.config(
     files: ["apps/dashboard/**/*.{ts,tsx}"],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
   },
+  {
+    // One-off operator CLIs print a human-readable report to the terminal.
+    files: ["scripts/**/*.ts"],
+    rules: { "no-console": "off" },
+  },
 );
