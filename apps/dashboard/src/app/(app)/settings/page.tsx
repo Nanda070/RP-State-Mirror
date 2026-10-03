@@ -111,6 +111,13 @@ export default async function SettingsIndexPage() {
       meta: "Администрирование",
     },
     {
+      href: "/feedback",
+      title: "Обратная связь",
+      description: "Тикеты игроков, ответы в ЛС и публикация кнопки в Discord.",
+      status: "ready",
+      meta: "Администрирование",
+    },
+    {
       href: "/settings/webhooks",
       title: "Webhooks",
       description: "Очередь запросов /создать-webhook.",
@@ -177,9 +184,6 @@ export default async function SettingsIndexPage() {
           </Link>
           <Link href="/ic-blacklist" className="btn btn-secondary">
             IC ЧС реестр
-          </Link>
-          <Link href="/feedback" className="btn btn-secondary">
-            Обратная связь
           </Link>
         </div>
         <div className="settings-hub-grid">

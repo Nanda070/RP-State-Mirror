@@ -8,6 +8,7 @@ import {
   getSetting,
   isSettingKey,
   publishDiscordFormOpen,
+  publishFeedbackOpen,
   setSetting,
   setWebhookRequestStatus,
   type SettingKey,
@@ -102,6 +103,11 @@ const actionSchema = z.discriminatedUnion("action", [
     guildDiscordId: snowflake,
     channelDiscordId: snowflake,
   }),
+  z.object({
+    action: z.literal("publish-feedback-open"),
+    guildDiscordId: snowflake,
+    channelDiscordId: snowflake,
+  }),
 ]);
 
 export async function PATCH(request: Request) {
@@ -122,6 +128,17 @@ export async function PATCH(request: Request) {
         await publishDiscordFormOpen(
           {
             formId: action.formId,
+            guildDiscordId: action.guildDiscordId,
+            channelDiscordId: action.channelDiscordId,
+          },
+          context,
+        ),
+      );
+    }
+    if (action.action === "publish-feedback-open") {
+      return Response.json(
+        await publishFeedbackOpen(
+          {
             guildDiscordId: action.guildDiscordId,
             channelDiscordId: action.channelDiscordId,
           },

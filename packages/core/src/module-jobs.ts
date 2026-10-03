@@ -24,6 +24,7 @@ export const MODULE_JOB_TYPES = {
   FEEDBACK_TICKET_NOTIFY: "feedback.ticket_notify",
   FEEDBACK_REPLY_SEND: "feedback.reply_send",
   FEEDBACK_CLOSED_SEND: "feedback.closed_send",
+  FEEDBACK_OPEN_PUBLISH: "feedback.open_publish",
   FORM_SUBMISSION_DELIVER: "form.submission_deliver",
   FORM_OPEN_PUBLISH: "form.open_publish",
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
@@ -113,6 +114,13 @@ export function enqueueFeedbackClosedSend(ticketId: string, db?: Db) {
     { type: MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, payload: { ticketId } },
     db,
   );
+}
+
+export function enqueueFeedbackOpenPublish(
+  payload: { guildDiscordId: string; channelDiscordId: string },
+  db?: Db,
+) {
+  return enqueueJob({ type: MODULE_JOB_TYPES.FEEDBACK_OPEN_PUBLISH, payload }, db);
 }
 
 export function enqueueFormSubmissionDeliver(submissionId: string, db?: Db) {

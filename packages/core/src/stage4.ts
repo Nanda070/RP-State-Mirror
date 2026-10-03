@@ -17,6 +17,7 @@ import { createButtonAction } from "./message-designs.js";
 import {
   MODULE_JOB_TYPES,
   enqueueFeedbackClosedSend,
+  enqueueFeedbackOpenPublish,
   enqueueFeedbackReplySend,
   enqueueFeedbackTicketNotify,
   enqueueFormOpenPublish,
@@ -992,6 +993,55 @@ export async function closeFeedbackTicket(id: string, context: AuditContext) {
     await enqueueFeedbackClosedSend(ticket.id, tx);
     return { entityId: id, before: current, after: ticket, result: ticket };
   });
+}
+
+export const publishFeedbackOpenSchema = z.object({
+  guildDiscordId: snowflakeStrict,
+  channelDiscordId: snowflakeStrict,
+});
+export type PublishFeedbackOpenInput = z.infer<typeof publishFeedbackOpenSchema>;
+
+/** Queue bot delivery of a channel message with a feedback.open button. */
+export async function publishFeedbackOpen(
+  input: z.input<typeof publishFeedbackOpenSchema>,
+  context: AuditContext,
+) {
+  const data = publishFeedbackOpenSchema.parse(input);
+  return auditedMutation(context, "feedback.open_publish_queued", "system_setting", async (tx) => {
+    await enqueueFeedbackOpenPublish(
+      {
+        guildDiscordId: data.guildDiscordId,
+        channelDiscordId: data.channelDiscordId,
+      },
+      tx,
+    );
+    return {
+      entityId: "feedback.openMessage",
+      after: data,
+      result: data,
+    };
+  });
+}
+
+/** Persist the last published feedback.open message coordinates (called by the bot worker). */
+export async function setFeedbackOpenMessage(message: {
+  guildDiscordId: string;
+  channelDiscordId: string;
+  messageDiscordId: string;
+}) {
+  const parsed = z
+    .object({
+      guildDiscordId: snowflakeStrict,
+      channelDiscordId: snowflakeStrict,
+      messageDiscordId: snowflakeStrict,
+    })
+    .parse(message);
+  await prisma.systemSetting.upsert({
+    where: { key: "feedback.openMessage" },
+    create: { key: "feedback.openMessage", value: toJsonValue(parsed) },
+    update: { value: toJsonValue(parsed) },
+  });
+  return parsed;
 }
 
 export async function getDiscordForm(formId: string) {

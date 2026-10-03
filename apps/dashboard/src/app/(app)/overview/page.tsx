@@ -186,8 +186,8 @@ export default async function OverviewPage() {
                 { label: "Регистрации форм", href: "/registrations/uniforms", ready: true },
                 { label: "Эмбеды", href: "/settings/embeds", ready: true },
                 { label: "IC ЧС", href: "/ic-blacklist", ready: true },
-                { label: "Обратная связь", href: "/feedback", ready: true },
                 { label: "Формы", href: "/settings/forms", ready: true },
+                { label: "Обратная связь", href: "/feedback", ready: true },
               ] as const
             ).map((item) => (
               <Link key={item.href} href={item.href} className="module-chip">

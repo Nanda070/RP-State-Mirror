@@ -95,6 +95,17 @@ export const settingDefinitions = {
     null,
     "Канал уведомлений о новых обращениях обратной связи",
   ),
+  "feedback.openMessage": defineSetting(
+    z
+      .object({
+        guildDiscordId: snowflakeSchema,
+        channelDiscordId: snowflakeSchema,
+        messageDiscordId: snowflakeSchema,
+      })
+      .nullable(),
+    null,
+    "Последнее опубликованное сообщение с кнопкой feedback.open",
+  ),
   "icBlacklist.enabled": defineSetting(z.boolean(), true, "Модуль IC чёрного списка (/чс-гос) включён"),
   "icBlacklist.channelId": defineSetting(
     snowflakeSchema.nullable(),

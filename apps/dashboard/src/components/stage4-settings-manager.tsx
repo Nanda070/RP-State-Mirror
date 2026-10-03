@@ -331,7 +331,7 @@ export function Stage4SettingsManager({
             <p className="muted" style={{ marginTop: 0 }}>
               Тикеты игроков — в{" "}
               <Link href="/feedback" className="stub-link">
-                Информация → Обратная связь
+                Администрирование → Обратная связь
               </Link>
               .
             </p>

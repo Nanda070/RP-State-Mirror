@@ -32,6 +32,7 @@ import {
   materializeEmbedSpecButtons,
   recordSentMessage,
   setDiscordFormOpenMessage,
+  setFeedbackOpenMessage,
   resolveDocumentResponseDelivery,
   resolveDocumentResponseLocalDelivery,
   resolveFactionDocumentDelivery,
@@ -1123,6 +1124,73 @@ const formOpenPublish: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", formId: form.id, messageId: message.id, messageUrl };
 };
 
+const feedbackOpenPublish: JobHandler = async (payload, { client, log }) => {
+  const guildDiscordId = String(payload.guildDiscordId ?? "");
+  const channelDiscordId = String(payload.channelDiscordId ?? "");
+
+  const spec: EmbedSpec = {
+    version: 1,
+    embeds: [
+      {
+        type: "embed",
+        title: "Обратная связь",
+        description: "Нажмите кнопку ниже, чтобы отправить обращение администрации.",
+        color: 0x5865f2,
+      },
+    ],
+    components: [
+      {
+        type: "action_row",
+        components: [
+          {
+            type: "button",
+            label: "Написать обращение",
+            style: "primary",
+            action: "feedback.open",
+          },
+        ],
+      },
+    ],
+  };
+
+  const ready = await materializeEmbedSpecButtons(spec);
+  const options = embedSpecToMessageOptions(ready);
+
+  const guild = await client.guilds.fetch(guildDiscordId);
+  const channel = (await guild.channels.fetch(channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) {
+    throw new Error(`Канал ${channelDiscordId} недоступен`);
+  }
+
+  const previous = await getSetting("feedback.openMessage");
+  let message = null;
+  if (previous && previous.channelDiscordId === channelDiscordId) {
+    const existing = await channel.messages.fetch(previous.messageDiscordId).catch(() => null);
+    if (existing) {
+      message = await existing.edit(options as Parameters<typeof existing.edit>[0]);
+    }
+  }
+  if (!message) {
+    message = await channel.send(options);
+  }
+
+  await setFeedbackOpenMessage({
+    guildDiscordId: guild.id,
+    channelDiscordId: channel.id,
+    messageDiscordId: message.id,
+  });
+  await recordSentMessage({
+    guildDiscordId: guild.id,
+    channelDiscordId: channel.id,
+    messageDiscordId: message.id,
+    spec: ready,
+  });
+
+  const messageUrl = discordMessageUrl(guild.id, channel.id, message.id);
+  log.info({ messageId: message.id, messageUrl }, "feedback open button published");
+  return { status: "sent", messageId: message.id, messageUrl };
+};
+
 const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
   const requestId = String(payload.requestId ?? "");
   const request = await prisma.webhookRequest.findUnique({ where: { id: requestId } });
@@ -1268,6 +1336,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FEEDBACK_TICKET_NOTIFY, feedbackTicketNotify],
   [MODULE_JOB_TYPES.FEEDBACK_REPLY_SEND, feedbackReplySend],
   [MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, feedbackClosedSend],
+  [MODULE_JOB_TYPES.FEEDBACK_OPEN_PUBLISH, feedbackOpenPublish],
   [MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, formSubmissionDeliver],
   [MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, formOpenPublish],
   [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],

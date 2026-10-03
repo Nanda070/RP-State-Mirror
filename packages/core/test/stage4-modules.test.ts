@@ -17,6 +17,7 @@ import {
   decideTransfer,
   issueToken,
   publishDiscordFormOpen,
+  publishFeedbackOpen,
   revokeToken,
   setWebhookRequestStatus,
   submitDiscordForm,
@@ -347,6 +348,22 @@ describe("stage 4 modules", () => {
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.payload).toEqual({
       formId: form.id,
+      guildDiscordId: "100000000000000001",
+      channelDiscordId: "200000000000000001",
+    });
+  });
+
+  it("enqueues feedback.open publish job", async () => {
+    await publishFeedbackOpen(
+      {
+        guildDiscordId: "100000000000000001",
+        channelDiscordId: "200000000000000001",
+      },
+      context,
+    );
+    const jobs = await prisma.job.findMany({ where: { type: MODULE_JOB_TYPES.FEEDBACK_OPEN_PUBLISH } });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]?.payload).toEqual({
       guildDiscordId: "100000000000000001",
       channelDiscordId: "200000000000000001",
     });

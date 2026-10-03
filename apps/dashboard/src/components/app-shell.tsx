@@ -60,9 +60,9 @@ const NAV: NavItem[] = [
     icon: "uniform",
   },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist" },
-  { href: "/feedback", label: "Обратная связь", group: "Информация", match: "prefix", icon: "feedback" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", match: "prefix", icon: "embeds" },
   { href: "/settings/forms", label: "Discord-формы", group: "Администрирование", match: "prefix", icon: "forms" },
+  { href: "/feedback", label: "Обратная связь", group: "Администрирование", match: "prefix", icon: "feedback" },
   { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование", match: "prefix", icon: "webhooks" },
   {
     href: "/settings",

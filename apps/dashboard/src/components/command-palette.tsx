@@ -27,9 +27,9 @@ const ITEMS: PaletteItem[] = [
   { href: "/registrations/vehicles", label: "Регистрации ТС", group: "Информация" },
   { href: "/registrations/uniforms", label: "Регистрации форм", group: "Информация" },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация" },
-  { href: "/feedback", label: "Обратная связь", group: "Информация" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование" },
   { href: "/settings/forms", label: "Discord-формы", group: "Администрирование" },
+  { href: "/feedback", label: "Обратная связь", group: "Администрирование" },
   { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование" },
   {
     href: "/settings",
