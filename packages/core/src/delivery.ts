@@ -39,7 +39,7 @@ export async function resolveFactionSeniorRoleId(factionCode: string): Promise<s
   return settings.seniorRoleId ?? null;
 }
 
-/** Leader role Discord ids for transfer review pings (§4.8); falls back to seniorRoleId. */
+/** Leader role Discord ids for a faction; falls back to seniorRoleId. */
 export async function resolveFactionLeaderRoleIds(factionCode: string): Promise<string[]> {
   const code = factionCode.toUpperCase();
   const faction = await prisma.faction.findFirst({
@@ -69,6 +69,37 @@ export async function resolveFactionLeaderRoleIds(factionCode: string): Promise<
   }
   const senior = parseFactionSettings(faction.settings).seniorRoleId;
   return senior && snowflake(senior) ? [senior] : [];
+}
+
+/**
+ * Roles to ping when posting a transfer application (§4.8).
+ * Uses `transfers.pingRoleIds` and keeps only roles present in the posting guild
+ * snapshot — never mentions missing roles (avoids Discord `@unknown-role`).
+ */
+export async function resolveTransferPingRoleIds(guildDiscordId: string): Promise<string[]> {
+  const configured = await getSetting("transfers.pingRoleIds");
+  if (configured.length === 0) return [];
+
+  const snowflake = (id: string) => /^\d{17,20}$/.test(id);
+  const candidates = [...new Set(configured.filter(snowflake))];
+  if (candidates.length === 0) return [];
+
+  const guild = await prisma.guild.findFirst({
+    where: { discordId: guildDiscordId, status: RecordStatus.ACTIVE },
+    select: { id: true },
+  });
+  if (!guild) return [];
+
+  const existing = await prisma.discordRole.findMany({
+    where: {
+      guildId: guild.id,
+      status: RecordStatus.ACTIVE,
+      discordId: { in: candidates },
+    },
+    select: { discordId: true },
+  });
+  const present = new Set(existing.map((role) => role.discordId));
+  return candidates.filter((id) => present.has(id));
 }
 
 /**

@@ -28,6 +28,7 @@ const settingKeys = [
   "registrations.uniformChannelId",
   "registrations.coordinatorRoleIds",
   "transfers.channelId",
+  "transfers.pingRoleIds",
   "transfers.approvalDmText",
   "webhooks.notifyChannelId",
   "feedback.notifyChannelId",

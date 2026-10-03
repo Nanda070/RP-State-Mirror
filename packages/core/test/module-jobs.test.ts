@@ -23,6 +23,7 @@ import {
   resolveFinePaidDelivery,
   resolveRegistrationDelivery,
   resolveWantedDelivery,
+  resolveTransferPingRoleIds,
   resolveWantedPingRoleIds,
   sameDeliveryChannel,
   seedFoundation,
@@ -369,6 +370,35 @@ describe("stage 3 delivery + job enqueue", () => {
     expect(pingIds).toContain("400000000000000005"); // FIB fallback by name
     expect(pingIds).not.toContain("400000000000000003"); // WN excluded
     expect(pingIds).not.toContain("400000000000000004"); // shared Фракция skipped
+  });
+
+  it("resolves transfer ping roles from settings and skips roles missing in guild", async () => {
+    await seedFoundation({ superAdminUserIds: [] });
+    expect(await resolveTransferPingRoleIds("200000000000000199")).toEqual([]);
+
+    const incident = await prisma.guild.create({
+      data: {
+        discordId: "200000000000000199",
+        name: "ЧП",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await prisma.discordRole.create({
+      data: {
+        discordId: "400000000000000111",
+        guildId: incident.id,
+        name: "Лидеры переводов",
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    await setSetting(
+      "transfers.pingRoleIds",
+      ["400000000000000111", "400000000000000999"],
+      ctx,
+    );
+
+    expect(await resolveTransferPingRoleIds(incident.discordId)).toEqual(["400000000000000111"]);
+    expect(await resolveTransferPingRoleIds("200000000000000000")).toEqual([]);
   });
 
   it("stores and resolves seniorRoleId / ping role from faction delivery settings", async () => {

@@ -12,6 +12,7 @@ export type Stage4SettingsValues = {
   "registrations.uniformChannelId": string | null;
   "registrations.coordinatorRoleIds": string[];
   "transfers.channelId": string | null;
+  "transfers.pingRoleIds": string[];
   "transfers.approvalDmText": string;
   "webhooks.notifyChannelId": string | null;
   "feedback.notifyChannelId": string | null;
@@ -213,6 +214,19 @@ export function Stage4SettingsManager({
                 emptyLabel={channelEmpty}
               />
             </label>
+            <div className="field">
+              <span className="field-label">Кого тегать при заявке на перевод</span>
+              <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
+                Роли серверов GOV и ЧП. В сообщении тегаются только роли сервера канала переводов
+                (остальные пропускаются, без @unknown-role).
+              </p>
+              <RoleChipPicker
+                roles={finderRoles}
+                selected={values["transfers.pingRoleIds"]}
+                onChange={(next) => patch("transfers.pingRoleIds", next)}
+                emptyHint={finderRolesEmpty}
+              />
+            </div>
             <label className="field">
               <span>Текст ЛС после одобрения</span>
               <textarea

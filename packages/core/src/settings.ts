@@ -80,6 +80,11 @@ export const settingDefinitions = {
     null,
     "Канал для заявок переводов между фракциями",
   ),
+  "transfers.pingRoleIds": defineSetting(
+    z.array(snowflakeSchema).default([]),
+    [],
+    "Роли для пинга при новой заявке на перевод (в канале переводов; только роли сервера канала реально тегаются)",
+  ),
   "transfers.approvalDmText": defineSetting(
     z.string().min(1).max(2000),
     "Ваш перевод одобрен обеими сторонами. Можете подойти в холл на собеседование.",

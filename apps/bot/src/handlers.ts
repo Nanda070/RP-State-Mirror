@@ -47,7 +47,7 @@ import {
   sameDeliveryChannel,
   readMediaFile,
   registrationKindLabel,
-  resolveFactionLeaderRoleIds,
+  resolveTransferPingRoleIds,
   setRegistrationReviewThread,
   setRegistrationReviewMessage,
   setTransferReviewMessage,
@@ -870,11 +870,7 @@ const transferReview: JobHandler = async (payload, { client, log }) => {
 
   const channel = await fetchReviewChannel(client, guildId, channelId);
   const photo = transfer.documentFileIds[0] ? await readMediaFile(transfer.documentFileIds[0]) : null;
-  const leaderRoles = [
-    ...(await resolveFactionLeaderRoleIds(transfer.fromFactionCode)),
-    ...(await resolveFactionLeaderRoleIds(transfer.toFactionCode)),
-  ];
-  const pingRoleIds = [...new Set(leaderRoles)];
+  const pingRoleIds = await resolveTransferPingRoleIds(guildId);
   const message = await channel.send({
     ...renderTransferReview(transfer, {
       imageUrl: photo ? `attachment://${photo.attachmentName}` : null,
@@ -885,7 +881,7 @@ const transferReview: JobHandler = async (payload, { client, log }) => {
   });
   await setTransferReviewMessage(transferId, { guildId, channelId: channel.id, messageId: message.id });
   if (pingRoleIds.length === 0) {
-    log.warn({ transferId }, "transfer review posted without leader role pings");
+    log.warn({ transferId }, "transfer review posted without ping roles");
   }
   return { status: "sent", messageId: message.id, transferId, pinged: pingRoleIds.length };
 };
