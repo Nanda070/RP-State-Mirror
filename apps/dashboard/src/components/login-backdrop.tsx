@@ -69,7 +69,7 @@ function StarField() {
 
     let width = 0;
     let height = 0;
-    let particles: Particle[] = [];
+    const particles: Particle[] = [];
     let frame = 0;
     let last = 0;
 
