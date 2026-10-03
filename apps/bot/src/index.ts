@@ -70,10 +70,21 @@ client.once(Events.ClientReady, (ready) => {
         }),
       RECONCILE_INTERVAL_MS,
     );
-    guarded("cp-reconcile-initial", () => reconcileCpAccess(ready, log.child({ component: "cp-sync" })));
+    // Defer CP reconcile so it can reuse the warm member cache from syncAllGuilds.
+    setTimeout(
+      () => guarded("cp-reconcile-initial", () => reconcileCpAccess(ready, log.child({ component: "cp-sync" }))),
+      5_000,
+    );
     maintenanceTimer = setInterval(() => guarded("maintenance", runMaintenance), MAINTENANCE_INTERVAL_MS);
     guarded("maintenance-initial", runMaintenance);
   });
+});
+
+process.on("unhandledRejection", (error) => {
+  log.error({ err: error }, "unhandledRejection");
+});
+process.on("uncaughtException", (error) => {
+  log.fatal({ err: error }, "uncaughtException");
 });
 
 client.on(Events.InteractionCreate, (interaction) => {

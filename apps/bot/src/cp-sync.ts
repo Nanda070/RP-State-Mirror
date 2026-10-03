@@ -186,6 +186,28 @@ export async function evaluateMemberCpAccess(
   }
 }
 
+function gatewayRetryAfterSeconds(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const data = (error as { data?: { retry_after?: unknown } }).data;
+  const seconds = data?.retry_after;
+  return typeof seconds === "number" && Number.isFinite(seconds) ? seconds : null;
+}
+
+async function fetchGuildMembersWithRetry(guild: Guild, log: Logger) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await guild.members.fetch();
+    } catch (error) {
+      const retryAfter = gatewayRetryAfterSeconds(error);
+      if (retryAfter == null || attempt === 3) throw error;
+      const waitMs = Math.ceil((retryAfter + 1) * 1000);
+      log.warn({ guildId: guild.id, attempt, waitMs }, "members.fetch rate limited; waiting");
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+  throw new Error("members.fetch: retries exhausted");
+}
+
 /** Reconcile all present members of the incident guild (hourly). */
 export async function reconcileCpAccess(client: Client, log: Logger) {
   const config = await getCpSyncConfig();
@@ -194,7 +216,9 @@ export async function reconcileCpAccess(client: Client, log: Logger) {
   const guild = await client.guilds.fetch(config.incidentGuildId).catch(() => null);
   if (!guild) return;
 
-  const members = await guild.members.fetch();
+  // After startup sync the cache is usually warm — avoid a second opcode-8 fetch that rate-limits.
+  const members =
+    guild.members.cache.size > 1 ? guild.members.cache : await fetchGuildMembersWithRetry(guild, log);
   let processed = 0;
   for (const member of members.values()) {
     if (member.user.bot) continue;
