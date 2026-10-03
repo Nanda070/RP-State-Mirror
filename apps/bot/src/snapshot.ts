@@ -40,6 +40,8 @@ export function toMemberSnapshot(member: GuildMember): MemberSnapshot {
     guildAvatarUrl: member.avatar ? member.displayAvatarURL({ size: 256 }) : null,
     roleIds: member.roles.cache.filter((role) => role.id !== member.guild.id).map((role) => role.id),
     joinedAt: member.joinedAt,
+    publicFlags: member.user.flags?.bitfield ?? null,
+    avatarDecorationUrl: member.user.avatarDecorationURL({ size: 160 }) ?? null,
   };
 }
 

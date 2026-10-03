@@ -31,6 +31,10 @@ export interface MemberSnapshot {
   guildAvatarUrl: string | null;
   roleIds: string[];
   joinedAt: Date | null;
+  /** Discord public flags of the account (badges). */
+  publicFlags?: number | null;
+  /** Image of the avatar frame the account wears. */
+  avatarDecorationUrl?: string | null;
 }
 
 const DISCORD_CONTEXT: AuditContext = { actorType: AuditActorType.BOT, source: "discord" };
@@ -54,6 +58,8 @@ function memberData(snapshot: MemberSnapshot) {
     guildAvatarUrl: snapshot.guildAvatarUrl,
     roleIds: [...snapshot.roleIds].sort(),
     joinedAt: snapshot.joinedAt,
+    publicFlags: snapshot.publicFlags ?? null,
+    avatarDecorationUrl: snapshot.avatarDecorationUrl ?? null,
     isPresent: true,
     leftAt: null,
   };
@@ -70,6 +76,8 @@ function sameMember(current: GuildMember, snapshot: MemberSnapshot): boolean {
     current.nickname === next.nickname &&
     current.avatarUrl === next.avatarUrl &&
     current.guildAvatarUrl === next.guildAvatarUrl &&
+    current.publicFlags === next.publicFlags &&
+    current.avatarDecorationUrl === next.avatarDecorationUrl &&
     (current.joinedAt?.getTime() ?? null) === (next.joinedAt?.getTime() ?? null) &&
     sameRoles(current.roleIds, next.roleIds)
   );

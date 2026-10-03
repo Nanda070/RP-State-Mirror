@@ -18,7 +18,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Mirror · GTA5RP",
+  title: { default: "Mirror · GTA5RP", template: "%s · Mirror" },
   description: "Дашборд государственных фракций Mirror",
 };
 

@@ -194,6 +194,18 @@ export const settingDefinitions = {
     { enabled: false, reason: "", byDiscordId: null, at: null },
     "Аварийная блокировка: команды и кнопки бота и дашборд закрыты для всех, кроме главных админов",
   ),
+  "admins.positions": defineSetting(
+    z
+      .array(
+        z.object({
+          discordId: snowflakeSchema,
+          title: z.string().trim().min(1).max(64),
+        }),
+      )
+      .max(200),
+    [],
+    "Должности администрации: подпись в профиле вместо названия уровня",
+  ),
   "adminRoles.byGuild": defineSetting(
     z.record(
       snowflakeSchema,

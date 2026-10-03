@@ -1,6 +1,8 @@
 import {
   canBootstrapDashboard,
   createUserSession,
+  currentLegalVersion,
+  recordLegalConsent,
   endUserSession,
   ensureUserByDiscordId,
   findActiveTechBan,
@@ -15,6 +17,7 @@ import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
 import type { JWT } from "next-auth/jwt";
 import { authBaseUrl, getDashboardEnv } from "./env";
+import { LEGAL_VERSION } from "./lib/legal";
 import { discordAccentCss, discordAvatarUrl, discordBannerUrl } from "./lib/discord-cdn";
 
 export type SessionIdentity = Pick<
@@ -204,6 +207,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => {
             ...(await requestOrigin()),
           });
           mirrorToken.sid = created.id;
+        }
+        // «Продолжить через Discord» is the acceptance of the terms: remember which edition it was.
+        if (account) {
+          await recordLegalConsent(discordId, await currentLegalVersion(LEGAL_VERSION)).catch(() => undefined);
         }
         return mirrorToken;
       },

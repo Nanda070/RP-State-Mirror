@@ -13,7 +13,7 @@ type PageProps = { params: Promise<{ token: string }> };
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Запись реестра · Mirror",
+  title: "Запись реестра",
   // The address is a secret: keep it out of search engines and out of the Referer header.
   robots: { index: false, follow: false },
   referrer: "no-referrer",

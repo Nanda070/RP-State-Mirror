@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { NoticePage } from "@/components/notice-page";
 
-export const metadata = { title: "Нет доступа · Mirror" };
+export const metadata = { title: "Нет доступа" };
 
 const REASONS: Record<string, { title: string; text: string[] }> = {
   bootstrap: {

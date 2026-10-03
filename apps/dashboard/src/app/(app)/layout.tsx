@@ -1,8 +1,17 @@
-import { canManageModules, canManageSystemSettings, canViewModules } from "@mirror/core";
+import {
+  canManageModules,
+  canManageSystemSettings,
+  canViewModules,
+  currentLegalVersion,
+  legalConsentState,
+  recordLegalConsent,
+} from "@mirror/core";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
+import { LegalUpdateBar } from "@/components/legal-update-bar";
+import { LEGAL_VERSION } from "@/lib/legal";
 import { isLockedOut } from "@/lib/session";
 
 /**
@@ -26,6 +35,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // Every page and API route re-checks access against a freshly resolved identity.
   const identity = session.identity;
   const canSystemSettings = identity ? canManageSystemSettings(identity) : false;
+  // Asked again only when the texts changed after the user accepted them; a first visit after this
+  // feature appeared counts as acceptance at sign-in.
+  const legalVersion = await currentLegalVersion(LEGAL_VERSION);
+  const consent = await legalConsentState(session.user.discordId, legalVersion);
+  if (consent === "none") await recordLegalConsent(session.user.discordId, legalVersion);
+  const needsConsent = consent === "outdated";
 
   return (
     <AppShell
@@ -36,6 +51,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       canViewModules={identity ? canViewModules(identity) : false}
       canManageModules={identity ? canManageModules(identity) : false}
     >
+      {needsConsent ? <LegalUpdateBar /> : null}
       {children}
     </AppShell>
   );

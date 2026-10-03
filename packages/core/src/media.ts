@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { RecordStatus, prisma } from "@mirror/db";
 import { randomUUID } from "node:crypto";
 import { auditedMutation, type AuditContext } from "./audit.js";
@@ -177,4 +177,27 @@ export async function archiveMediaFile(id: string, context: AuditContext) {
     const updated = await tx.mediaFile.update({ where: { id }, data: { status: "ARCHIVED" } });
     return { entityId: id, before: current, after: updated, result: updated };
   });
+}
+
+/**
+ * Removes the bytes of files from storage and marks the rows as revoked. The only place where
+ * the project deletes stored content: a data-erasure request (see privacy.ts). A missing object
+ * is not an error — the goal is that the content is gone.
+ */
+export async function eraseMediaFiles(ids: readonly string[]): Promise<number> {
+  const files = ids.length === 0 ? [] : await prisma.mediaFile.findMany({ where: { id: { in: [...ids] } } });
+  let erased = 0;
+  for (const file of files) {
+    try {
+      await storageClient().send(new DeleteObjectCommand({ Bucket: storageBucket(), Key: file.objectKey }));
+    } catch {
+      // Storage unreachable: the row is still revoked, so the file is no longer served.
+    }
+    await prisma.mediaFile.update({
+      where: { id: file.id },
+      data: { status: RecordStatus.REVOKED, originalName: "erased" },
+    });
+    erased += 1;
+  }
+  return erased;
 }

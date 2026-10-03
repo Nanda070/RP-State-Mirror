@@ -11,7 +11,18 @@ const PAGES = [
 ];
 
 /** Shared frame of the legal pages: brand, links between the three documents, version date. */
-export function LegalLayout({ current, title, children }: { current: string; title: string; children: ReactNode }) {
+export function LegalLayout({
+  current,
+  title,
+  version,
+  children,
+}: {
+  current: string;
+  title: string;
+  /** Edition published in the dashboard; omitted — the built-in text and its date. */
+  version?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="legal-page">
       <header className="public-nav">
@@ -41,7 +52,7 @@ export function LegalLayout({ current, title, children }: { current: string; tit
           ))}
         </nav>
         <h1>{title}</h1>
-        <p className="muted">Редакция от {LEGAL_VERSION_RU}</p>
+        <p className="muted">Редакция от {version ?? LEGAL_VERSION_RU}</p>
         <article className="panel legal-text">{children}</article>
       </main>
       <SiteFooter />

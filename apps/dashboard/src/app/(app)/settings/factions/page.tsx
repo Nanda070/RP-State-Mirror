@@ -8,6 +8,7 @@ import {
 } from "@mirror/core";
 import { AdminRolesManager } from "@/components/admin-roles-manager";
 import { CommandRolesForm } from "@/components/command-roles-form";
+import { AdminPositionsForm } from "@/components/legal-editor";
 import { PageTabs, currentTab } from "@/components/page-tabs";
 import { SettingsFactionsForm } from "@/components/settings-factions-form";
 import { SettingsRolesForm } from "@/components/settings-roles-form";
@@ -93,7 +94,13 @@ async function AdminRolesTab() {
   const labels = await resolveAuthorLabels(
     operations.flatMap((operation) => [operation.targetDiscordId, operation.requestedByDiscordId]),
   );
+  const positions = await getSetting("admins.positions");
+  const positionLabels = await resolveAuthorLabels(positions.map((row) => row.discordId));
   return (
+    <>
+    <AdminPositionsForm
+      initial={positions.map((row) => ({ ...row, label: positionLabels.get(row.discordId) ?? "" }))}
+    />
     <AdminRolesManager
       guilds={guilds}
       initialSets={sets}
@@ -110,6 +117,7 @@ async function AdminRolesTab() {
         };
       })}
     />
+    </>
   );
 }
 

@@ -1,7 +1,11 @@
+import { getPublishedLegal } from "@mirror/core";
+import { Markdown } from "@/components/markdown";
 import Link from "next/link";
 import { LegalLayout } from "@/components/legal-layout";
 
-export const metadata = { title: "Cookie · Mirror" };
+export const metadata = { title: "Cookie " };
+
+export const dynamic = "force-dynamic";
 
 const COOKIES: { name: string; kind: string; purpose: string; kept: string }[] = [
   {
@@ -36,7 +40,15 @@ const COOKIES: { name: string; kind: string; purpose: string; kept: string }[] =
   },
 ];
 
-export default function CookiesPage() {
+export default async function CookiesPage() {
+  const published = await getPublishedLegal("cookies");
+  if (published) {
+    return (
+      <LegalLayout current="/cookies" title="Cookie" version={published.version}>
+        <Markdown source={published.body} />
+      </LegalLayout>
+    );
+  }
   return (
     <LegalLayout current="/cookies" title="Cookie">
       <h2>Коротко</h2>

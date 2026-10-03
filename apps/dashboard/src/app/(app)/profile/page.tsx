@@ -1,7 +1,10 @@
 import {
+  PERSONNEL_EVENT_LABELS_RU,
   buildStatusBadge,
   formatMoney,
   getPlayerProfile,
+  getSetting,
+  listAuditLogPage,
   listSessionsForUser,
   type PlayerProfile,
 } from "@mirror/core";
@@ -25,8 +28,32 @@ const TABS = [
   { key: "registrations", label: "Регистрации и переводы" },
   { key: "records", label: "Штрафы и розыск" },
   { key: "servers", label: "Фракции и серверы" },
+  { key: "history", label: "История" },
   { key: "sessions", label: "Сессии" },
 ] as const;
+
+export const metadata = { title: "Профиль" };
+
+/** Discord account badges by bit of the public flags. */
+const DISCORD_BADGES: [number, string][] = [
+  [0, "Сотрудник Discord"],
+  [1, "Партнёр Discord"],
+  [2, "HypeSquad Events"],
+  [3, "Bug Hunter"],
+  [6, "HypeSquad Bravery"],
+  [7, "HypeSquad Brilliance"],
+  [8, "HypeSquad Balance"],
+  [9, "Ранний сторонник"],
+  [14, "Bug Hunter II"],
+  [17, "Ранний разработчик ботов"],
+  [18, "Модератор-выпускник"],
+  [22, "Активный разработчик"],
+];
+
+function discordBadges(flags: number | null | undefined): string[] {
+  if (!flags) return [];
+  return DISCORD_BADGES.filter(([bit]) => (flags & (1 << bit)) !== 0).map(([, label]) => label);
+}
 type TabKey = (typeof TABS)[number]["key"];
 
 const RECORD_STATUS_RU: Record<RecordStatus, string> = {
@@ -347,8 +374,23 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
     }),
     getPlayerProfile(session.user.discordId),
   ]);
-  const badge = buildStatusBadge(identity);
+  const positions = await getSetting("admins.positions");
+  const badge = buildStatusBadge(identity, positions.find((row) => row.discordId === session.user.discordId)?.title);
   const sessions = tab === "sessions" ? await listSessionsForUser(session.user.id) : [];
+  const [history, personnel] =
+    tab === "history"
+      ? await Promise.all([
+          listAuditLogPage({ actorDiscordId: session.user.discordId }),
+          prisma.personnelEvent.findMany({
+            where: { subjectDiscordId: session.user.discordId, status: RecordStatus.ACTIVE },
+            orderBy: { createdAt: "desc" },
+            take: 30,
+          }),
+        ])
+      : [null, []];
+  const snapshot = memberships.find((member) => member.publicFlags !== null || member.avatarDecorationUrl) ?? memberships[0];
+  const accountBadges = discordBadges(snapshot?.publicFlags);
+  const decoration = snapshot?.avatarDecorationUrl ?? null;
 
   const avatar =
     session.user.image ??
@@ -383,13 +425,18 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       >
         <div className="profile-banner" aria-hidden />
         <div className="profile-identity">
-          {avatar ? (
-            <Image className="avatar" src={avatar} alt="" width={72} height={72} unoptimized />
-          ) : (
-            <div className="avatar avatar-fallback" aria-hidden>
-              {(displayName.trim().charAt(0) || "?").toUpperCase()}
-            </div>
-          )}
+          <div className="avatar-frame">
+            {avatar ? (
+              <Image className="avatar" src={avatar} alt="" width={84} height={84} unoptimized />
+            ) : (
+              <div className="avatar avatar-fallback" aria-hidden>
+                {(displayName.trim().charAt(0) || "?").toUpperCase()}
+              </div>
+            )}
+            {decoration ? (
+              <Image className="avatar-decoration" src={decoration} alt="" width={104} height={104} unoptimized />
+            ) : null}
+          </div>
           <div className="profile-meta">
             <h1 className="truncate" title={displayName}>
               {displayName}
@@ -406,6 +453,11 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
                 {badge.primary}
               </span>
               {badge.secondary ? <span className="badge">{badge.secondary}</span> : null}
+              {accountBadges.map((label) => (
+                <span key={label} className="mini-tag profile-discord-badge">
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -468,6 +520,67 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       {tab === "characters" ? <CharactersTab profile={profile} /> : null}
       {tab === "registrations" ? <RegistrationsTab profile={profile} /> : null}
       {tab === "records" ? <RecordsTab profile={profile} /> : null}
+
+      {tab === "history" ? (
+        <>
+          <div className="panel">
+            <h2 className="panel-title">Кадровые события</h2>
+            {personnel.length === 0 ? (
+              <Empty>Кадровых событий по вашему аккаунту нет.</Empty>
+            ) : (
+              <div className="registry-table-wrap">
+                <table className="registry-table">
+                  <thead>
+                    <tr>
+                      <th>Событие</th>
+                      <th>Фракция</th>
+                      <th>Дата</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {personnel.map((event) => (
+                      <tr key={event.id}>
+                        <td>{PERSONNEL_EVENT_LABELS_RU[event.type as keyof typeof PERSONNEL_EVENT_LABELS_RU] ?? event.type}</td>
+                        <td>{event.factionCode}</td>
+                        <td className="nowrap">{formatMoscow(event.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="panel">
+            <h2 className="panel-title">Ваши действия</h2>
+            {!history || history.items.length === 0 ? (
+              <Empty>Действий пока нет.</Empty>
+            ) : (
+              <div className="registry-table-wrap">
+                <table className="registry-table">
+                  <thead>
+                    <tr>
+                      <th>Когда</th>
+                      <th>Действие</th>
+                      <th>Запись</th>
+                      <th>Где</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.items.map((event) => (
+                      <tr key={event.id}>
+                        <td className="nowrap">{formatMoscow(event.createdAt)}</td>
+                        <td className="registry-mono">{event.action}</td>
+                        <td>{event.entityType}</td>
+                        <td className="muted">{event.source}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
 
       {tab === "sessions" ? (
         <div className="panel">

@@ -1514,3 +1514,66 @@ a.metric-card[data-alert] .metric-value {
   font-family: var(--font-body);
   font-size: var(--fs-sm);
 }
+
+/* ——— Stage 7: legal editor, consent bar, positions ——— */
+.legal-update-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: var(--fs-sm);
+}
+
+.legal-update-bar a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.position-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.position-row .btn {
+  margin-bottom: 0.9rem;
+}
+
+@media (max-width: 700px) {
+  .position-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ——— Stage 7: avatar frame and Discord badges in the profile ——— */
+.avatar-frame {
+  position: relative;
+  flex-shrink: 0;
+  margin-top: -2.6rem;
+}
+
+.profile-identity .avatar-frame .avatar {
+  margin-top: 0;
+  display: block;
+}
+
+.avatar-decoration {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 124%;
+  height: 124%;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
+.profile-discord-badge {
+  margin-left: 0;
+}

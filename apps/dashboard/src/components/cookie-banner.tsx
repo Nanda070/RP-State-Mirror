@@ -13,21 +13,35 @@ const KEY = "mirror.cookieConsent";
  */
 export function CookieBanner() {
   const [visible, setVisible] = useState(false);
+  const [version, setVersion] = useState(LEGAL_VERSION);
 
   useEffect(() => {
-    try {
-      setVisible(window.localStorage.getItem(KEY) !== LEGAL_VERSION);
-    } catch {
-      // Storage is blocked (private mode): show the notice, it simply will not be remembered.
-      setVisible(true);
-    }
+    let cancelled = false;
+    // The edition in force may be newer than the built-in one: texts can be published in the dashboard.
+    fetch("/api/legal/version")
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null)
+      .then((data: { version?: string } | null) => {
+        if (cancelled) return;
+        const current = data?.version ?? LEGAL_VERSION;
+        setVersion(current);
+        try {
+          setVisible(window.localStorage.getItem(KEY) !== current);
+        } catch {
+          // Storage is blocked (private mode): show the notice, it simply will not be remembered.
+          setVisible(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!visible) return null;
 
   const dismiss = () => {
     try {
-      window.localStorage.setItem(KEY, LEGAL_VERSION);
+      window.localStorage.setItem(KEY, version);
     } catch {
       // Nothing to do: the notice closes for this page view.
     }

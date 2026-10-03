@@ -1,8 +1,10 @@
+import { getPublishedLegal } from "@mirror/core";
+import { Markdown } from "@/components/markdown";
 import Link from "next/link";
 import { LegalContact, LegalLayout } from "@/components/legal-layout";
 import { legalOperator } from "@/lib/legal";
 
-export const metadata = { title: "Политика конфиденциальности · Mirror" };
+export const metadata = { title: "Политика конфиденциальности " };
 export const dynamic = "force-dynamic";
 
 const DATA: { what: string; purpose: string; basis: string; kept: string }[] = [
@@ -56,7 +58,15 @@ const DATA: { what: string; purpose: string; basis: string; kept: string }[] = [
   },
 ];
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const published = await getPublishedLegal("privacy");
+  if (published) {
+    return (
+      <LegalLayout current="/privacy" title="Политика конфиденциальности" version={published.version}>
+        <Markdown source={published.body} />
+      </LegalLayout>
+    );
+  }
   const operator = legalOperator();
   return (
     <LegalLayout current="/privacy" title="Политика конфиденциальности">

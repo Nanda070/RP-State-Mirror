@@ -2,7 +2,7 @@ import { getLockdown } from "@mirror/core";
 import Link from "next/link";
 import { NoticePage } from "@/components/notice-page";
 
-export const metadata = { title: "Технические работы · Mirror" };
+export const metadata = { title: "Технические работы" };
 export const dynamic = "force-dynamic";
 
 export default async function MaintenancePage() {

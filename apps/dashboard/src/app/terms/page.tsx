@@ -1,11 +1,21 @@
+import { getPublishedLegal } from "@mirror/core";
+import { Markdown } from "@/components/markdown";
 import Link from "next/link";
 import { LegalContact, LegalLayout } from "@/components/legal-layout";
 import { legalOperator } from "@/lib/legal";
 
-export const metadata = { title: "Условия использования · Mirror" };
+export const metadata = { title: "Условия использования " };
 export const dynamic = "force-dynamic";
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const published = await getPublishedLegal("terms");
+  if (published) {
+    return (
+      <LegalLayout current="/terms" title="Условия использования" version={published.version}>
+        <Markdown source={published.body} />
+      </LegalLayout>
+    );
+  }
   const operator = legalOperator();
   return (
     <LegalLayout current="/terms" title="Условия использования">

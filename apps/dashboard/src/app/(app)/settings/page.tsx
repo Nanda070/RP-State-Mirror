@@ -1,4 +1,6 @@
-import { getSettings } from "@mirror/core";
+import { LEGAL_KINDS, LEGAL_KIND_TITLES, getSettings, listLegalVersions } from "@mirror/core";
+import { RecordStatus } from "@mirror/db";
+import { AnonymizeForm, LegalEditor } from "@/components/legal-editor";
 import { PageTabs, currentTab } from "@/components/page-tabs";
 import { SettingsCpForm } from "@/components/settings-cp-form";
 import { SettingsGuildForm } from "@/components/settings-guild-form";
@@ -6,7 +8,7 @@ import { SettingsLockdownForm } from "@/components/settings-lockdown-form";
 import { SettingsMonitoringForm } from "@/components/settings-monitoring-form";
 import { getActiveChannelOptions, getActiveGuildOptions, getRolesForGuild } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
-import { formatMoscow } from "@/lib/moscow";
+import { formatMoscow, formatMoscowShort } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
 
 export const metadata = { title: "Настройки" };
@@ -14,6 +16,7 @@ export const metadata = { title: "Настройки" };
 const TABS = [
   { key: "servers", label: "Серверы и синхронизация", icon: "server" },
   { key: "safety", label: "Защита и мониторинг", icon: "shield" },
+  { key: "texts", label: "Тексты и данные", icon: "doc" },
 ] as const;
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -51,6 +54,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <PageTabs path="/settings" tabs={TABS} current={tab} />
       {tab === "servers" ? <ServersTab settings={settings} channels={channelOptions} /> : null}
       {tab === "safety" ? <SafetyTab settings={settings} channels={channelOptions} /> : null}
+      {tab === "texts" ? <TextsTab /> : null}
     </div>
   );
 }
@@ -125,6 +129,34 @@ async function SafetyTab({ settings, channels }: { settings: Settings; channels:
         initialArchiveAfterDays={settings["audit.archiveAfterDays"]}
         channels={channels}
       />
+    </>
+  );
+}
+
+async function TextsTab() {
+  const histories = await Promise.all(LEGAL_KINDS.map((kind) => listLegalVersions(kind)));
+  const labels = await resolveAuthorLabels(histories.flat().map((row) => row.createdByDiscordId));
+  return (
+    <>
+      <LegalEditor
+        documents={LEGAL_KINDS.map((kind, index) => {
+          const history = histories[index] ?? [];
+          const active = history.find((row) => row.status === RecordStatus.ACTIVE);
+          return {
+            kind,
+            title: LEGAL_KIND_TITLES[kind],
+            body: active?.body ?? "",
+            version: active?.version ?? null,
+            history: history.map((row) => ({
+              version: row.version,
+              createdAt: formatMoscowShort(row.createdAt),
+              author: labels.get(row.createdByDiscordId) ?? row.createdByDiscordId,
+              active: row.status === RecordStatus.ACTIVE,
+            })),
+          };
+        })}
+      />
+      <AnonymizeForm />
     </>
   );
 }

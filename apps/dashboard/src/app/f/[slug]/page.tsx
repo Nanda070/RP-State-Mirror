@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const form = await getPublicForm((await params).slug);
   return {
-    title: form ? `${form.name} · Mirror` : "Форма не найдена · Mirror",
+    title: form ? form.name : "Форма не найдена · Mirror",
     robots: { index: false, follow: false },
   };
 }

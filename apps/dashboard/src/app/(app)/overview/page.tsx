@@ -1,15 +1,11 @@
 import {
-  auditActorDiscordId,
   buildStatusBadge,
   canManageSystemSettings,
   canViewModules,
   getPlayerProfile,
-  listAuditLogPage,
 } from "@mirror/core";
 import { DecisionStatus, FeedbackTicketStatus, RecordStatus, TransferStatus, prisma } from "@mirror/db";
 import Link from "next/link";
-import { resolveAuthorLabels } from "@/lib/discord-names";
-import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 export const metadata = { title: "Главная" };
@@ -61,13 +57,13 @@ export default async function OverviewPage() {
         <h1>Добро пожаловать, {displayName}</h1>
         <p className="muted">{[badge.primary, badge.secondary].filter(Boolean).join(" · ")}</p>
       </div>
-      {isStaff ? <StaffOverview showEvents={canManageSystemSettings(identity)} /> : <PlayerOverview discordId={session.user.discordId} />}
+      {isStaff ? <StaffOverview showModules={canManageSystemSettings(identity)} /> : <PlayerOverview discordId={session.user.discordId} />}
     </div>
   );
 }
 
-/** What waits for a decision, and — for the super admin — what happened last. */
-async function StaffOverview({ showEvents }: { showEvents: boolean }) {
+/** What waits for a decision, and — for the super admin — shortcuts to the modules. */
+async function StaffOverview({ showModules }: { showModules: boolean }) {
   const pending = { decision: DecisionStatus.PENDING, status: RecordStatus.ACTIVE };
   const now = new Date();
   const [vehicles, uniforms, transfers, tickets, wanted, fines, overdue] = await Promise.all([
@@ -79,10 +75,6 @@ async function StaffOverview({ showEvents }: { showEvents: boolean }) {
     prisma.fine.count({ where: { status: RecordStatus.ACTIVE } }),
     prisma.fine.count({ where: { status: RecordStatus.ACTIVE, dueAt: { lte: now } } }),
   ]);
-
-  const events = showEvents ? (await listAuditLogPage({})).items.slice(0, 8) : [];
-  const actorIds = events.map((event) => auditActorDiscordId(event)).filter((id): id is string => Boolean(id));
-  const labels = await resolveAuthorLabels(actorIds);
 
   return (
     <>
@@ -107,7 +99,7 @@ async function StaffOverview({ showEvents }: { showEvents: boolean }) {
           ]}
         />
       </section>
-      {showEvents ? (
+      {showModules ? (
         <section className="panel">
           <h2 className="panel-title">Модули</h2>
           <div className="module-chip-row">
@@ -117,37 +109,6 @@ async function StaffOverview({ showEvents }: { showEvents: boolean }) {
               </Link>
             ))}
           </div>
-        </section>
-      ) : null}
-      {showEvents ? (
-        <section className="panel">
-          <div className="panel-head-row">
-            <h2 className="panel-title">Последние события</h2>
-            <Link href="/settings/sessions?tab=audit" className="btn btn-ghost">
-              Весь журнал
-            </Link>
-          </div>
-          {events.length === 0 ? (
-            <p className="muted registry-empty">Событий пока нет.</p>
-          ) : (
-            <div className="registry-table-wrap">
-              <table className="registry-table">
-                <tbody>
-                  {events.map((event) => {
-                    const actorId = auditActorDiscordId(event);
-                    return (
-                      <tr key={event.id}>
-                        <td className="nowrap muted">{formatMoscowShort(event.createdAt)}</td>
-                        <td>{actorId ? (labels.get(actorId) ?? actorId) : event.actorType === "BOT" ? "Бот" : "Система"}</td>
-                        <td className="registry-mono">{event.action}</td>
-                        <td className="muted">{event.entityType}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
         </section>
       ) : null}
     </>

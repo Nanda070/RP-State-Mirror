@@ -5,7 +5,7 @@ import { AppShell } from "@/components/app-shell";
 import { NoticePage } from "@/components/notice-page";
 import { isLockedOut } from "@/lib/session";
 
-export const metadata = { title: "Страница не найдена · Mirror" };
+export const metadata = { title: "Страница не найдена" };
 
 /**
  * 404. A signed-in user stays inside the dashboard — menu and search are at hand; a guest gets the

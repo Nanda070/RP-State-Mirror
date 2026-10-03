@@ -30,6 +30,10 @@ const bodySchema = z.object({
   "documents.responderRoleIds": z.array(snowflakeSchema).max(50).optional(),
   "fines.managerRoleIds": z.array(snowflakeSchema).max(50).optional(),
   "personnel.managerRoleIds": z.array(snowflakeSchema).max(50).optional(),
+  "admins.positions": z
+    .array(z.object({ discordId: snowflakeSchema, title: z.string().trim().min(1).max(64) }))
+    .max(200)
+    .optional(),
   "monitoring.errorChannelId": snowflakeSchema.nullable().optional(),
   "monitoring.alertWebhookUrl": discordWebhookUrlSchema.nullable().optional(),
   "audit.archiveAfterDays": z.number().int().min(30).max(3650).optional(),
