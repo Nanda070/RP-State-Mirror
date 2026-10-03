@@ -971,7 +971,18 @@ export async function addFeedbackMessage(
     if (!ticket || ticket.status === FeedbackTicketStatus.CLOSED) throw new UserError("Тикет закрыт или не найден.");
     const message = await tx.feedbackMessage.create({ data: { ticketId, authorDiscordId, content: text } });
     if (authorDiscordId !== ticket.authorDiscordId) {
+      // Staff answered: the player gets a DM, the ticket is in work.
       await enqueueFeedbackReplySend({ ticketId: ticket.id, messageId: message.id }, tx);
+      if (ticket.status === FeedbackTicketStatus.OPEN) {
+        await tx.feedbackTicket.update({ where: { id: ticketId }, data: { status: FeedbackTicketStatus.IN_PROGRESS } });
+      }
+    } else {
+      // The player wrote again: staff is told in the notify channel, and the ticket moves up the list.
+      await enqueueJob(
+        { type: MODULE_JOB_TYPES.FEEDBACK_TICKET_NOTIFY, payload: { ticketId: ticket.id, messageId: message.id } },
+        tx,
+      );
+      await tx.feedbackTicket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } });
     }
     return { entityId: message.id, after: message, result: message };
   });

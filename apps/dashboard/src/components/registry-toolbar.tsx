@@ -30,6 +30,8 @@ export function RegistryToolbar({
   statuses,
   placeholder,
   exportRegistry,
+  resetHref,
+  filtered: filteredProp,
   children,
 }: {
   path: string;
@@ -39,10 +41,14 @@ export function RegistryToolbar({
   placeholder: string;
   /** Registry key for «Скачать CSV». */
   exportRegistry?: string;
+  /** Where «Сбросить» leads; by default the bare path. */
+  resetHref?: string;
+  /** Whether any filter is set, when the page has filters of its own. */
+  filtered?: boolean;
   /** Extra fields of the form (the audit log has more filters). */
   children?: React.ReactNode;
 }) {
-  const filtered = Boolean(query.q || query.status);
+  const filtered = filteredProp ?? Boolean(query.q || query.status);
   return (
     <form className="registry-toolbar" action={path} method="get" role="search">
       <div className="field registry-toolbar-search">
@@ -68,7 +74,7 @@ export function RegistryToolbar({
           Найти
         </button>
         {filtered ? (
-          <Link href={path} className="btn btn-secondary">
+          <Link href={resetHref ?? path} className="btn btn-secondary">
             Сбросить
           </Link>
         ) : null}

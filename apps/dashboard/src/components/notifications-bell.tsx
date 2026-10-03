@@ -4,21 +4,35 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 type Notice = { key: string; text: string; href: string; count: number; tone: "warn" | "bad" };
+/** What the viewer has waved away: notice key → the count it had at that moment. */
+type Dismissed = Record<string, number>;
 
 const REFRESH_MS = 60_000;
+const STORE_KEY = "mirror.notices.dismissed";
+
+function readDismissed(): Dismissed {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(STORE_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Dismissed) : {};
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Things that wait for the viewer: applications to decide, open tickets, failed jobs, unpaid fines.
- * The list is counted on the server from the registries themselves, so it is always current and
- * needs no «mark as read».
+ * Counted on the server from the registries. A notice can be hidden; it comes back only when its
+ * count grows — that is, when something new has happened.
  */
 export function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [dismissed, setDismissed] = useState<Dismissed>({});
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
   useEffect(() => {
+    setDismissed(readDismissed());
     let cancelled = false;
     async function load() {
       try {
@@ -54,7 +68,19 @@ export function NotificationsBell() {
     };
   }, [open]);
 
-  const total = notices.reduce((sum, notice) => sum + notice.count, 0);
+  function hide(target: Notice[]) {
+    const next = { ...dismissed };
+    for (const notice of target) next[notice.key] = notice.count;
+    setDismissed(next);
+    try {
+      window.localStorage.setItem(STORE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage is blocked: hidden for this page view only.
+    }
+  }
+
+  const visible = notices.filter((notice) => notice.count > (dismissed[notice.key] ?? 0));
+  const total = visible.reduce((sum, notice) => sum + notice.count, 0);
   const label = total > 0 ? `Уведомления: ${total}` : "Уведомления";
 
   return (
@@ -88,17 +114,35 @@ export function NotificationsBell() {
         <div id={panelId} className="notify-panel" role="dialog" aria-label="Уведомления">
           <div className="notify-panel-head">Требует внимания</div>
           <div className="notify-panel-body">
-            {notices.length === 0 ? (
-              <p className="muted notify-empty">Ничего не ждёт вашего решения</p>
+            {visible.length === 0 ? (
+              <p className="muted notify-empty">Новых уведомлений нет</p>
             ) : (
-              notices.map((notice) => (
-                <Link key={notice.key} href={notice.href} className="notify-item" onClick={() => setOpen(false)}>
-                  <span className="registry-status" data-status={notice.tone}>
-                    {notice.count}
-                  </span>
-                  <span>{notice.text}</span>
-                </Link>
-              ))
+              <>
+                {visible.map((notice) => (
+                  <div key={notice.key} className="notify-item">
+                    <Link href={notice.href} onClick={() => setOpen(false)}>
+                      <span className="registry-status" data-status={notice.tone}>
+                        {notice.count}
+                      </span>
+                      <span>{notice.text}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      className="notify-dismiss"
+                      title="Скрыть"
+                      aria-label={`Скрыть: ${notice.text}`}
+                      onClick={() => hide([notice])}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <div className="notify-foot">
+                  <button type="button" className="btn btn-ghost" onClick={() => hide(visible)}>
+                    Скрыть все
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>

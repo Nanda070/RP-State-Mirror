@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { ToggleRow } from "./toggle-row";
 
-type ModuleKey = "documents" | "wanted" | "fines";
+type ModuleKey = "documents" | "wanted";
 
 export function SettingsDocumentsForm({
   initialTtlHours,
@@ -143,14 +143,6 @@ export function SettingsWantedForm({
           }
         />
       </div>
-      <div className="field">
-        <span className="field-label">Пинг при объявлении розыска</span>
-        <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
-          Автоматически тегаются все фракционные роли на сервере ЧП{" "}
-          <strong>кроме WN</strong>. Общей роли «Фракция» нет — пинг строится из
-          привязок FACTION_MEMBER (или роли с именем кода фракции).
-        </p>
-      </div>
     </ModuleSettingsForm>
   );
 }
@@ -183,7 +175,7 @@ function ModuleSettingsForm({
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось сохранить");
-      setMessage("Сохранено. Изменение записано в журнал аудита.");
+      setMessage("Сохранено");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка сохранения");
     } finally {
@@ -194,13 +186,13 @@ function ModuleSettingsForm({
   return (
     <form className="panel" onSubmit={onSubmit}>
       <h2 className="panel-title" style={{ marginTop: 0 }}>
-        Параметры
+        {_module === "documents" ? "Документы" : "Розыск"}
       </h2>
       {children}
       <button type="submit" className="btn btn-primary" disabled={pending}>
         {pending ? "Сохранение…" : "Сохранить"}
       </button>
-      {message ? <p className="muted">{message}</p> : null}
+      {message ? <p className={message.startsWith("Сохранено") ? "form-ok" : "form-error"}>{message}</p> : null}
     </form>
   );
 }

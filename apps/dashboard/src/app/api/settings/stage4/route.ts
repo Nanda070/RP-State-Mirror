@@ -35,6 +35,7 @@ const settingKeys = [
   "transfers.pendingTtlDays",
   "webhooks.notifyChannelId",
   "feedback.notifyChannelId",
+  "feedback.categories",
   "icBlacklist.enabled",
   "icBlacklist.channelId",
   "icBlacklist.managerRoleIds",

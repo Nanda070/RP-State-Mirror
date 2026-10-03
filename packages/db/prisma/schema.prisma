@@ -154,6 +154,9 @@ model GuildMember {
   nickname       String?
   avatarUrl      String?   @map("avatar_url")
   guildAvatarUrl String?   @map("guild_avatar_url")
+  /// Discord public flags of the account (badges); null until the bot has seen the member.
+  publicFlags    Int?      @map("public_flags")
+  avatarDecorationUrl String? @map("avatar_decoration_url")
   roleIds        String[]  @map("role_ids")
   joinedAt       DateTime? @map("joined_at")
   isPresent      Boolean   @default(true) @map("is_present")
@@ -923,4 +926,33 @@ model ServiceHeartbeat {
   meta    Json     @default("{}")
 
   @@map("service_heartbeats")
+}
+
+/// Legal texts edited in the dashboard (PLAN §8). One ACTIVE row per kind is what the site shows
+/// (partial unique index in SQL); earlier versions stay as history. No row — the built-in text.
+model LegalDocument {
+  id                 String       @id @default(cuid())
+  /// terms | privacy | cookies
+  kind               String
+  /// Date of the edition, YYYY-MM-DD, with a suffix when two are published on one day.
+  version            String
+  /// Markdown.
+  body               String
+  status             RecordStatus @default(ACTIVE)
+  createdByDiscordId String       @map("created_by_discord_id")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  @@index([kind, createdAt])
+  @@map("legal_documents")
+}
+
+/// Which edition of the terms a user accepted, and when.
+model LegalConsent {
+  id         String   @id @default(cuid())
+  discordId  String   @map("discord_id")
+  version    String
+  acceptedAt DateTime @default(now()) @map("accepted_at")
+
+  @@unique([discordId, version])
+  @@map("legal_consents")
 }

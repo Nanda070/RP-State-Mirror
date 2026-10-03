@@ -126,6 +126,11 @@ export const settingDefinitions = {
     null,
     "Канал уведомлений админам о новых запросах форм (/создать-вебхук)",
   ),
+  "feedback.categories": defineSetting(
+    z.array(z.string().trim().min(1).max(64)).min(1).max(25),
+    ["Вопрос", "Жалоба", "Предложение", "Сообщение об ошибке"],
+    "Категории обращений: игрок выбирает одну при создании обращения",
+  ),
   "feedback.notifyChannelId": defineSetting(
     snowflakeSchema.nullable(),
     null,

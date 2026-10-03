@@ -462,20 +462,6 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
               <Link href="/profile?tab=characters">«Персонажи и нашивки»</Link>.
             </p>
           ) : null}
-          <div className="panel">
-            <h2 className="panel-title">Полезное</h2>
-            <div className="row">
-              <Link href="/catalog" className="btn btn-outline">
-                Каталог ТС
-              </Link>
-              <Link href="/calculator" className="btn btn-outline">
-                Калькулятор переводов
-              </Link>
-              <Link href="/faq" className="btn btn-outline">
-                FAQ
-              </Link>
-            </div>
-          </div>
         </>
       ) : null}
 

@@ -6,6 +6,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ModalBuilder,
+  StringSelectMenuBuilder,
   MessageFlags,
   TextInputBuilder,
   TextInputStyle,
@@ -18,6 +19,7 @@ import {
   decideRegistration,
   decideTransfer,
   createFeedbackTicket,
+  addFeedbackMessage,
   canDecideTransferSide,
   canReviewRegistrationAccess,
   discordFormSteps,
@@ -42,7 +44,7 @@ import {
   type FormValue,
   type Logger,
 } from "@mirror/core";
-import { AuditActorType, DecisionStatus } from "@mirror/db";
+import { AuditActorType, DecisionStatus, prisma } from "@mirror/db";
 import {
   buildRegistrationReview,
   buildTransferReview,
@@ -692,19 +694,34 @@ async function handlePersonnelKick(
   await interaction.editReply({ content: outcome });
 }
 
+/** «Обратная связь»: first the category (from the dashboard's list), then the text. */
 async function handleFeedbackOpen(interaction: ButtonInteraction) {
-  const modal = new ModalBuilder()
-    .setCustomId(`mirror:feedback.submit:${interaction.customId.split(":").at(-1)}`)
-    .setTitle("Обратная связь")
+  const categories = await getSetting("feedback.categories");
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("mirror:feedback.category:pick")
+    .setPlaceholder("Выберите категорию обращения")
+    .addOptions(categories.slice(0, 25).map((label, index) => ({ label: label.slice(0, 100), value: String(index) })));
+  await interaction.reply({
+    content: "О чём ваше обращение?",
+    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+function feedbackTextModal(customId: string, title: string) {
+  return new ModalBuilder()
+    .setCustomId(customId)
+    .setTitle(title.slice(0, 45))
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder().setCustomId("category").setLabel("Категория").setStyle(TextInputStyle.Short).setRequired(true),
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder().setCustomId("content").setLabel("Сообщение").setStyle(TextInputStyle.Paragraph).setRequired(true),
+        new TextInputBuilder()
+          .setCustomId("content")
+          .setLabel("Сообщение")
+          .setStyle(TextInputStyle.Paragraph)
+          .setMaxLength(4000)
+          .setRequired(true),
       ),
     );
-  await interaction.showModal(modal);
 }
 
 async function deferRejectModal(interaction: ModalSubmitInteraction) {
@@ -720,9 +737,28 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     await handleFormSubmit(interaction, parsed.id);
     return true;
   }
+  if (parsed.action === "feedback.reply") {
+    // The player's answer to a reply from the staff; the id is the ticket.
+    await deferModalEphemeral(interaction);
+    const ticket = await prisma.feedbackTicket.findUnique({ where: { id: parsed.id }, select: { authorDiscordId: true } });
+    if (!ticket || ticket.authorDiscordId !== interaction.user.id) {
+      await interaction.editReply({ content: "Обращение не найдено." });
+      return true;
+    }
+    await addFeedbackMessage(
+      parsed.id,
+      interaction.user.id,
+      interaction.fields.getTextInputValue("content"),
+      auditContext(interaction, "discord.modal"),
+    );
+    await interaction.editReply({ content: "Ответ отправлен администрации." });
+    return true;
+  }
   if (parsed.action === "feedback.submit") {
     await deferModalEphemeral(interaction);
-    const category = interaction.fields.getTextInputValue("category");
+    // The id is the position in the category list the player picked from.
+    const categories = await getSetting("feedback.categories");
+    const category = categories[Number(parsed.id)] ?? categories[0] ?? "Обращение";
     const content = interaction.fields.getTextInputValue("content");
     await createFeedbackTicket(
       { authorDiscordId: interaction.user.id, category, content },
@@ -825,6 +861,12 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     return true;
   }
 
+  // «Ответить» under a staff reply in the player's DMs: the id is the ticket.
+  if (parsed.action === "feedback.reply") {
+    await interaction.showModal(feedbackTextModal(`mirror:feedback.reply:${parsed.id}`, "Ответ администрации"));
+    return true;
+  }
+
   // «Продолжить» of a multi-step form carries the form id itself, not a stored button action.
   if (parsed.action === "form.step") {
     await handleFormStep(interaction, parsed.id);
@@ -884,6 +926,17 @@ export async function handleSelectInteraction(interaction: StringSelectMenuInter
     const parsed = parseCustomId(interaction.customId);
     if (!parsed) {
       await respondEphemeral(interaction, "Список не поддерживается.");
+      return;
+    }
+    if (parsed.action === "feedback.category") {
+      const categories = await getSetting("feedback.categories");
+      const index = Number(interaction.values[0]);
+      const category = categories[index];
+      if (!category) {
+        await respondEphemeral(interaction, "Список категорий изменился. Нажмите кнопку обращения ещё раз.");
+        return;
+      }
+      await interaction.showModal(feedbackTextModal(`mirror:feedback.submit:${index}`, category));
       return;
     }
     if (underCooldown(interaction.user.id, parsed.id)) {

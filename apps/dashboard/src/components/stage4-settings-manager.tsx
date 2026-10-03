@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { GuildChipPicker, RoleChipPicker, type RoleChipOption } from "./role-chip-picker";
@@ -19,6 +18,7 @@ export type Stage4SettingsValues = {
   "transfers.pendingTtlDays": number;
   "webhooks.notifyChannelId": string | null;
   "feedback.notifyChannelId": string | null;
+  "feedback.categories": string[];
   "icBlacklist.enabled": boolean;
   "icBlacklist.channelId": string | null;
   "icBlacklist.managerRoleIds": string[];
@@ -29,7 +29,7 @@ export type Stage4SettingsValues = {
   "tokens.finderRoleIds": string[];
 };
 
-type TabId =
+export type ModuleTabId =
   | "registrations"
   | "transfers"
   | "icBlacklist"
@@ -38,19 +38,9 @@ type TabId =
   | "feedback"
   | "invites";
 
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: "registrations", label: "Регистрации" },
-  { id: "transfers", label: "Переводы" },
-  { id: "icBlacklist", label: "IC ЧС" },
-  { id: "tokens", label: "Токены" },
-  { id: "webhooks", label: "Webhooks" },
-  { id: "feedback", label: "Обратная связь" },
-  { id: "invites", label: "Инвайты" },
-];
-
 export function Stage4SettingsManager({
   initial,
-  initialTab = "registrations",
+  tab,
   channels,
   incidentRoles,
   govRoles,
@@ -60,7 +50,8 @@ export function Stage4SettingsManager({
   tokenOpenMessage = null,
 }: {
   initial: Stage4SettingsValues;
-  initialTab?: TabId;
+  /** Which module's settings to show; the strip of tabs belongs to the page. */
+  tab: ModuleTabId;
   channels: ChannelOption[];
   incidentRoles: RoleChipOption[];
   govRoles: RoleChipOption[];
@@ -73,7 +64,6 @@ export function Stage4SettingsManager({
     messageDiscordId: string;
   } | null;
 }) {
-  const [tab, setTab] = useState<TabId>(initialTab);
   const [values, setValues] = useState(initial);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -97,6 +87,7 @@ export function Stage4SettingsManager({
             "transfers.channelId": values["transfers.channelId"] || null,
             "webhooks.notifyChannelId": values["webhooks.notifyChannelId"] || null,
             "feedback.notifyChannelId": values["feedback.notifyChannelId"] || null,
+            "feedback.categories": (values["feedback.categories"] ?? []).map((line) => line.trim()).filter(Boolean),
             "icBlacklist.channelId": values["icBlacklist.channelId"] || null,
           },
         }),
@@ -133,38 +124,10 @@ export function Stage4SettingsManager({
 
   return (
     <div className="stack">
-      <div className="settings-tabs" role="tablist" aria-label="Разделы модулей">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            className="settings-tab"
-            aria-selected={tab === item.id}
-            data-active={tab === item.id || undefined}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
       <section className="panel stack">
         {tab === "registrations" ? (
           <>
             <h2 className="panel-title">Регистрации ТС и униформы</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Подать заявку могут все. Каналы ТС и формы раздельные; координаторы общие — одобряют и
-              получают пинг в обоих каналах. Реестры — в{" "}
-              <Link href="/registrations/vehicles" className="stub-link">
-                Информация → Регистрации ТС
-              </Link>{" "}
-              и{" "}
-              <Link href="/registrations/uniforms" className="stub-link">
-                Регистрации форм
-              </Link>
-              .
-            </p>
             <label className="field">
               <span>Срок действия, дней</span>
               <input
@@ -274,13 +237,6 @@ export function Stage4SettingsManager({
         {tab === "icBlacklist" ? (
           <>
             <h2 className="panel-title">IC чёрный список — настройки</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Реестр записей — в разделе{" "}
-              <Link href="/ic-blacklist" className="stub-link">
-                Информация → IC ЧС реестр
-              </Link>
-              .
-            </p>
             <ToggleRow
               id="ic-blacklist-enabled"
               checked={values["icBlacklist.enabled"]}
@@ -356,14 +312,7 @@ export function Stage4SettingsManager({
 
         {tab === "webhooks" ? (
           <>
-            <h2 className="panel-title">Webhooks — уведомления</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Очередь запросов и создание форм — в{" "}
-              <Link href="/settings/webhooks" className="stub-link">
-                Администрирование → Webhooks
-              </Link>
-              .
-            </p>
+            <h2 className="panel-title">Вебхуки — уведомления</h2>
             <label className="field">
               <span>Канал уведомлений о запросах</span>
               <ChannelSelect
@@ -381,13 +330,6 @@ export function Stage4SettingsManager({
         {tab === "feedback" ? (
           <>
             <h2 className="panel-title">Обратная связь — уведомления</h2>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Тикеты игроков — в{" "}
-              <Link href="/feedback" className="stub-link">
-                Администрирование → Обратная связь
-              </Link>
-              .
-            </p>
             <label className="field">
               <span>Канал уведомлений</span>
               <ChannelSelect
@@ -397,6 +339,19 @@ export function Stage4SettingsManager({
                 channels={channels}
                 guildDiscordId={incidentGuildId}
                 emptyLabel={channelEmpty}
+              />
+            </label>
+            <label className="field">
+              <span>Категории обращений — по одной в строке</span>
+              <textarea
+                rows={5}
+                value={(values["feedback.categories"] ?? []).join("\n")}
+                onChange={(event) =>
+                  patch(
+                    "feedback.categories",
+                    event.target.value.split("\n").map((line) => line.trimStart()),
+                  )
+                }
               />
             </label>
           </>

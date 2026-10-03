@@ -1,44 +1,25 @@
 import { getSettings, migrateLegacyRegistrationChannels } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
-import Link from "next/link";
-import {
-  Stage4SettingsManager,
-  type Stage4SettingsValues,
-} from "@/components/stage4-settings-manager";
+import { ModulesSettings } from "@/components/modules-settings";
+import type { Stage4SettingsValues } from "@/components/stage4-settings-manager";
 import {
   getActiveChannelOptions,
   getActiveGuildOptions,
   getRolesForGuild,
 } from "@/lib/catalog";
+import { moduleTab } from "@/lib/module-tabs";
 import { requireSystemSettingsPage } from "@/lib/session";
 
-type TabId =
-  | "registrations"
-  | "transfers"
-  | "icBlacklist"
-  | "tokens"
-  | "webhooks"
-  | "feedback"
-  | "invites";
+export const metadata = { title: "Модули" };
 
-const TAB_IDS = new Set<TabId>([
-  "registrations",
-  "transfers",
-  "icBlacklist",
-  "tokens",
-  "webhooks",
-  "feedback",
-  "invites",
-]);
-
-export default async function Stage4SettingsPage({
+export default async function ModulesSettingsPage({
   searchParams,
 }: {
   searchParams?: Promise<{ tab?: string }>;
 }) {
   await requireSystemSettingsPage();
   const params = searchParams ? await searchParams : {};
-  const initialTab = TAB_IDS.has(params.tab as TabId) ? (params.tab as TabId) : "registrations";
+  const initialTab = moduleTab(params.tab);
 
   await migrateLegacyRegistrationChannels();
 
@@ -55,6 +36,7 @@ export default async function Stage4SettingsPage({
       "transfers.pendingTtlDays",
       "webhooks.notifyChannelId",
       "feedback.notifyChannelId",
+      "feedback.categories",
       "icBlacklist.enabled",
       "icBlacklist.channelId",
       "icBlacklist.managerRoleIds",
@@ -65,6 +47,10 @@ export default async function Stage4SettingsPage({
       "tokens.finderRoleIds",
       "tokens.openMessage",
       "core.incidentGuildId",
+      "documents.ttlHours",
+      "wanted.enabled",
+      "wanted.channelId",
+      "wanted.coordinatorRoleIds",
     ] as const),
     getActiveChannelOptions(),
     getActiveGuildOptions(),
@@ -81,6 +67,13 @@ export default async function Stage4SettingsPage({
     govGuildId ? getRolesForGuild(govGuildId) : Promise.resolve([]),
   ]);
 
+  const channelOptions = channels.map((c) => ({
+    discordId: c.discordId,
+    name: c.name,
+    guildDiscordId: c.guild.discordId,
+    guildName: c.guild.name,
+  }));
+
   const initial: Stage4SettingsValues = {
     "registrations.ttlDays": settings["registrations.ttlDays"],
     "registrations.pendingTtlDays": settings["registrations.pendingTtlDays"],
@@ -93,6 +86,7 @@ export default async function Stage4SettingsPage({
     "transfers.pendingTtlDays": settings["transfers.pendingTtlDays"],
     "webhooks.notifyChannelId": settings["webhooks.notifyChannelId"],
     "feedback.notifyChannelId": settings["feedback.notifyChannelId"],
+    "feedback.categories": settings["feedback.categories"],
     "icBlacklist.enabled": settings["icBlacklist.enabled"],
     "icBlacklist.channelId": settings["icBlacklist.channelId"],
     "icBlacklist.managerRoleIds": settings["icBlacklist.managerRoleIds"],
@@ -106,31 +100,29 @@ export default async function Stage4SettingsPage({
   return (
     <div className="stack">
       <div className="section-head">
-        <p className="crumb-inline muted">
-          <Link href="/settings">Настройки</Link>
-          <span aria-hidden> › </span>
-          <span>Конфигурация модулей</span>
-        </p>
-        <h1>Конфигурация модулей</h1>
-        <p className="muted">
-          Каналы, роли и параметры модулей. Реестры и конструкторы вынесены в отдельные разделы.
-        </p>
+        <h1>Модули</h1>
       </div>
-      <Stage4SettingsManager
-        initial={initial}
+      <ModulesSettings
         initialTab={initialTab}
-        channels={channels.map((c) => ({
-          discordId: c.discordId,
-          name: c.name,
-          guildDiscordId: c.guild.discordId,
-          guildName: c.guild.name,
-        }))}
-        incidentRoles={incidentRoles}
-        govRoles={govRoles}
-        guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
-        incidentGuildId={incidentGuildId}
-        govGuildId={govGuildId}
-        tokenOpenMessage={settings["tokens.openMessage"]}
+        documents={{ initialTtlHours: settings["documents.ttlHours"] }}
+        wanted={{
+          initialEnabled: settings["wanted.enabled"],
+          initialChannelId: settings["wanted.channelId"],
+          initialCoordinatorRoleIds: settings["wanted.coordinatorRoleIds"],
+          incidentGuildId,
+          channels: channelOptions,
+          roles: incidentRoles,
+        }}
+        manager={{
+          initial,
+          channels: channelOptions,
+          incidentRoles,
+          govRoles,
+          guilds: guilds.map((g) => ({ discordId: g.discordId, name: g.name })),
+          incidentGuildId,
+          govGuildId,
+          tokenOpenMessage: settings["tokens.openMessage"],
+        }}
       />
     </div>
   );

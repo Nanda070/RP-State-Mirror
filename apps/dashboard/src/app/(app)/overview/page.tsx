@@ -1,302 +1,198 @@
 import {
+  auditActorDiscordId,
   buildStatusBadge,
   canManageSystemSettings,
   canViewModules,
+  getPlayerProfile,
+  listAuditLogPage,
 } from "@mirror/core";
-import { JobStatus, RecordStatus, prisma } from "@mirror/db";
+import { DecisionStatus, FeedbackTicketStatus, RecordStatus, TransferStatus, prisma } from "@mirror/db";
 import Link from "next/link";
+import { resolveAuthorLabels } from "@/lib/discord-names";
+import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
-function formatCount(n: number): string {
-  return new Intl.NumberFormat("ru-RU").format(n);
+export const metadata = { title: "Главная" };
+
+const count = (value: number) => new Intl.NumberFormat("ru-RU").format(value);
+
+const MODULE_LINKS = [
+  { label: "Документы", href: "/documents" },
+  { label: "Розыск", href: "/wanted" },
+  { label: "Штрафы", href: "/fines" },
+  { label: "Персонал", href: "/personnel" },
+  { label: "Регистрации ТС", href: "/registrations/vehicles" },
+  { label: "Регистрации форм", href: "/registrations/uniforms" },
+  { label: "Переводы", href: "/transfers" },
+  { label: "Нашивки", href: "/tokens" },
+  { label: "IC ЧС", href: "/ic-blacklist" },
+  { label: "Эмбеды", href: "/settings/embeds" },
+  { label: "Формы", href: "/settings/forms" },
+  { label: "Кнопки и роли", href: "/settings/buttons" },
+  { label: "Обратная связь", href: "/feedback" },
+] as const;
+
+type Metric = { label: string; value: number; hint: string; href: string; alert?: boolean };
+
+function Metrics({ items }: { items: Metric[] }) {
+  return (
+    <div className="metric-grid">
+      {items.map((item) => (
+        <Link key={item.label} href={item.href} className="metric-card" data-alert={item.alert && item.value > 0 ? "" : undefined}>
+          <span className="metric-label">{item.label}</span>
+          <span className="metric-value">{count(item.value)}</span>
+          <span className="metric-hint">{item.hint}</span>
+        </Link>
+      ))}
+    </div>
+  );
 }
 
 export default async function OverviewPage() {
   const session = await requireSignedIn();
-
   const identity = await resolveFreshIdentity(session.user.discordId);
   const badge = buildStatusBadge(identity);
-  const canSettings = canManageSystemSettings(identity);
-  // System figures (servers, role map, job queue) are staff information; players get their own sections.
   const isStaff = canViewModules(identity);
-  const [guildCount, memberCount, mappingCount, roleCount, pendingJobs] =
-    isStaff
-      ? await Promise.all([
-          prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
-          prisma.guildMember.count({ where: { isPresent: true } }),
-          prisma.roleMapping.count({ where: { status: RecordStatus.ACTIVE } }),
-          prisma.discordRole.count({ where: { status: RecordStatus.ACTIVE } }),
-          prisma.job.count({ where: { status: JobStatus.PENDING } }),
-        ])
-      : [0, 0, 0, 0, 0];
-
-  const displayName =
-    session.user.name ?? session.user.username ?? "пользователь";
-  const newsStamp = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-  }).format(new Date());
+  const displayName = session.user.name ?? session.user.username ?? "пользователь";
 
   return (
     <div className="stack overview-page">
-      <div className="welcome-head">
+      <div className="section-head">
         <h1>Добро пожаловать, {displayName}</h1>
-        <p className="muted">
-          Статус доступа:{" "}
-          <strong className="ink-strong">{badge.primary}</strong>
-        </p>
+        <p className="muted">{[badge.primary, badge.secondary].filter(Boolean).join(" · ")}</p>
       </div>
+      {isStaff ? <StaffOverview showEvents={canManageSystemSettings(identity)} /> : <PlayerOverview discordId={session.user.discordId} />}
+    </div>
+  );
+}
 
-      {isStaff ? (
-        <section className="news-card panel">
-          <div className="news-card-head">
-            <div className="news-card-title">
-              <span className="news-card-icon" aria-hidden>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
-                  <path
-                    d="M12 3.5 13.8 9.2 19.5 11 13.8 12.8 12 18.5 10.2 12.8 4.5 11l5.7-1.8L12 3.5Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              <h2>Что нового</h2>
-            </div>
-            <span className="news-card-date">{newsStamp}</span>
-          </div>
-          <ul className="news-list">
-            <li>
-              Реестры документов, розыска, штрафов и персонала доступны из
-              раздела «Модули».
-            </li>
-            <li>
-              Синхронизация серверов:{" "}
-              <strong>
-                {guildCount > 0
-                  ? `${formatCount(guildCount)} активных`
-                  : "ожидает подключения бота"}
-              </strong>
-              ; карта ролей:{" "}
-              <strong>
-                {mappingCount > 0
-                  ? `${formatCount(mappingCount)} привязок из ${formatCount(roleCount)}`
-                  : "ещё не настроена"}
-              </strong>
-              .
-            </li>
-            <li>
-              Очередь задач:{" "}
-              <strong>
-                {pendingJobs === 0
-                  ? "пусто"
-                  : `${formatCount(pendingJobs)} в ожидании`}
-              </strong>
-              . Участников в снимке: <strong>{formatCount(memberCount)}</strong>
-              .
-            </li>
-          </ul>
-        </section>
-      ) : (
+/** What waits for a decision, and — for the super admin — what happened last. */
+async function StaffOverview({ showEvents }: { showEvents: boolean }) {
+  const pending = { decision: DecisionStatus.PENDING, status: RecordStatus.ACTIVE };
+  const now = new Date();
+  const [vehicles, uniforms, transfers, tickets, wanted, fines, overdue] = await Promise.all([
+    prisma.registration.count({ where: { ...pending, kind: "VEHICLE" } }),
+    prisma.registration.count({ where: { ...pending, kind: "UNIFORM" } }),
+    prisma.transfer.count({ where: { status: TransferStatus.PENDING } }),
+    prisma.feedbackTicket.count({ where: { status: { in: [FeedbackTicketStatus.OPEN, FeedbackTicketStatus.IN_PROGRESS] } } }),
+    prisma.wanted.count({ where: { status: RecordStatus.ACTIVE } }),
+    prisma.fine.count({ where: { status: RecordStatus.ACTIVE } }),
+    prisma.fine.count({ where: { status: RecordStatus.ACTIVE, dueAt: { lte: now } } }),
+  ]);
+
+  const events = showEvents ? (await listAuditLogPage({})).items.slice(0, 8) : [];
+  const actorIds = events.map((event) => auditActorDiscordId(event)).filter((id): id is string => Boolean(id));
+  const labels = await resolveAuthorLabels(actorIds);
+
+  return (
+    <>
+      <section className="stack-tight">
+        <h2 className="panel-title">Ждёт решения</h2>
+        <Metrics
+          items={[
+            { label: "Регистрации ТС", value: vehicles, hint: "заявок на рассмотрении", href: "/registrations/vehicles?status=PENDING", alert: true },
+            { label: "Регистрации форм", value: uniforms, hint: "заявок на рассмотрении", href: "/registrations/uniforms?status=PENDING", alert: true },
+            { label: "Переводы", value: transfers, hint: "ждут решения сторон", href: "/transfers?status=PENDING", alert: true },
+            { label: "Обращения", value: tickets, hint: "открыто", href: "/feedback", alert: true },
+          ]}
+        />
+      </section>
+      <section className="stack-tight">
+        <h2 className="panel-title">Реестры</h2>
+        <Metrics
+          items={[
+            { label: "В розыске", value: wanted, hint: "активных ордеров", href: "/wanted?status=ACTIVE" },
+            { label: "Неоплаченные штрафы", value: fines, hint: "всего", href: "/fines?status=ACTIVE" },
+            { label: "Просроченные штрафы", value: overdue, hint: "срок оплаты истёк", href: "/fines?status=OVERDUE", alert: true },
+          ]}
+        />
+      </section>
+      {showEvents ? (
         <section className="panel">
-          <h2 className="panel-title">Разделы для игроков</h2>
-          <div className="player-sections">
-            <Link href="/profile?tab=characters" className="player-section">
-              <strong>Персонажи и нашивки</strong>
-              <span className="muted">
-                Ваши статики, номера нашивок, заявки, штрафы и розыски.
-              </span>
-            </Link>
-            <Link href="/catalog" className="player-section">
-              <strong>Каталог ТС</strong>
-              <span className="muted">
-                Модели транспорта с фото — название можно скопировать в заявку.
-              </span>
-            </Link>
-            <Link href="/calculator" className="player-section">
-              <strong>Калькулятор переводов</strong>
-              <span className="muted">
-                Какой ранг вы получите при переводе в другую фракцию.
-              </span>
-            </Link>
-            <Link href="/faq" className="player-section">
-              <strong>FAQ</strong>
-              <span className="muted">
-                Команды бота и ответы на частые вопросы.
-              </span>
-            </Link>
-          </div>
-        </section>
-      )}
-
-      <div className="action-btn-row">
-        <Link href="/profile" className="btn btn-outline">
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            aria-hidden
-          >
-            <circle
-              cx="12"
-              cy="8"
-              r="3.25"
-              stroke="currentColor"
-              strokeWidth="1.6"
-            />
-            <path
-              d="M5.5 19.5c1.6-3.2 4-4.8 6.5-4.8s4.9 1.6 6.5 4.8"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </svg>
-          Профиль
-        </Link>
-        {isStaff ? (
-          <Link href="/documents" className="btn btn-outline">
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              aria-hidden
-            >
-              <path
-                d="M7 3.75h7.5L19 8.25V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.75a1 1 0 0 1 1-1Z"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M14.5 3.75V8.5H19"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Документы и реестры
-          </Link>
-        ) : null}
-        {canSettings ? (
-          <Link href="/settings" className="btn btn-outline">
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              aria-hidden
-            >
-              <circle
-                cx="12"
-                cy="12"
-                r="3"
-                stroke="currentColor"
-                strokeWidth="1.6"
-              />
-              <path
-                d="M12 4.5v1.6M12 17.9v1.6M4.5 12h1.6M17.9 12h1.6M6.4 6.4l1.1 1.1M16.5 16.5l1.1 1.1M17.6 6.4l-1.1 1.1M7.5 16.5l-1.1 1.1"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-            Настройки сервера
-          </Link>
-        ) : null}
-      </div>
-
-      {isStaff ? (
-        <div className="metric-grid">
-          <article className="metric-card">
-            <div className="metric-card-top">
-              <span className="metric-label">Серверы</span>
-              <span className="metric-icon" aria-hidden>
-                ⌂
-              </span>
-            </div>
-            <div className="metric-value">{formatCount(guildCount)}</div>
-            <p className="metric-hint muted">активных синхронизированных</p>
-          </article>
-          <article className="metric-card">
-            <div className="metric-card-top">
-              <span className="metric-label">Участники</span>
-              <span className="metric-icon" aria-hidden>
-                ◎
-              </span>
-            </div>
-            <div className="metric-value">{formatCount(memberCount)}</div>
-            <p className="metric-hint muted">присутствуют в снимке</p>
-          </article>
-          <article className="metric-card">
-            <div className="metric-card-top">
-              <span className="metric-label">Привязки ролей</span>
-              <span className="metric-icon" aria-hidden>
-                ◆
-              </span>
-            </div>
-            <div className="metric-value">{formatCount(mappingCount)}</div>
-            <p className="metric-hint muted">
-              из {formatCount(roleCount)} ролей Discord
-            </p>
-          </article>
-          <article className="metric-card">
-            <div className="metric-card-top">
-              <span className="metric-label">Задачи в очереди</span>
-              <span className="metric-icon" aria-hidden>
-                ▸
-              </span>
-            </div>
-            <div className="metric-value">{formatCount(pendingJobs)}</div>
-            <p className="metric-hint muted">jobs со статусом pending</p>
-          </article>
-        </div>
-      ) : null}
-
-      {canSettings ? (
-        <div className="panel">
           <h2 className="panel-title">Модули</h2>
-          <p className="muted" style={{ marginBottom: "0.85rem" }}>
-            Быстрый переход к реестрам и разделам администрирования.
-          </p>
           <div className="module-chip-row">
-            {(
-              [
-                { label: "Документы", href: "/documents", ready: true },
-                { label: "Розыск", href: "/wanted", ready: true },
-                { label: "Штрафы", href: "/fines", ready: true },
-                { label: "Персонал", href: "/personnel", ready: true },
-                {
-                  label: "Регистрации ТС",
-                  href: "/registrations/vehicles",
-                  ready: true,
-                },
-                {
-                  label: "Регистрации форм",
-                  href: "/registrations/uniforms",
-                  ready: true,
-                },
-                { label: "Эмбеды", href: "/settings/embeds", ready: true },
-                { label: "IC ЧС", href: "/ic-blacklist", ready: true },
-                { label: "Формы", href: "/settings/forms", ready: true },
-                {
-                  label: "Кнопки и роли",
-                  href: "/settings/buttons",
-                  ready: true,
-                },
-                { label: "Обратная связь", href: "/feedback", ready: true },
-              ] as const
-            ).map((item) => (
+            {MODULE_LINKS.map((item) => (
               <Link key={item.href} href={item.href} className="module-chip">
-                {item.label}{" "}
-                <span className="muted">{item.ready ? "готово" : "скоро"}</span>
+                {item.label}
               </Link>
             ))}
           </div>
-        </div>
+        </section>
       ) : null}
-    </div>
+      {showEvents ? (
+        <section className="panel">
+          <div className="panel-head-row">
+            <h2 className="panel-title">Последние события</h2>
+            <Link href="/settings/sessions?tab=audit" className="btn btn-ghost">
+              Весь журнал
+            </Link>
+          </div>
+          {events.length === 0 ? (
+            <p className="muted registry-empty">Событий пока нет.</p>
+          ) : (
+            <div className="registry-table-wrap">
+              <table className="registry-table">
+                <tbody>
+                  {events.map((event) => {
+                    const actorId = auditActorDiscordId(event);
+                    return (
+                      <tr key={event.id}>
+                        <td className="nowrap muted">{formatMoscowShort(event.createdAt)}</td>
+                        <td>{actorId ? (labels.get(actorId) ?? actorId) : event.actorType === "BOT" ? "Бот" : "Система"}</td>
+                        <td className="registry-mono">{event.action}</td>
+                        <td className="muted">{event.entityType}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+async function PlayerOverview({ discordId }: { discordId: string }) {
+  const profile = await getPlayerProfile(discordId);
+  const unpaid = profile.fines.filter((fine) => fine.status === RecordStatus.ACTIVE).length;
+  const wanted = profile.wanted.filter((row) => row.status === RecordStatus.ACTIVE).length;
+  const pending = profile.registrations.filter(
+    (row) => row.decision === DecisionStatus.PENDING && row.status === RecordStatus.ACTIVE,
+  ).length;
+
+  return (
+    <>
+      <Metrics
+        items={[
+          { label: "Персонажи", value: profile.characters.length, hint: "из трёх возможных", href: "/profile?tab=characters" },
+          { label: "Заявки", value: pending, hint: "на рассмотрении", href: "/profile?tab=registrations" },
+          { label: "Неоплаченные штрафы", value: unpaid, hint: "по вашим персонажам", href: "/profile?tab=records", alert: true },
+          { label: "Розыск", value: wanted, hint: wanted > 0 ? "активных ордеров" : "не в розыске", href: "/profile?tab=records", alert: true },
+        ]}
+      />
+      <section className="panel">
+        <h2 className="panel-title">Разделы</h2>
+        <div className="player-sections">
+          <Link href="/catalog" className="player-section">
+            <strong>Каталог ТС</strong>
+            <span className="muted">Модели транспорта с фото.</span>
+          </Link>
+          <Link href="/calculator" className="player-section">
+            <strong>Калькулятор переводов</strong>
+            <span className="muted">Какой ранг вы получите в другой фракции.</span>
+          </Link>
+          <Link href="/faq" className="player-section">
+            <strong>FAQ</strong>
+            <span className="muted">Команды бота и ответы на частые вопросы.</span>
+          </Link>
+          <Link href="/ic-blacklist" className="player-section">
+            <strong>IC чёрный список</strong>
+            <span className="muted">Реестр записей.</span>
+          </Link>
+        </div>
+      </section>
+    </>
   );
 }

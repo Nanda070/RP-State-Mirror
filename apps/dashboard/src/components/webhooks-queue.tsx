@@ -62,7 +62,7 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
           <Link href="/settings/forms" className="btn btn-secondary">
             Открыть Discord-формы
           </Link>
-          <Link href="/settings/stage4" className="btn btn-secondary">
+          <Link href="/settings/modules?tab=webhooks" className="btn btn-secondary">
             Канал уведомлений
           </Link>
         </div>

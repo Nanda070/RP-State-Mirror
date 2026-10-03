@@ -1,208 +1,130 @@
-import { getSettings, listActiveRoleMappings } from "@mirror/core";
-import { RecordStatus, prisma } from "@mirror/db";
-import Link from "next/link";
+import { getSettings } from "@mirror/core";
+import { PageTabs, currentTab } from "@/components/page-tabs";
+import { SettingsCpForm } from "@/components/settings-cp-form";
+import { SettingsGuildForm } from "@/components/settings-guild-form";
+import { SettingsLockdownForm } from "@/components/settings-lockdown-form";
+import { SettingsMonitoringForm } from "@/components/settings-monitoring-form";
+import { getActiveChannelOptions, getActiveGuildOptions, getRolesForGuild } from "@/lib/catalog";
+import { resolveAuthorLabels } from "@/lib/discord-names";
+import { formatMoscow } from "@/lib/moscow";
 import { requireSystemSettingsPage } from "@/lib/session";
 
-type ModuleCard = {
-  href: string;
-  title: string;
-  description: string;
-  status: "ready" | "soon";
-  meta?: string;
-};
+export const metadata = { title: "Настройки" };
 
-export default async function SettingsIndexPage() {
+const TABS = [
+  { key: "servers", label: "Серверы и синхронизация", icon: "server" },
+  { key: "safety", label: "Защита и мониторинг", icon: "shield" },
+] as const;
+
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   await requireSystemSettingsPage();
+  const tab = currentTab(TABS, (await searchParams).tab);
 
-  const [counts, settings, mappings] = await Promise.all([
-    Promise.all([
-      prisma.guild.count({ where: { status: RecordStatus.ACTIVE } }),
-      prisma.document.count(),
-      prisma.wanted.count(),
-      prisma.fine.count(),
-      prisma.personnelEvent.count(),
-      prisma.messageDesign.count({ where: { status: RecordStatus.ACTIVE } }),
-      prisma.faction.count({ where: { status: RecordStatus.ACTIVE } }),
-    ]),
+  const [settings, channels] = await Promise.all([
     getSettings([
       "core.mainGuildId",
       "core.incidentGuildId",
-      "wanted.channelId",
       "cp.syncEnabled",
+      "cp.excludedRoleIds",
+      "cp.logChannelId",
+      "cp.maxKickPercent",
+      "cp.dryRun",
+      "system.lockdown",
+      "monitoring.errorChannelId",
+      "monitoring.alertWebhookUrl",
+      "audit.archiveAfterDays",
     ] as const),
-    listActiveRoleMappings(),
+    getActiveChannelOptions(),
   ]);
-
-  const [
-    guildCount,
-    docCount,
-    wantedCount,
-    fineCount,
-    personnelCount,
-    designCount,
-    factionCount,
-  ] = counts;
-
-  const mainGuildId = settings["core.mainGuildId"];
-  const incidentGuildId = settings["core.incidentGuildId"];
-  const wantedChannelId = settings["wanted.channelId"];
-  const cpSyncEnabled = settings["cp.syncEnabled"];
-
-  const core: ModuleCard[] = [
-    {
-      href: "/settings/system",
-      title: "Система",
-      description: "Главный сервер, сервер ЧП, синхронизация, аварийная блокировка, мониторинг.",
-      status: "ready",
-      meta: `Серверов: ${guildCount} · ЧП sync: ${cpSyncEnabled ? "вкл" : "выкл"} · Главный: ${mainGuildId ? "задан" : "нет"} · ЧП: ${incidentGuildId ? "задан" : "нет"}`,
-    },
-    {
-      href: "/settings/roles",
-      title: "Роли",
-      description: "Привязка Discord-ролей к уровням доступа и фракциям, права на команды бота.",
-      status: "ready",
-      meta: `Активных привязок: ${mappings.length}`,
-    },
-    {
-      href: "/settings/factions",
-      title: "Фракции",
-      description: "Каналы и вебхуки документов / кадрового аудита.",
-      status: "ready",
-      meta: `Фракций: ${factionCount}`,
-    },
-  ];
-
-  const modules: ModuleCard[] = [
-    {
-      href: "/settings/documents",
-      title: "Документы",
-      description: "Отправка документов и реестр. Без шаблонов и генерации.",
-      status: "ready",
-      meta: `Реестр: ${docCount} · /documents`,
-    },
-    {
-      href: "/settings/wanted",
-      title: "Розыск",
-      description: "Федеральный розыск, канал ЧП и реестр.",
-      status: "ready",
-      meta: `Реестр: ${wantedCount} · канал: ${wantedChannelId ? "задан" : "нет"}`,
-    },
-    {
-      href: "/settings/fines",
-      title: "Штрафы",
-      description: "Штрафы, уведомление о просрочке и реестр.",
-      status: "ready",
-      meta: `Реестр: ${fineCount} · публикация в канал документов фракции`,
-    },
-    {
-      href: "/settings/embeds",
-      title: "Эмбеды",
-      description: "Конструктор Classic/V2, превью и отправка.",
-      status: "ready",
-      meta: `Дизайнов: ${designCount}`,
-    },
-    {
-      href: "/settings/forms",
-      title: "Discord-формы",
-      description: "Создание modal-форм и доставка ответов.",
-      status: "ready",
-      meta: "Администрирование",
-    },
-    {
-      href: "/feedback",
-      title: "Обратная связь",
-      description: "Тикеты игроков, ответы в ЛС и публикация кнопки в Discord.",
-      status: "ready",
-      meta: "Администрирование",
-    },
-    {
-      href: "/settings/webhooks",
-      title: "Webhooks",
-      description: "Очередь запросов /создать-вебхук.",
-      status: "ready",
-      meta: "Администрирование",
-    },
-    {
-      href: "/settings/stage4",
-      title: "Конфигурация модулей",
-      description: "Каналы и роли: регистрации, переводы, IC ЧС, токены, инвайты, уведомления.",
-      status: "ready",
-      meta: "Вкладки по модулям",
-    },
-  ];
+  const channelOptions = channels.map((channel) => ({
+    discordId: channel.discordId,
+    name: channel.name,
+    guildDiscordId: channel.guild.discordId,
+    guildName: channel.guild.name,
+  }));
 
   return (
     <div className="stack">
       <div className="section-head">
         <h1>Настройки</h1>
       </div>
-
-      <section className="stack" style={{ gap: "0.75rem" }}>
-        <h2 className="panel-title" style={{ margin: 0 }}>
-          Ядро
-        </h2>
-        <div className="settings-hub-grid">
-          {core.map((card) => (
-            <Link key={card.href} href={card.href} className="settings-hub-card">
-              <div className="settings-hub-card-top">
-                <h3>{card.title}</h3>
-                <span className="stub-badge" data-ready>
-                  Готово
-                </span>
-              </div>
-              <p className="muted">{card.description}</p>
-              {card.meta ? <p className="settings-hub-meta">{card.meta}</p> : null}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="stack" style={{ gap: "0.75rem" }}>
-        <h2 className="panel-title" style={{ margin: 0 }}>
-          Модули бота
-        </h2>
-        <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
-          <Link href="/documents" className="btn btn-secondary">
-            Реестр документов
-          </Link>
-          <Link href="/wanted" className="btn btn-secondary">
-            Реестр розыска
-          </Link>
-          <Link href="/fines" className="btn btn-secondary">
-            Реестр штрафов
-          </Link>
-          <Link href="/personnel" className="btn btn-secondary">
-            Реестр персонала ({personnelCount})
-          </Link>
-          <Link href="/registrations/vehicles" className="btn btn-secondary">
-            Регистрации ТС
-          </Link>
-          <Link href="/registrations/uniforms" className="btn btn-secondary">
-            Регистрации форм
-          </Link>
-          <Link href="/ic-blacklist" className="btn btn-secondary">
-            IC ЧС реестр
-          </Link>
-        </div>
-        <div className="settings-hub-grid">
-          {modules.map((card) => (
-            <Link key={card.href} href={card.href} className="settings-hub-card">
-              <div className="settings-hub-card-top">
-                <h3>{card.title}</h3>
-                {card.status === "ready" ? (
-                  <span className="stub-badge" data-ready>
-                    Готово
-                  </span>
-                ) : (
-                  <span className="stub-badge">Скоро</span>
-                )}
-              </div>
-              <p className="muted">{card.description}</p>
-              {card.meta ? <p className="settings-hub-meta">{card.meta}</p> : null}
-            </Link>
-          ))}
-        </div>
-      </section>
+      <PageTabs path="/settings" tabs={TABS} current={tab} />
+      {tab === "servers" ? <ServersTab settings={settings} channels={channelOptions} /> : null}
+      {tab === "safety" ? <SafetyTab settings={settings} channels={channelOptions} /> : null}
     </div>
+  );
+}
+
+type Settings = Awaited<
+  ReturnType<
+    typeof getSettings<
+      readonly [
+        "core.mainGuildId",
+        "core.incidentGuildId",
+        "cp.syncEnabled",
+        "cp.excludedRoleIds",
+        "cp.logChannelId",
+        "cp.maxKickPercent",
+        "cp.dryRun",
+        "system.lockdown",
+        "monitoring.errorChannelId",
+        "monitoring.alertWebhookUrl",
+        "audit.archiveAfterDays",
+      ]
+    >
+  >
+>;
+type Channels = { discordId: string; name: string; guildDiscordId: string; guildName: string }[];
+
+async function ServersTab({ settings, channels }: { settings: Settings; channels: Channels }) {
+  const guilds = await getActiveGuildOptions();
+  const incidentGuildId = settings["core.incidentGuildId"];
+  const incidentRoles = incidentGuildId ? await getRolesForGuild(incidentGuildId) : [];
+  return (
+    <>
+      <SettingsGuildForm
+        guilds={guilds.map((guild) => ({
+          discordId: guild.discordId,
+          name: guild.name,
+          iconUrl: guild.iconUrl,
+          lastSyncedAt: guild.lastSyncedAt?.toISOString() ?? null,
+        }))}
+        initialMain={settings["core.mainGuildId"]}
+        initialIncident={incidentGuildId}
+      />
+      <SettingsCpForm
+        initialEnabled={settings["cp.syncEnabled"]}
+        initialExcludedRoleIds={settings["cp.excludedRoleIds"]}
+        initialLogChannelId={settings["cp.logChannelId"]}
+        initialMaxKickPercent={settings["cp.maxKickPercent"]}
+        initialDryRun={settings["cp.dryRun"]}
+        incidentGuildId={incidentGuildId}
+        channels={channels}
+        roles={incidentRoles}
+      />
+    </>
+  );
+}
+
+async function SafetyTab({ settings, channels }: { settings: Settings; channels: Channels }) {
+  const lockdown = settings["system.lockdown"];
+  const lockdownBy = lockdown.byDiscordId
+    ? ((await resolveAuthorLabels([lockdown.byDiscordId])).get(lockdown.byDiscordId) ?? lockdown.byDiscordId)
+    : null;
+  return (
+    <>
+      <SettingsLockdownForm
+        initialEnabled={lockdown.enabled}
+        initialReason={lockdown.reason}
+        changedBy={lockdownBy}
+        changedAt={lockdown.at ? formatMoscow(lockdown.at) : null}
+      />
+      <SettingsMonitoringForm
+        initialErrorChannelId={settings["monitoring.errorChannelId"]}
+        initialAlertWebhookUrl={settings["monitoring.alertWebhookUrl"]}
+        initialArchiveAfterDays={settings["audit.archiveAfterDays"]}
+        channels={channels}
+      />
+    </>
   );
 }

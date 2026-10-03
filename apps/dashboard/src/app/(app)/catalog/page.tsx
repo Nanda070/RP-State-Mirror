@@ -16,8 +16,7 @@ export default async function CatalogPage() {
       <div className="section-head">
         <h1>Каталог ТС</h1>
         <p className="muted">
-          Справочник моделей транспорта. Название можно скопировать и вставить в{" "}
-          <code>/регистрация-тс</code>. Моделей в каталоге: {models.length.toLocaleString("ru-RU")}.
+          Справочник моделей транспорта. Моделей в каталоге: {models.length.toLocaleString("ru-RU")}.
         </p>
       </div>
       <VehicleCatalog

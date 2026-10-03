@@ -309,7 +309,6 @@ export function SettingsRolesForm({
               <RoleMultiSelect
                 key={level.value}
                 label={level.label}
-                hint={`ADMIN_LEVEL · ${level.value}`}
                 selected={selectedFor.get(key) ?? []}
                 options={roleOptions}
                 disabled={pending}
@@ -362,7 +361,6 @@ export function SettingsRolesForm({
                           <RoleMultiSelect
                             key={`GOV-dept-${dept.value}`}
                             label={dept.label}
-                            hint={`DEPARTMENT · ${dept.value} · GOV`}
                             selected={selectedFor.get(key) ?? []}
                             options={roleOptions}
                             disabled={pending}

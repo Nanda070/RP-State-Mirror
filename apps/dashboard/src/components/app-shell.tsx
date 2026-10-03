@@ -120,7 +120,7 @@ const NAV: NavItem[] = [
   },
   {
     href: "/settings/webhooks",
-    label: "Webhooks",
+    label: "Вебхуки",
     group: "Администрирование",
     match: "prefix",
     icon: "webhooks",
@@ -135,22 +135,6 @@ const NAV: NavItem[] = [
     requiresSystemSettings: true,
   },
   {
-    href: "/settings/system",
-    label: "Система",
-    group: "Настройка фракций",
-    match: "prefix",
-    icon: "system",
-    requiresSystemSettings: true,
-  },
-  {
-    href: "/settings/roles",
-    label: "Роли",
-    group: "Настройка фракций",
-    match: "prefix",
-    icon: "roles",
-    requiresSystemSettings: true,
-  },
-  {
     href: "/settings/factions",
     label: "Фракции",
     group: "Настройка фракций",
@@ -159,51 +143,25 @@ const NAV: NavItem[] = [
     requiresSystemSettings: true,
   },
   {
-    href: "/settings/admin-roles",
-    label: "Admin-роли",
-    group: "Настройка фракций",
-    match: "prefix",
-    icon: "roles",
-    requiresSystemSettings: true,
-  },
-  {
-    href: "/settings/sessions",
-    label: "Сессии",
-    group: "Настройка фракций",
-    match: "prefix",
-    icon: "sessions",
-    requiresSystemSettings: true,
-  },
-  {
-    href: "/audit",
-    label: "Журнал аудита",
-    group: "Настройка фракций",
-    match: "prefix",
-    icon: "audit",
-    requiresSystemSettings: true,
-  },
-  {
-    href: "/settings/stage4",
+    href: "/settings/modules",
     label: "Модули",
     group: "Настройка фракций",
     match: "prefix",
     icon: "modules",
     requiresSystemSettings: true,
   },
+  {
+    href: "/settings/sessions",
+    label: "Сессии и аудит",
+    group: "Настройка фракций",
+    match: "prefix",
+    icon: "sessions",
+    requiresSystemSettings: true,
+  },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {
   if (item.match === "exact") return pathname === item.href;
-  if (item.href === "/settings/system") {
-    return pathname.startsWith("/settings/system") || pathname.startsWith("/settings/guilds");
-  }
-  if (item.href === "/settings/stage4") {
-    return (
-      pathname.startsWith("/settings/stage4") ||
-      pathname.startsWith("/settings/tokens") ||
-      pathname.startsWith("/settings/registrations")
-    );
-  }
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 

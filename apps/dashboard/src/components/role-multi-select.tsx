@@ -96,7 +96,11 @@ export function RoleMultiSelect({
         >
           <div className="role-multi-chips">
             {selected.map((role) => (
-              <span key={role.mappingId} className="role-chip">
+              <span
+                key={role.mappingId}
+                className="role-chip"
+                style={role.color ? ({ ["--role-color" as string]: roleTextColor(role.color) } as React.CSSProperties) : undefined}
+              >
                 <span className="role-chip-name" title={role.name}>
                   {role.name}
                 </span>

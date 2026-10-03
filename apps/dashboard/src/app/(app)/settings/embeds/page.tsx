@@ -4,7 +4,6 @@ import {
   listSentMessages,
   type EmbedSpec,
 } from "@mirror/core";
-import Link from "next/link";
 import { EmbedManager } from "@/components/embed-manager";
 import {
   getActiveChannelOptions,
@@ -30,24 +29,8 @@ export default async function SettingsEmbedsPage() {
   return (
     <div className="stack">
       <div className="section-head">
-        <p className="crumb-inline muted">
-          <Link href="/settings">Настройки</Link>
-          <span aria-hidden> › </span>
-          <span>Эмбеды</span>
-        </p>
         <h1>Эмбеды</h1>
-        <p className="muted">
-          Конструктор Classic / Components V2: превью, сохранение, архив и отправка ботом в канал
-          выбранного сервера.
-        </p>
-        <div className="status-link-row">
-          <span className="stub-badge" data-ready>
-            Готово
-          </span>
-          <Link href="/settings/forms" className="stub-link">
-            К формам
-          </Link>
-        </div>
+        <p className="muted">Сообщения от имени бота: составить, посмотреть, отправить в канал.</p>
       </div>
 
       <EmbedManager

@@ -313,10 +313,6 @@
 }
 
 /* ——— Player profile ——— */
-a.settings-tab {
-  display: inline-block;
-}
-
 a.metric-card {
   display: block;
   transition: border-color 160ms ease;
@@ -1033,4 +1029,488 @@ pre code {
 
 .notice-inline h1 {
   margin: 0.4rem 0 0.6rem;
+}
+
+/* ═══════════ Stage 7: design system ═══════════
+   One scale for type, one height for every control, one look for buttons. Loaded after
+   globals.css, so these rules win over the older per-page sizes. */
+:root {
+  --fs-xs: 0.8125rem; /* 13px: captions, table headers */
+  --fs-sm: 0.875rem; /* 14px: controls, tables, secondary text */
+  --fs-md: 0.9375rem; /* 15px: body */
+  --fs-lg: 1.0625rem; /* 17px: panel titles */
+  --fs-xl: 1.625rem; /* 26px: page titles */
+  --control-h: 2.5rem; /* 40px */
+  --control-h-sm: 2rem; /* 32px: actions inside tables */
+  --r-control: 10px;
+  --warn: #fbbf24;
+}
+
+body {
+  font-size: var(--fs-md);
+}
+
+.section-head h1 {
+  font-size: var(--fs-xl);
+  letter-spacing: -0.02em;
+}
+
+.section-head p,
+.muted {
+  font-size: var(--fs-sm);
+}
+
+.panel-title {
+  margin: 0 0 0.9rem;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+/* ——— Buttons: one height, one type size, one radius ——— */
+.btn,
+.btn-ghost,
+a.btn {
+  height: var(--control-h);
+  padding: 0 1rem;
+  border-radius: var(--r-control);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1;
+  gap: 0.45rem;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary,
+.btn-outline {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--line-strong);
+  font-weight: 600;
+}
+
+.btn-ghost {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.btn-danger {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: #ff9a9a;
+}
+
+/* The only smaller size: actions inside table rows. */
+.registry-actions .btn,
+.registry-table td .btn {
+  height: var(--control-h-sm);
+  padding: 0 0.6rem;
+  font-size: var(--fs-xs);
+  border-radius: 8px;
+}
+
+.export-link {
+  margin-top: 0;
+}
+
+/* ——— Fields: the same height as buttons ——— */
+.field {
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.field label,
+.field > span:first-child,
+.field-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.field select,
+.field input:not([type="checkbox"]):not([type="radio"]),
+.field textarea {
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border-radius: var(--r-control);
+  font-size: var(--fs-sm);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.field textarea {
+  padding: 0.6rem 0.75rem;
+  line-height: 1.5;
+}
+
+.field select {
+  cursor: pointer;
+}
+
+.field input:not([type="checkbox"]):not([type="radio"]):focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.field-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+/* ——— Switch instead of a bare checkbox ——— */
+.toggle-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.toggle-row input[type="checkbox"] {
+  appearance: none;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 1.4rem;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.toggle-row input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.toggle-row input[type="checkbox"]:checked {
+  background: var(--accent);
+}
+
+.toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(1.1rem);
+}
+
+.toggle-row input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chip-check {
+  font-size: var(--fs-sm);
+}
+
+/* ——— Tabs: a quiet strip, the open tab is a soft pill ——— */
+.settings-tabs {
+  gap: 0.25rem;
+  padding: 0 0 0.6rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+}
+
+.settings-tabs .settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 2.25rem;
+  line-height: 1;
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  padding: 0 0.8rem;
+  border: 0;
+  border-radius: 9px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-tabs .settings-tab[data-active] {
+  background: var(--accent-soft);
+  border: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.settings-tab[data-active] svg {
+  color: var(--accent);
+}
+
+/* ——— Tables ——— */
+.registry-table {
+  font-size: var(--fs-sm);
+}
+
+.registry-table th {
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.registry-table td {
+  vertical-align: middle;
+}
+
+.registry-status {
+  font-size: var(--fs-xs);
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.registry-total,
+.registry-pager,
+.registry-note,
+.registry-done {
+  font-size: var(--fs-xs);
+}
+
+.badge {
+  font-size: var(--fs-xs);
+}
+
+/* ——— Sidebar and top bar ——— */
+.nav-link {
+  font-size: var(--fs-sm);
+  padding: 0.5rem 0.7rem;
+}
+
+.nav-label {
+  font-size: 0.7rem;
+}
+
+.topbar-search {
+  height: 2.25rem;
+  padding: 0 0.5rem 0 0.7rem;
+  border-radius: var(--r-control);
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+
+.topbar-kbd {
+  display: inline-flex;
+  align-items: center;
+  height: 1.35rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+/* ——— Panels and lists inside forms ——— */
+.panel {
+  padding: 1.25rem 1.35rem;
+}
+
+.registry-toolbar {
+  gap: 0.75rem;
+}
+
+.registry-toolbar .field label {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.registry-empty {
+  font-size: var(--fs-sm);
+}
+
+.confirm-dialog h2 {
+  font-size: var(--fs-lg);
+}
+
+.confirm-dialog p {
+  font-size: var(--fs-sm);
+}
+
+.form-ok,
+.form-error {
+  font-size: var(--fs-sm);
+  margin-top: 0.75rem;
+}
+
+.notify-item {
+  justify-content: space-between;
+}
+
+.notify-item a {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.notify-dismiss {
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.notify-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+
+.notify-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  margin-top: 0.3rem;
+}
+
+/* ——— Stage 7: less noise in the shell ——— */
+/* The sidebar already carries the brand: the top bar repeats it only on phones, where the sidebar is a drawer. */
+@media (min-width: 901px) {
+  .topbar .topbar-brand,
+  .topbar .topbar-links {
+    display: none;
+  }
+}
+
+.role-chip {
+  --role-color: var(--ink-soft);
+  border: 1px solid color-mix(in srgb, var(--role-color) 45%, transparent);
+  background: color-mix(in srgb, var(--role-color) 14%, transparent);
+  color: var(--ink);
+  font-size: var(--fs-xs);
+}
+
+.role-chip::before {
+  content: "";
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--role-color);
+}
+
+.role-multi-control {
+  min-height: var(--control-h);
+  border-radius: var(--r-control);
+}
+
+.role-multi-field {
+  margin-bottom: 0.9rem;
+}
+
+/* ——— Stage 7: overview ——— */
+.stack-tight > .panel-title {
+  margin-bottom: 0.6rem;
+}
+
+a.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+a.metric-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-2));
+}
+
+a.metric-card[data-alert] {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+a.metric-card[data-alert] .metric-value {
+  color: var(--accent);
+}
+
+.metric-label {
+  font-size: var(--fs-sm);
+}
+
+.metric-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.panel-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.panel-head-row .panel-title {
+  margin: 0;
+}
+
+.overview-page .metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+
+.settings-tabs .settings-tab svg {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  display: block;
+}
+
+/* ——— Stage 7: profile header — the name sits under the banner, not on its edge ——— */
+.profile-banner {
+  height: 120px;
+}
+
+.profile-identity {
+  align-items: flex-start;
+  margin-top: 0;
+  padding-top: 0.9rem;
+}
+
+.profile-identity .avatar {
+  margin-top: -2.6rem;
+  width: 84px;
+  height: 84px;
+  border-width: 3px;
+  border-color: var(--bg-2);
+  position: relative;
+}
+
+.profile-meta h1 {
+  font-size: 1.4rem;
+}
+
+.profile-meta .handle {
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
 }

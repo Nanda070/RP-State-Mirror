@@ -1252,10 +1252,12 @@ const feedbackTicketNotify: JobHandler = async (payload, { client, log }) => {
     throw new Error(`Канал обратной связи ${notifyChannelId} недоступен`);
   }
 
-  const initialContent = ticket.messages[0]?.content ?? "—";
+  // With a message id it is the player's answer in an existing ticket, otherwise a new ticket.
+  const followUp = payload.messageId ? ticket.messages.find((entry) => entry.id === String(payload.messageId)) : null;
+  const initialContent = followUp?.content ?? ticket.messages[0]?.content ?? "—";
   const embed: ClassicEmbed = {
     type: "embed",
-    title: `Новое обращение: ${ticket.category}`,
+    title: followUp ? `Ответ игрока по обращению: ${ticket.category}` : `Новое обращение: ${ticket.category}`,
     description: initialContent,
     color: 0x5865f2,
     fields: [
@@ -1278,12 +1280,23 @@ const feedbackReplySend: JobHandler = async (payload, { client, log }) => {
   const message = await prisma.feedbackMessage.findUnique({ where: { id: messageId } });
   if (!ticket || !message) return { status: "skipped", reason: "ticket or message not found" };
 
-  const dm = await sendDirectMessage(
-    client,
-    ticket.authorDiscordId,
-    `Вам поступил ответ по обращению **«${ticket.category}»**:\n\n${message.content}`,
-    log,
-  );
+  // The reply carries a button, so the conversation can go on without a new ticket.
+  let dm = false;
+  try {
+    const user = await client.users.fetch(ticket.authorDiscordId);
+    await user.send({
+      content: `Вам поступил ответ по обращению **«${ticket.category}»**:\n\n${message.content}`,
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`mirror:feedback.reply:${ticket.id}`).setLabel("Ответить").setStyle(ButtonStyle.Primary),
+        ),
+      ],
+      allowedMentions: { parse: [] },
+    });
+    dm = true;
+  } catch (error) {
+    log.info({ err: error, ticketId }, "feedback reply DM not delivered (DMs closed?)");
+  }
   log.info({ ticketId, dm }, "feedback reply DM delivered");
   return { status: "sent", dm, ticketId };
 };
