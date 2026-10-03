@@ -14,7 +14,6 @@ import {
   IMAGE_CONTENT_TYPES,
   MAX_MEDIA_BYTES,
   archiveMediaFile,
-  listVehicleModels,
   normalizePlate,
   resolveVehicleModelName,
   storeMediaFromUrl,
@@ -240,16 +239,6 @@ async function requireActiveFaction(code: string): Promise<string> {
 /** Autocomplete for «фракция» — always all ACTIVE factions from DB. */
 export async function handleFactionAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
   const focused = interaction.options.getFocused(true);
-  if (focused.name === "модель") {
-    const models = await listVehicleModels(focused.value);
-    await interaction.respond(
-      models.map((model) => ({
-        name: [model.brand, model.name, model.year].filter(Boolean).join(" ").slice(0, 100),
-        value: model.name.slice(0, 100),
-      })),
-    );
-    return;
-  }
   if (focused.name === "сервер") {
     const q = focused.value.trim().toLowerCase();
     const guilds = await listInviteGuilds();
@@ -330,11 +319,15 @@ export async function handleSlashCommand(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Неизвестная ошибка";
     ctx.log.warn({ err: error, command: name }, "slash command failed");
-    const payload = ephemeral(`Ошибка: ${message}`);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp(payload);
-    } else {
-      await interaction.reply(payload);
+    if (/Unknown interaction|already been acknowledged/i.test(message)) return;
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(`Ошибка: ${message}`);
+      } else {
+        await interaction.reply(ephemeral(`Ошибка: ${message}`));
+      }
+    } catch {
+      // Interaction token expired or already closed — nothing useful left to send.
     }
   }
 }
@@ -519,11 +512,8 @@ async function archiveOrphanMedia(interaction: ChatInputCommandInteraction, ids:
 async function handleRegistration(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { user } = await ensureUserByDiscordId(interaction.user.id);
-  const character = await getCharacterForUser(user.id, interaction.options.getString("статик", true));
-  if (!character) {
-    await interaction.editReply("Персонаж с таким статиком не найден в вашем профиле.");
-    return;
-  }
+  // Static is free-text application data — not resolved against characters/tokens.
+  const staticId = interaction.options.getString("статик", true);
 
   const isVehicle = interaction.commandName === "регистрация-тс";
   const model = isVehicle ? await resolveVehicleModelName(interaction.options.getString("модель", true)) : null;
@@ -533,7 +523,8 @@ async function handleRegistration(interaction: ChatInputCommandInteraction, ctx:
     const registration = await createRegistration(
       {
         kind: isVehicle ? RegistrationKind.VEHICLE : RegistrationKind.UNIFORM,
-        characterId: character.id,
+        staticId,
+        applicantDiscordId: interaction.user.id,
         payload: isVehicle ? { model } : { description: interaction.options.getString("описание", true) },
         plate,
         evidenceFileIds: [photo.id],
@@ -677,6 +668,8 @@ async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ct
 }
 
 async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {
+  // Defer immediately — identity/settings can exceed Discord's 3s interaction window when DB is busy.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const identity = await loadIdentity(interaction.user.id, ctx);
   const roleIds = interactionRoleIds(interaction);
   const [enabled, managerRoleIds, searchRoleIds] = await Promise.all([
@@ -687,40 +680,36 @@ async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: 
 
   if (interaction.commandName === "чс-найти") {
     if (!canSearchIcBlacklist(identity, roleIds, managerRoleIds, searchRoleIds)) {
-      await interaction.reply(ephemeral("Поиск по IC чёрному списку недоступен для вашей роли."));
+      await interaction.editReply("Поиск по IC чёрному списку недоступен для вашей роли.");
       return;
     }
     const entry = await findActiveIcBlacklist(interaction.options.getString("паспорт", true));
     if (!entry) {
-      await interaction.reply(ephemeral("Активных записей по этому паспорту нет."));
+      await interaction.editReply("Активных записей по этому паспорту нет.");
       return;
     }
-    await interaction.reply(
-      ephemeral(
-        [
-          `**${entry.fullName}** · паспорт \`${entry.staticId}\` · номер **${entry.number}**`,
-          `Причина: ${entry.reason}`,
-          `Доказательства: ${entry.forumLink}`,
-          `Статус: Активен`,
-          `Добавил: <@${entry.createdByDiscordId}>`,
-        ].join("\n"),
-      ),
+    await interaction.editReply(
+      [
+        `**${entry.fullName}** · паспорт \`${entry.staticId}\` · номер **${entry.number}**`,
+        `Причина: ${entry.reason}`,
+        `Доказательства: ${entry.forumLink}`,
+        `Статус: Активен`,
+        `Добавил: <@${entry.createdByDiscordId}>`,
+      ].join("\n"),
     );
     return;
   }
 
   if (!enabled) {
-    await interaction.reply(ephemeral("Модуль IC чёрного списка отключён в настройках."));
+    await interaction.editReply("Модуль IC чёрного списка отключён в настройках.");
     return;
   }
   if (!canManageIcBlacklist(identity, roleIds, managerRoleIds)) {
-    await interaction.reply(
-      ephemeral("Добавлять и снимать IC чёрный список могут администраторы и роли из настроек дашборда."),
+    await interaction.editReply(
+      "Добавлять и снимать IC чёрный список могут администраторы и роли из настроек дашборда.",
     );
     return;
   }
-
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (interaction.commandName === "снятие-чс-гос") {
     const closed = await closeIcBlacklistEntry(

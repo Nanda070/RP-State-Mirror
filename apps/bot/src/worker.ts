@@ -68,6 +68,8 @@ export class JobWorker {
         job = await claimNextJob(this.workerId);
       } catch (error) {
         this.log.error({ err: error }, "failed to claim job");
+        // Back off on DB/transaction pressure (P2028) so we do not hammer the pool every tick.
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
         return;
       }
       if (!job) return;
