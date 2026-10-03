@@ -22,6 +22,7 @@ const bodySchema = z.object({
   "cp.syncEnabled": z.boolean().optional(),
   "cp.excludedRoleIds": z.array(snowflakeSchema).optional(),
   "cp.logChannelId": snowflakeSchema.nullable().optional(),
+  "app.publicBaseUrl": z.string().trim().nullable().optional(),
 });
 
 export async function GET() {

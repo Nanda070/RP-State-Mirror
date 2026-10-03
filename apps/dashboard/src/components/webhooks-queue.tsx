@@ -96,7 +96,7 @@ export function WebhooksQueue({ initial }: { initial: WebhookRequest[] }) {
             <div className="row" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
               {req.webhookUrl ? (
                 <Link
-                  href={`/settings/forms?webhookUrl=${encodeURIComponent(req.webhookUrl)}`}
+                  href={`/settings/forms/new?request=${encodeURIComponent(req.id)}`}
                   className="btn btn-secondary"
                 >
                   Собрать форму с этим URL

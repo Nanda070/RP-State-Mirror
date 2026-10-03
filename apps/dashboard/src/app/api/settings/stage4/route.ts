@@ -1,6 +1,5 @@
 import {
   archiveDiscordForm,
-  createDiscordForm,
   closeFeedbackTicket,
   addFeedbackMessage,
   disableDiscordForm,
@@ -47,38 +46,6 @@ const snowflake = z.string().regex(/^\d{17,20}$/);
 
 const bodySchema = z.object({
   settings: z.record(z.unknown()).optional(),
-  form: z
-    .object({
-      name: z.string().trim().min(1).max(120),
-      description: z.string().trim().max(1000).nullable().optional(),
-      webhookUrl: z.union([z.string().url(), z.literal("")]).nullable().optional(),
-      deliveryChannelId: z.union([snowflake, z.literal("")]).nullable().optional(),
-      expiresAt: z.string().datetime().nullable().optional(),
-      responseLimit: z.number().int().positive().nullable().optional(),
-      fields: z
-        .array(
-          z.object({
-            key: z.string().regex(/^[a-z][a-z0-9_]{0,31}$/),
-            label: z.string().trim().min(1).max(45),
-            type: z.enum(["short", "paragraph"]).default("short"),
-            required: z.boolean().default(false),
-          }),
-        )
-        .min(1)
-        .max(5),
-    })
-    .superRefine((data, ctx) => {
-      const webhook = data.webhookUrl?.trim() || null;
-      const channel = data.deliveryChannelId?.trim() || null;
-      if (!webhook && !channel) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Укажите канал доставки и/или webhook URL для ответов формы.",
-          path: ["deliveryChannelId"],
-        });
-      }
-    })
-    .optional(),
 });
 
 export async function GET() {
@@ -192,7 +159,7 @@ export async function PATCH(request: Request) {
     if (action.action === "archive-form") {
       return Response.json(await archiveDiscordForm(action.formId, context));
     }
-    return Response.json(await addFeedbackMessage(action.id, session.user.id, action.content, context));
+    return Response.json(await addFeedbackMessage(action.id, session.user.discordId, action.content, context));
   } catch (error) {
     return jsonError(error);
   }
@@ -209,25 +176,7 @@ export async function POST(request: Request) {
       updated[key] = await setSetting(key as SettingKey, value as never, context);
     }
 
-    let form = null;
-    if (body.form) {
-      const webhookUrl = body.form.webhookUrl?.trim() || null;
-      const deliveryChannelId = body.form.deliveryChannelId?.trim() || null;
-      form = await createDiscordForm(
-        {
-          name: body.form.name,
-          description: body.form.description ?? null,
-          webhookUrl,
-          deliveryChannelId,
-          expiresAt: body.form.expiresAt ? new Date(body.form.expiresAt) : null,
-          responseLimit: body.form.responseLimit ?? null,
-          fields: body.form.fields,
-          createdByDiscordId: session.user.id,
-        },
-        context,
-      );
-    }
-    return Response.json({ settings: updated, form });
+    return Response.json({ settings: updated });
   } catch (error) {
     return jsonError(error);
   }

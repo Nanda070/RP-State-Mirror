@@ -1,55 +1,54 @@
-import { RecordStatus, prisma } from "@mirror/db";
+import { getSetting, isDiscordCompatible, listForms } from "@mirror/core";
 import Link from "next/link";
 import { DiscordFormsManager } from "@/components/discord-forms-manager";
+import { PublicBaseUrlForm } from "@/components/public-base-url-form";
 import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
 import { requireSystemSettingsPage } from "@/lib/session";
 
-export default async function SettingsFormsPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ webhookUrl?: string }>;
-}) {
-  await requireSystemSettingsPage();
-  const params = searchParams ? await searchParams : {};
-  const initialWebhookUrl =
-    typeof params.webhookUrl === "string" && params.webhookUrl.startsWith("https://")
-      ? params.webhookUrl
-      : "";
+export const metadata = { title: "Формы" };
 
-  const [forms, channels, guilds] = await Promise.all([
-    prisma.discordForm.findMany({
-      where: { status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } },
-      include: {
-        fields: { orderBy: { position: "asc" }, select: { key: true, label: true } },
-        _count: { select: { submissions: true } },
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 50,
-    }),
+export default async function SettingsFormsPage() {
+  await requireSystemSettingsPage();
+
+  const [forms, channels, guilds, publicBaseUrl] = await Promise.all([
+    listForms(),
     getActiveChannelOptions(),
     getActiveGuildOptions(),
+    getSetting("app.publicBaseUrl"),
   ]);
 
   return (
     <div className="stack">
       <div className="section-head">
-        <h1>Discord-формы</h1>
+        <h1>Формы</h1>
         <p className="muted">
-          Создание modal-форм Discord, публикация кнопки «Открыть форму» и ссылка на сообщение.
-          Доставка ответов — в канал и/или webhook.
+          Конструктор форм: поля разных типов, заполнение в Discord (кнопка открывает окно ввода, длинные
+          формы — в несколько шагов) и на публичной странице без входа. Ответы приходят в канал и/или webhook
+          и сохраняются здесь.
         </p>
         <div className="status-link-row">
-          <span className="stub-badge" data-ready>
-            Готово
-          </span>
           <Link href="/settings/webhooks" className="stub-link">
-            К webhooks
+            Запросы форм от сотрудников
           </Link>
         </div>
       </div>
       <DiscordFormsManager
-        initialForms={forms}
-        initialWebhookUrl={initialWebhookUrl}
+        publicBaseUrl={publicBaseUrl}
+        initialForms={forms.map((form) => ({
+          id: form.id,
+          name: form.name,
+          status: form.status,
+          webhookUrl: form.webhookUrl,
+          deliveryChannelId: form.deliveryChannelId,
+          openGuildDiscordId: form.openGuildDiscordId,
+          openChannelDiscordId: form.openChannelDiscordId,
+          openMessageDiscordId: form.openMessageDiscordId,
+          slug: form.slug,
+          publicEnabled: form.publicEnabled,
+          discordCompatible: isDiscordCompatible(form.fields),
+          fields: form.fields.map((field) => ({ key: field.key, label: field.label })),
+          _count: form._count,
+        }))}
         guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         channels={channels.map((c) => ({
           discordId: c.discordId,
@@ -58,6 +57,7 @@ export default async function SettingsFormsPage({
           guildName: c.guild.name,
         }))}
       />
+      <PublicBaseUrlForm initial={publicBaseUrl} />
     </div>
   );
 }

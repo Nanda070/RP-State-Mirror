@@ -42,6 +42,9 @@ export const dashboardEnvSchema = baseEnvSchema.extend({
     .refine((url) => url.includes("/api/auth/callback/discord"), {
       message: "must be the Auth.js Discord callback URL (.../api/auth/callback/discord)",
     }),
+  // Cloudflare Turnstile for public forms. Both empty = captcha off; one without the other is a mistake.
+  TURNSTILE_SITE_KEY: z.string().trim().optional().transform((value) => value || undefined),
+  TURNSTILE_SECRET_KEY: z.string().trim().optional().transform((value) => value || undefined),
 });
 
 export const storageEnvSchema = z.object({
