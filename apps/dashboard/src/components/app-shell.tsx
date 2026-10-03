@@ -29,6 +29,8 @@ const NAV: NavItem[] = [
   { href: "/settings/system", label: "Система", group: "Администрирование", match: "prefix" },
   { href: "/settings/roles", label: "Роли", group: "Администрирование", match: "prefix" },
   { href: "/settings/factions", label: "Фракции", group: "Администрирование", match: "prefix" },
+  { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", match: "prefix" },
+  { href: "/settings/buttons", label: "Кнопки", group: "Администрирование", match: "prefix" },
 ];
 
 const CRUMBS: { test: (path: string) => boolean; section: string; page: string }[] = [
@@ -48,6 +50,7 @@ const CRUMBS: { test: (path: string) => boolean; section: string; page: string }
   { test: (p) => p.startsWith("/settings/tokens"), section: "Настройки", page: "Токены" },
   { test: (p) => p.startsWith("/settings/registrations"), section: "Настройки", page: "Регистрации" },
   { test: (p) => p.startsWith("/settings/embeds"), section: "Настройки", page: "Эмбеды" },
+  { test: (p) => p.startsWith("/settings/buttons"), section: "Настройки", page: "Кнопки" },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {

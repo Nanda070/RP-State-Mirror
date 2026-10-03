@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { EmbedSpec } from "@mirror/core";
+import { isButtonPanelSpec, stripButtonComponents } from "@mirror/core";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { EmbedPreview } from "./embed-preview";
 
@@ -23,12 +24,10 @@ type Sent = {
 };
 
 type Guild = { discordId: string; name: string };
-type Role = { discordId: string; name: string; guildDiscordId: string };
 
 const EMPTY_V1: EmbedSpec = {
   version: 1,
   embeds: [{ type: "embed", title: "", description: "", color: 0xff6a1a }],
-  components: [],
 };
 
 const EMPTY_V2: EmbedSpec = {
@@ -43,7 +42,9 @@ const EMPTY_V2: EmbedSpec = {
 };
 
 function asSpec(raw: unknown): EmbedSpec {
-  if (raw && typeof raw === "object" && "version" in raw) return raw as EmbedSpec;
+  if (raw && typeof raw === "object" && "version" in raw) {
+    return stripButtonComponents(raw as EmbedSpec);
+  }
   return EMPTY_V1;
 }
 
@@ -52,13 +53,11 @@ export function EmbedManager({
   initialSent,
   guilds,
   channels,
-  roles,
 }: {
   initialDesigns: Design[];
   initialSent: Sent[];
   guilds: Guild[];
   channels: ChannelOption[];
-  roles: Role[];
 }) {
   const [designs, setDesigns] = useState(initialDesigns);
   const [sent, setSent] = useState(initialSent);
@@ -77,8 +76,6 @@ export function EmbedManager({
     () => designs.find((d) => d.id === selectedId) ?? null,
     [designs, selectedId],
   );
-
-  const guildRoles = roles.filter((r) => r.guildDiscordId === guildId);
 
   function loadDesign(d: Design) {
     setSelectedId(d.id);
@@ -99,6 +96,7 @@ export function EmbedManager({
   async function save() {
     setPending(true);
     setMessage(null);
+    const cleanSpec = stripButtonComponents(spec);
     try {
       if (selectedId) {
         const res = await fetch("/api/settings/embeds", {
@@ -109,23 +107,25 @@ export function EmbedManager({
             id: selectedId,
             name,
             description: description || null,
-            spec,
+            spec: cleanSpec,
           }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Ошибка сохранения");
         setDesigns((prev) => prev.map((d) => (d.id === selectedId ? data.design : d)));
+        setSpec(asSpec(data.design.spec));
         setMessage("Сохранено");
       } else {
         const res = await fetch("/api/settings/embeds", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, description: description || undefined, spec }),
+          body: JSON.stringify({ name, description: description || undefined, spec: cleanSpec }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Ошибка создания");
         setDesigns((prev) => [data.design, ...prev]);
         setSelectedId(data.design.id);
+        setSpec(asSpec(data.design.spec));
         setMessage("Создано");
       }
     } catch (e) {
@@ -184,7 +184,18 @@ export function EmbedManager({
       const refresh = await fetch("/api/settings/embeds");
       if (refresh.ok) {
         const body = await refresh.json();
-        setSent(body.sent);
+        const designIds = new Set(
+          (body.designs as Design[])
+            .filter((d) => !isButtonPanelSpec(d.spec))
+            .map((d) => d.id),
+        );
+        setSent(
+          (body.sent as (Sent & { designId?: string | null; spec: EmbedSpec })[]).filter(
+            (s) =>
+              (s.designId && designIds.has(s.designId)) ||
+              (!s.designId && !isButtonPanelSpec(s.spec)),
+          ),
+        );
       }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Ошибка");
@@ -232,39 +243,11 @@ export function EmbedManager({
     } else if (_prevFooter) {
       embed.footer = _prevFooter;
     }
-    setSpec({ ...spec, embeds: [embed, ...spec.embeds.slice(1)] });
+    setSpec({ version: 1, embeds: [embed, ...spec.embeds.slice(1)] });
   }
 
   function setVersion(version: 1 | 2) {
     setSpec(version === 1 ? structuredClone(EMPTY_V1) : structuredClone(EMPTY_V2));
-  }
-
-  function addRoleButton(roleDiscordId: string) {
-    const role = guildRoles.find((r) => r.discordId === roleDiscordId);
-    if (!role || spec.version !== 1) return;
-    const rows = structuredClone(spec.components ?? []);
-    if (rows.flatMap((r) => r.components).length >= 25) {
-      setMessage("Максимум 25 кнопок");
-      return;
-    }
-    let last = rows[rows.length - 1];
-    if (!last || last.components.length >= 5) {
-      last = { type: "action_row", components: [] };
-      rows.push(last);
-    }
-    last.components.push({
-      type: "button",
-      label: role.name.slice(0, 80),
-      style: "primary",
-      action: "role.toggle",
-      params: { roleDiscordId: role.discordId },
-    });
-    setSpec({ ...spec, components: rows });
-  }
-
-  function clearButtons() {
-    if (spec.version !== 1) return;
-    setSpec({ ...spec, components: [] });
   }
 
   const classic = spec.version === 1 ? spec.embeds[0] : null;
@@ -379,34 +362,6 @@ export function EmbedManager({
                   value={classic.footer?.text ?? ""}
                   onChange={(e) => updateClassic({ footerText: e.target.value || null })}
                 />
-              </div>
-              <div className="field">
-                <label htmlFor="roleBtn">Кнопка role.toggle</label>
-                <div className="row" style={{ gap: "0.5rem" }}>
-                  <select
-                    id="roleBtn"
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        addRoleButton(e.target.value);
-                        e.target.value = "";
-                      }
-                    }}
-                  >
-                    <option value="">Добавить роль…</option>
-                    {guildRoles.map((r) => (
-                      <option key={r.discordId} value={r.discordId}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button type="button" className="btn btn-secondary" onClick={clearButtons}>
-                    Очистить кнопки
-                  </button>
-                </div>
-                <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
-                  Роли берутся с выбранного сервера отправки. custom_id: mirror:role.toggle:&lt;id&gt;.
-                </p>
               </div>
             </>
           ) : (

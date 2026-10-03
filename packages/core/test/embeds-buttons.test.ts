@@ -3,10 +3,12 @@ import { AuditActorType } from "@mirror/db";
 import {
   checkDiscordLimits,
   createMessageDesign,
+  isButtonPanelSpec,
   makeCustomId,
   materializeEmbedSpecButtons,
   parseCustomId,
   seedFoundation,
+  stripButtonComponents,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
 
@@ -21,6 +23,32 @@ describe("embed buttons + designs", () => {
     expect(id).toBe("mirror:role.toggle:abc123");
     expect(parseCustomId(id)).toEqual({ action: "role.toggle", id: "abc123" });
     expect(parseCustomId("other:x:y")).toBeNull();
+  });
+
+  it("classifies button panels vs embed-only specs", () => {
+    expect(
+      isButtonPanelSpec({
+        version: 1,
+        embeds: [{ type: "embed", title: "A" }],
+      }),
+    ).toBe(false);
+    expect(
+      isButtonPanelSpec({
+        version: 1,
+        embeds: [{ type: "embed", title: "A" }],
+        components: [],
+      }),
+    ).toBe(true);
+    expect(
+      stripButtonComponents({
+        version: 1,
+        embeds: [{ type: "embed", title: "A" }],
+        components: [{ type: "action_row", components: [] }],
+      }),
+    ).toEqual({
+      version: 1,
+      embeds: [{ type: "embed", title: "A" }],
+    });
   });
 
   it("materializes role.toggle buttons into persisted button_actions", async () => {

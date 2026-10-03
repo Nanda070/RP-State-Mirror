@@ -98,9 +98,16 @@ export default async function SettingsIndexPage() {
     {
       href: "/settings/embeds",
       title: "Эмбеды",
-      description: "Конструктор Classic/V2, превью, отправка и кнопки.",
+      description: "Конструктор Classic/V2, превью и отправка без кнопок.",
       status: "ready",
       meta: `Дизайнов: ${designCount}`,
+    },
+    {
+      href: "/settings/buttons",
+      title: "Кнопки",
+      description: "Панели role.toggle / callback и отправка через button_actions.",
+      status: "ready",
+      meta: "Отдельный раздел отправки панелей",
     },
     {
       href: "/settings/tokens",

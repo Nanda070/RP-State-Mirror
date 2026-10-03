@@ -219,3 +219,30 @@ export function parseCustomId(customId: string): { action: string; id: string } 
   if (!action || !id) return null;
   return { action, id };
 }
+
+/**
+ * Button panels are Classic specs that always carry a `components` array
+ * (even when empty while editing), or V2 trees that include action rows.
+ * Embed-only designs omit `components` on Classic and have no action rows on V2.
+ */
+export function isButtonPanelSpec(spec: EmbedSpec): boolean {
+  if (spec.version === 1) return Array.isArray(spec.components);
+  return spec.components.some((container) =>
+    container.components.some((node) => node.type === "action_row"),
+  );
+}
+
+/** Strip interactive rows so a design stays on the embeds page. */
+export function stripButtonComponents(spec: EmbedSpec): EmbedSpec {
+  if (spec.version === 1) {
+    const { components: _components, ...rest } = spec;
+    return rest;
+  }
+  return {
+    version: 2,
+    components: spec.components.map((container) => ({
+      ...container,
+      components: container.components.filter((node) => node.type !== "action_row"),
+    })),
+  };
+}

@@ -1,5 +1,22 @@
 # Mirror: dev blog
 
+## 2026-10-03: эмбеды и кнопки — раздельные страницы
+
+### Цель
+
+Убрать кнопки из UI эмбедов: отдельные маршруты для отправки эмбедов и панелей кнопок.
+
+### Что сделано
+
+- `/settings/embeds` — только Classic/V2 контент, превью, save/archive, send/resend.
+- `/settings/buttons` — панели role.toggle, button_actions, отдельная отправка.
+- Сайдбар, settings hub и command palette: два пункта «Эмбеды» / «Кнопки» (готово).
+- Классификация `isButtonPanelSpec` / `stripButtonComponents` в core.
+
+### Проверка
+
+`pnpm lint`, `pnpm check`, `pnpm build`, `pnpm test`.
+
 ## 2026-10-03: закрытие этапа 3
 
 ### Цель
@@ -9,7 +26,7 @@
 ### Что сделано
 
 - Prisma `discord_channels`; бот синхронизирует text/announcement каналы для pickers.
-- Embed manager (`/settings/embeds`): Classic/V2, превью, save/archive, send/resend jobs, кнопки `role.toggle` / `callback` (`mirror:<action>:<id>`).
+- Embed manager (`/settings/embeds`): Classic/V2, превью, save/archive, send/resend jobs; кнопки вынесены на `/settings/buttons` (`role.toggle` / `callback`, `mirror:<action>:<id>`).
 - `/settings/factions`: каналы и вебхуки документов/кадров; wanted/fines — select из снимка ЧП.
 - ЧП sync: `cp.syncEnabled` + excluded roles + log channel; plan в core; apply в bot (events + hourly); аудит.
 - Реестр `/personnel`; токены/регистрации остаются «скоро».

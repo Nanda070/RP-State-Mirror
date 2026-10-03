@@ -1,5 +1,6 @@
 import {
   canManageSystemSettings,
+  isButtonPanelSpec,
   listActiveChannels,
   listMessageDesigns,
   listSentMessages,
@@ -18,7 +19,7 @@ export default async function SettingsEmbedsPage() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canManageSystemSettings(identity)) redirect("/overview");
 
-  const [designs, sent, guilds, channels, roles] = await Promise.all([
+  const [designs, sent, guilds, channels] = await Promise.all([
     listMessageDesigns(false),
     listSentMessages(40),
     prisma.guild.findMany({
@@ -27,12 +28,15 @@ export default async function SettingsEmbedsPage() {
       select: { discordId: true, name: true },
     }),
     listActiveChannels(),
-    prisma.discordRole.findMany({
-      where: { status: RecordStatus.ACTIVE, guild: { status: RecordStatus.ACTIVE } },
-      include: { guild: { select: { discordId: true } } },
-      orderBy: { name: "asc" },
-    }),
   ]);
+
+  const embedDesigns = designs.filter((d) => !isButtonPanelSpec(d.spec as EmbedSpec));
+  const embedDesignIds = new Set(embedDesigns.map((d) => d.id));
+  const embedSent = sent.filter(
+    (s) =>
+      (s.designId && embedDesignIds.has(s.designId)) ||
+      (!s.designId && !isButtonPanelSpec(s.spec as EmbedSpec)),
+  );
 
   return (
     <div className="stack">
@@ -44,25 +48,28 @@ export default async function SettingsEmbedsPage() {
         </p>
         <h1>Эмбеды</h1>
         <p className="muted">
-          Конструктор Classic / Components V2, превью, сохранение, архив и отправка ботом в канал
-          выбранного сервера. Кнопки role.toggle живут в button_actions.
+          Конструктор Classic / Components V2: превью, сохранение, архив и отправка ботом в канал
+          выбранного сервера. Панели кнопок — отдельно в разделе «Кнопки».
         </p>
-        <div className="row" style={{ marginTop: "0.75rem" }}>
+        <div className="row" style={{ marginTop: "0.75rem", gap: "0.5rem", flexWrap: "wrap" }}>
           <span className="stub-badge" data-ready>
             Готово
           </span>
+          <Link href="/settings/buttons" className="btn btn-secondary">
+            К кнопкам
+          </Link>
         </div>
       </div>
 
       <EmbedManager
-        initialDesigns={designs.map((d) => ({
+        initialDesigns={embedDesigns.map((d) => ({
           id: d.id,
           name: d.name,
           description: d.description,
           spec: d.spec as EmbedSpec,
           updatedAt: d.updatedAt.toISOString(),
         }))}
-        initialSent={sent.map((s) => ({
+        initialSent={embedSent.map((s) => ({
           id: s.id,
           guildDiscordId: s.guildDiscordId,
           channelDiscordId: s.channelDiscordId,
@@ -75,11 +82,6 @@ export default async function SettingsEmbedsPage() {
           discordId: c.discordId,
           name: c.name,
           guildDiscordId: c.guild.discordId,
-        }))}
-        roles={roles.map((r) => ({
-          discordId: r.discordId,
-          name: r.name,
-          guildDiscordId: r.guild.discordId,
         }))}
       />
     </div>

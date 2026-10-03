@@ -17,7 +17,7 @@
 | Embed manager: create/edit Classic + V2, preview, save, list, archive | ✅ |
 | Send / resend через jobs в выбранный guild/channel (из снимка) | ✅ |
 | Button engine: `button_actions`, `mirror:<action>:<id>`, role.toggle / callback | ✅ |
-| `/settings/embeds` реально готов (не stub) | ✅ |
+| `/settings/embeds` и `/settings/buttons` раздельно готовы (не stub) | ✅ |
 | UI каналов/вебхуков фракций + wanted/fines channel pickers | ✅ |
 | ЧП sync по `cp.syncEnabled`, исключения, аудит | ✅ |
 | Реестр персонала | ✅ |
@@ -31,7 +31,7 @@
 | Core | documents, wanted, fines, personnel, embeds, message-designs, delivery, cp-sync, factions delivery |
 | Settings | `documents.*`, `fines.*`, `wanted.*`, `cp.syncEnabled`, `cp.excludedRoleIds`, `cp.logChannelId` |
 | Bot | 7 slash; jobs доставки модулей + message_design.send/resend; buttons; channel sync; CP reconcile |
-| Dashboard | реестры documents/wanted/fines/personnel; настройки модулей, фракций, эмбедов, ЧП |
+| Dashboard | реестры documents/wanted/fines/personnel; настройки модулей, фракций, эмбедов, кнопок, ЧП |
 
 Номера документов (`LSPD-001`), розысков (`W-001`) и штрафов (`F-001`) выделяются **внутри** аудируемой транзакции.
 
