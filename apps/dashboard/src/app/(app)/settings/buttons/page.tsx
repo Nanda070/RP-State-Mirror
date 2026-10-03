@@ -5,7 +5,7 @@ import {
   type EmbedSpec,
 } from "@mirror/core";
 import Link from "next/link";
-import { ButtonManagerLazy } from "@/components/button-manager-lazy";
+import { ButtonManager } from "@/components/button-manager";
 import {
   getActiveChannelOptions,
   getActiveGuildOptions,
@@ -24,13 +24,9 @@ export default async function SettingsButtonsPage() {
     getActiveRoleOptions(),
   ]);
 
-  const buttonDesigns = designs.filter((d) => isButtonPanelSpec(d.spec as EmbedSpec));
+  const buttonDesigns = designs.filter((d) => isButtonPanelSpec(d.spec));
   const buttonDesignIds = new Set(buttonDesigns.map((d) => d.id));
-  const buttonSent = sent.filter(
-    (s) =>
-      (s.designId && buttonDesignIds.has(s.designId)) ||
-      isButtonPanelSpec(s.spec as EmbedSpec),
-  );
+  const buttonSent = sent.filter((s) => Boolean(s.designId && buttonDesignIds.has(s.designId)));
 
   return (
     <div className="stack">
@@ -55,7 +51,7 @@ export default async function SettingsButtonsPage() {
         </div>
       </div>
 
-      <ButtonManagerLazy
+      <ButtonManager
         initialDesigns={buttonDesigns.map((d) => ({
           id: d.id,
           name: d.name,

@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { EmbedSpec, EmbedSpecV1, V2Button } from "@mirror/core";
-import { isButtonPanelSpec } from "@mirror/core";
+import type { EmbedSpec, EmbedSpecV1, V2Button } from "@mirror/core/embeds";
+import { isButtonPanelSpec } from "@mirror/core/embeds";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { EmbedPreview } from "./embed-preview";
 

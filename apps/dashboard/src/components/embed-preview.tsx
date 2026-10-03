@@ -1,6 +1,6 @@
 "use client";
 
-import type { EmbedSpec } from "@mirror/core";
+import type { EmbedSpec } from "@mirror/core/embeds";
 
 function colorHex(color?: number): string {
   if (color === undefined) return "#4e5058";

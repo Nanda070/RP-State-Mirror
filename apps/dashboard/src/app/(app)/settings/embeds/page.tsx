@@ -5,7 +5,7 @@ import {
   type EmbedSpec,
 } from "@mirror/core";
 import Link from "next/link";
-import { EmbedManagerLazy } from "@/components/embed-manager-lazy";
+import { EmbedManager } from "@/components/embed-manager";
 import {
   getActiveChannelOptions,
   getActiveGuildOptions,
@@ -22,13 +22,10 @@ export default async function SettingsEmbedsPage() {
     getActiveChannelOptions(),
   ]);
 
-  const embedDesigns = designs.filter((d) => !isButtonPanelSpec(d.spec as EmbedSpec));
+  const embedDesigns = designs.filter((d) => !isButtonPanelSpec(d.spec));
   const embedDesignIds = new Set(embedDesigns.map((d) => d.id));
-  const embedSent = sent.filter(
-    (s) =>
-      (s.designId && embedDesignIds.has(s.designId)) ||
-      (!s.designId && !isButtonPanelSpec(s.spec as EmbedSpec)),
-  );
+  // Only deliveries tied to embed templates — not ad-hoc module notifications.
+  const embedSent = sent.filter((s) => Boolean(s.designId && embedDesignIds.has(s.designId)));
 
   return (
     <div className="stack">
@@ -53,7 +50,7 @@ export default async function SettingsEmbedsPage() {
         </div>
       </div>
 
-      <EmbedManagerLazy
+      <EmbedManager
         initialDesigns={embedDesigns.map((d) => ({
           id: d.id,
           name: d.name,

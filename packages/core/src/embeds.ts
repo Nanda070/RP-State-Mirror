@@ -224,11 +224,17 @@ export function parseCustomId(customId: string): { action: string; id: string } 
  * Button panels are Classic specs that always carry a `components` array
  * (even when empty while editing), or V2 trees that include action rows.
  * Embed-only designs omit `components` on Classic and have no action rows on V2.
+ * Tolerates malformed JSON from the DB so list pages never crash.
  */
-export function isButtonPanelSpec(spec: EmbedSpec): boolean {
-  if (spec.version === 1) return Array.isArray(spec.components);
-  return spec.components.some((container) =>
-    container.components.some((node) => node.type === "action_row"),
+export function isButtonPanelSpec(spec: unknown): boolean {
+  if (!spec || typeof spec !== "object" || !("version" in spec)) return false;
+  const value = spec as EmbedSpec;
+  if (value.version === 1) return Array.isArray(value.components);
+  if (value.version !== 2 || !Array.isArray(value.components)) return false;
+  return value.components.some(
+    (container) =>
+      Array.isArray(container?.components) &&
+      container.components.some((node) => node?.type === "action_row"),
   );
 }
 
@@ -238,11 +244,27 @@ export function stripButtonComponents(spec: EmbedSpec): EmbedSpec {
     const { components: _components, ...rest } = spec;
     return rest;
   }
+  const containers = (Array.isArray(spec.components) ? spec.components : [])
+    .map((container) => ({
+      ...container,
+      type: "container" as const,
+      components: (Array.isArray(container.components) ? container.components : []).filter(
+        (node) => node.type !== "action_row",
+      ),
+    }))
+    .filter((container) => container.components.length > 0);
+
   return {
     version: 2,
-    components: spec.components.map((container) => ({
-      ...container,
-      components: container.components.filter((node) => node.type !== "action_row"),
-    })),
+    components:
+      containers.length > 0
+        ? containers
+        : [
+            {
+              type: "container",
+              accentColor: 0xff6a1a,
+              components: [{ type: "text_display", content: "Текст контейнера" }],
+            },
+          ],
   };
 }

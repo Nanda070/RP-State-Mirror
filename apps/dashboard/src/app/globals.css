@@ -928,15 +928,32 @@ h3 {
 }
 
 .field select,
-.field input {
+.field input,
+.field textarea {
+  width: 100%;
   border: 1px solid var(--line-strong);
   background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
   border-radius: var(--radius-sm);
   padding: 0.7rem 0.8rem;
 }
 
+.field textarea {
+  resize: vertical;
+  min-height: 6rem;
+  line-height: 1.45;
+}
+
+.field input[type="color"] {
+  width: 3rem;
+  min-height: 2.5rem;
+  padding: 0.2rem;
+  cursor: pointer;
+}
+
 .field select:focus,
-.field input:focus {
+.field input:focus,
+.field textarea:focus {
   outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }

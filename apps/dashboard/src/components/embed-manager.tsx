@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { EmbedSpec } from "@mirror/core";
-import { isButtonPanelSpec, stripButtonComponents } from "@mirror/core";
+import type { EmbedSpec } from "@mirror/core/embeds";
+import { isButtonPanelSpec, stripButtonComponents } from "@mirror/core/embeds";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { EmbedPreview } from "./embed-preview";
 
@@ -42,10 +42,47 @@ const EMPTY_V2: EmbedSpec = {
 };
 
 function asSpec(raw: unknown): EmbedSpec {
-  if (raw && typeof raw === "object" && "version" in raw) {
-    return stripButtonComponents(raw as EmbedSpec);
+  if (!raw || typeof raw !== "object" || !("version" in raw)) {
+    return structuredClone(EMPTY_V1);
   }
-  return EMPTY_V1;
+  const version = (raw as { version?: unknown }).version;
+  if (version === 1 || version === 2) {
+    try {
+      return stripButtonComponents(raw as EmbedSpec);
+    } catch {
+      return version === 2 ? structuredClone(EMPTY_V2) : structuredClone(EMPTY_V1);
+    }
+  }
+  return structuredClone(EMPTY_V1);
+}
+
+function asDesign(raw: unknown): Design | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as {
+    id?: string;
+    name?: string;
+    description?: string | null;
+    spec?: unknown;
+    updatedAt?: unknown;
+  };
+  if (!value.id || !value.name || value.spec === undefined) return null;
+  let updatedAt = new Date().toISOString();
+  if (typeof value.updatedAt === "string") updatedAt = value.updatedAt;
+  else if (
+    value.updatedAt &&
+    typeof value.updatedAt === "object" &&
+    "toISOString" in value.updatedAt &&
+    typeof (value.updatedAt as { toISOString: unknown }).toISOString === "function"
+  ) {
+    updatedAt = (value.updatedAt as Date).toISOString();
+  }
+  return {
+    id: value.id,
+    name: value.name,
+    description: value.description ?? null,
+    spec: asSpec(value.spec),
+    updatedAt,
+  };
 }
 
 export function EmbedManager({
@@ -112,8 +149,10 @@ export function EmbedManager({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Ошибка сохранения");
-        setDesigns((prev) => prev.map((d) => (d.id === selectedId ? data.design : d)));
-        setSpec(asSpec(data.design.spec));
+        const design = asDesign(data.design);
+        if (!design) throw new Error("Сервер вернул некорректный шаблон");
+        setDesigns((prev) => prev.map((d) => (d.id === selectedId ? design : d)));
+        setSpec(design.spec);
         setMessage("Сохранено");
       } else {
         const res = await fetch("/api/settings/embeds", {
@@ -123,9 +162,11 @@ export function EmbedManager({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Ошибка создания");
-        setDesigns((prev) => [data.design, ...prev]);
-        setSelectedId(data.design.id);
-        setSpec(asSpec(data.design.spec));
+        const design = asDesign(data.design);
+        if (!design) throw new Error("Сервер вернул некорректный шаблон");
+        setDesigns((prev) => [design, ...prev]);
+        setSelectedId(design.id);
+        setSpec(design.spec);
         setMessage("Создано");
       }
     } catch (e) {
@@ -190,10 +231,8 @@ export function EmbedManager({
             .map((d) => d.id),
         );
         setSent(
-          (body.sent as (Sent & { designId?: string | null; spec: EmbedSpec })[]).filter(
-            (s) =>
-              (s.designId && designIds.has(s.designId)) ||
-              (!s.designId && !isButtonPanelSpec(s.spec)),
+          (body.sent as (Sent & { designId?: string | null })[]).filter((s) =>
+            Boolean(s.designId && designIds.has(s.designId)),
           ),
         );
       }
@@ -250,7 +289,8 @@ export function EmbedManager({
     setSpec(version === 1 ? structuredClone(EMPTY_V1) : structuredClone(EMPTY_V2));
   }
 
-  const classic = spec.version === 1 ? spec.embeds[0] : null;
+  const classic = spec.version === 1 ? (spec.embeds[0] ?? null) : null;
+  const colorHex = `#${(classic?.color ?? 0xff6a1a).toString(16).padStart(6, "0")}`;
 
   return (
     <div className="embed-manager">
@@ -259,7 +299,7 @@ export function EmbedManager({
           <h2 className="panel-title" style={{ margin: 0 }}>
             Шаблоны
           </h2>
-          <div className="row" style={{ gap: "0.35rem" }}>
+          <div className="row" style={{ gap: "0.35rem", flexWrap: "wrap" }}>
             <button type="button" className="btn btn-secondary" onClick={() => newDesign(1)}>
               + Classic
             </button>
@@ -343,17 +383,29 @@ export function EmbedManager({
                 />
               </div>
               <div className="field">
-                <label htmlFor="embColor">Цвет (hex)</label>
-                <input
-                  id="embColor"
-                  value={`#${(classic.color ?? 0xff6a1a).toString(16).padStart(6, "0")}`}
-                  onChange={(e) => {
-                    const hex = e.target.value.replace("#", "");
-                    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+                <label htmlFor="embColor">Цвет</label>
+                <div className="row" style={{ gap: "0.5rem", alignItems: "center" }}>
+                  <input
+                    id="embColorPicker"
+                    type="color"
+                    value={colorHex}
+                    onChange={(e) => {
+                      const hex = e.target.value.replace("#", "");
                       updateClassic({ color: Number.parseInt(hex, 16) });
-                    }
-                  }}
-                />
+                    }}
+                    style={{ width: "3rem", padding: "0.2rem", cursor: "pointer" }}
+                  />
+                  <input
+                    id="embColor"
+                    value={colorHex}
+                    onChange={(e) => {
+                      const hex = e.target.value.replace("#", "");
+                      if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+                        updateClassic({ color: Number.parseInt(hex, 16) });
+                      }
+                    }}
+                  />
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="embFooter">Подвал</label>
