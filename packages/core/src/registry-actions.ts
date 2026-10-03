@@ -228,7 +228,7 @@ export async function runRegistryAction(input: RegistryActionInput, context: Aud
     case "transfer.reject_source":
     case "transfer.reject_target": {
       const [verb, side] = data.action.split("_") as ["approve" | "reject", "source" | "target"];
-      await decideTransfer(
+      const decided = await decideTransfer(
         id,
         side,
         verb === "approve" ? DecisionStatus.APPROVED : DecisionStatus.REJECTED,
@@ -236,6 +236,11 @@ export async function runRegistryAction(input: RegistryActionInput, context: Aud
         verb === "reject" ? need(text, "Укажите причину отказа.") : null,
         context,
       );
+      // One side has decided, the other has not: the core queues nothing, but the card in Discord
+      // must show this decision and lose that side's buttons.
+      if (decided.status === TransferStatus.PENDING) {
+        await enqueueJob({ type: MODULE_JOB_TYPES.TRANSFER_DECIDED, payload: { transferId: id } });
+      }
       return verb === "approve" ? "Решение сохранено: одобрено." : "Решение сохранено: отказано.";
     }
     case "transfer.cancel":

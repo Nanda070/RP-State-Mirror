@@ -6,6 +6,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   archiveOldAuditLog,
   claimOverdueFines,
+  enableSettingsCache,
   botEnvSchema,
   createLogger,
   expireDocuments,
@@ -36,6 +37,8 @@ const RECONCILE_INTERVAL_MS = 60 * 60_000;
 const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 
 const env = parseEnv(botEnvSchema);
+// Commands read the same settings on every interaction: remember them for a few seconds.
+enableSettingsCache();
 const log = createLogger("bot", env.LOG_LEVEL);
 
 const client = new Client({

@@ -392,3 +392,42 @@ describe("faction delivery webhooks", () => {
     expect(updateFactionDeliverySchema.safeParse({ factionCode: "LSPD", documentsWebhookUrl: null }).success).toBe(true);
   });
 });
+
+describe("settings cache", () => {
+  it("is off unless a process turns it on, expires, and never hides the process's own writes", async () => {
+    const { clearSettingsCache, enableSettingsCache, getSettings, setSetting } = await import("@mirror/core");
+    const write = (value: number) =>
+      prisma.systemSetting.upsert({
+        where: { key: "documents.ttlHours" },
+        create: { key: "documents.ttlHours", value },
+        update: { value },
+      });
+    try {
+      // Off: a change made by another process (here — a direct write) is seen at once.
+      expect(await getSetting("documents.ttlHours")).toBe(72);
+      await write(10);
+      expect(await getSetting("documents.ttlHours")).toBe(10);
+
+      enableSettingsCache(60_000);
+      expect(await getSetting("documents.ttlHours")).toBe(10);
+      await write(20);
+      // On: the remembered value is served, in single and in batch reads.
+      expect(await getSetting("documents.ttlHours")).toBe(10);
+      expect((await getSettings(["documents.ttlHours", "cp.dryRun"] as const))["documents.ttlHours"]).toBe(10);
+      // The job worker asks for fresh values.
+      clearSettingsCache();
+      expect(await getSetting("documents.ttlHours")).toBe(20);
+
+      // A write through the core is visible immediately.
+      await setSetting("documents.ttlHours", 30, context);
+      expect(await getSetting("documents.ttlHours")).toBe(30);
+
+      enableSettingsCache(1);
+      await write(40);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      expect(await getSetting("documents.ttlHours")).toBe(40);
+    } finally {
+      enableSettingsCache(0);
+    }
+  });
+});

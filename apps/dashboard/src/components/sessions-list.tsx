@@ -15,36 +15,6 @@ export type SessionRow = {
   current: boolean;
 };
 
-/** Short, human description of a user-agent string. */
-export function describeDevice(userAgent: string | null): string {
-  if (!userAgent) return "Неизвестное устройство";
-  const browser = /Edg\//.test(userAgent)
-    ? "Edge"
-    : /OPR\//.test(userAgent)
-      ? "Opera"
-      : /YaBrowser\//.test(userAgent)
-        ? "Яндекс Браузер"
-        : /Firefox\//.test(userAgent)
-          ? "Firefox"
-          : /Chrome\//.test(userAgent)
-            ? "Chrome"
-            : /Safari\//.test(userAgent)
-              ? "Safari"
-              : "Браузер";
-  const system = /Windows/.test(userAgent)
-    ? "Windows"
-    : /Android/.test(userAgent)
-      ? "Android"
-      : /iPhone|iPad|iOS/.test(userAgent)
-        ? "iOS"
-        : /Mac OS X/.test(userAgent)
-          ? "macOS"
-          : /Linux/.test(userAgent)
-            ? "Linux"
-            : null;
-  return system ? `${browser} · ${system}` : browser;
-}
-
 export function SessionsList({
   sessions,
   showOwner = false,

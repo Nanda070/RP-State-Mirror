@@ -1004,7 +1004,9 @@ const registrationExpired: JobHandler = async (payload, { client, log }) => {
   const dm = await sendDirectMessage(
     client,
     registration.applicantDiscordId,
-    `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} истёк. При необходимости подайте заявку заново.`,
+    registration.status === RecordStatus.REVOKED
+      ? `Регистрация ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} снята администрацией.\n**Причина:** ${registration.rejectionReason ?? "—"}`
+      : `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} истёк. При необходимости подайте заявку заново.`,
     log,
   );
   return { status: "sent", edited, dm };
@@ -1046,10 +1048,10 @@ const transferDecided: JobHandler = async (payload, { client, log }) => {
   const transferId = String(payload.transferId ?? "");
   const transfer = await loadTransfer(transferId);
   if (!transfer) throw new Error(`Transfer ${transferId} not found`);
+  await editStoredReviewMessage(client, transfer, await buildTransferReview(transfer)).catch((error: unknown) =>
+    log.warn({ err: error, transferId }, "failed to refresh transfer card"),
+  );
   if (transfer.status === "CLOSED") {
-    await editStoredReviewMessage(client, transfer, await buildTransferReview(transfer)).catch((error: unknown) =>
-      log.warn({ err: error, transferId }, "failed to refresh transfer card"),
-    );
     const dm = await sendDirectMessage(
       client,
       transfer.createdByDiscordId,

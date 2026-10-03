@@ -999,3 +999,92 @@ pre code {
   word-break: break-word;
   font-weight: 500;
 }
+
+/* ——— Stage 7: phone navigation (PLAN §15.1 п.3) and the bell ——— */
+.nav-burger,
+.nav-backdrop {
+  display: none;
+}
+
+.notify-root .icon-btn {
+  position: relative;
+}
+
+.notify-count {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  min-width: 1.05rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.05rem;
+  text-align: center;
+}
+
+.notify-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.2rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.notify-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@media (max-width: 900px) {
+  .nav-burger {
+    display: inline-flex;
+  }
+
+  .shell .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 80;
+    width: min(18.5rem, 86vw);
+    height: 100dvh;
+    border-right: 1px solid var(--line-strong);
+    border-bottom: 0;
+    background: var(--bg-1);
+    overflow-y: auto;
+    transform: translateX(-102%);
+    transition: transform 0.22s ease;
+  }
+
+  .shell[data-nav-open] .sidebar {
+    transform: none;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.7);
+  }
+
+  .shell[data-nav-open] .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  .shell .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    flex-wrap: nowrap;
+  }
+
+  /* Tables scroll inside their own box instead of widening the page. */
+  .registry-table-wrap {
+    overflow-x: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell .sidebar {
+    transition: none;
+  }
+}

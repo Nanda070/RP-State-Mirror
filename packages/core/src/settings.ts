@@ -285,8 +285,40 @@ async function readSettingValue<K extends SettingKey>(
   return parsed.data as SettingValue<K>;
 }
 
+type SettingRow = Awaited<ReturnType<typeof prisma.systemSetting.findUnique>>;
+
+// Opt-in cache of setting rows (PLAN §14.5). Off by default: the dashboard and the tests always read
+// the database. The bot turns it on, because one slash command reads several settings and the same
+// ones are read on every interaction. Another process changes settings (the dashboard), so entries
+// live only a few seconds; reads inside a transaction never use the cache.
+let cacheTtlMs = 0;
+const settingCache = new Map<string, { row: SettingRow; at: number }>();
+
+export function enableSettingsCache(ttlMs = 5_000) {
+  cacheTtlMs = ttlMs;
+  settingCache.clear();
+}
+
+/** Forces the next reads to hit the database (the job worker calls it before every job). */
+export function clearSettingsCache() {
+  settingCache.clear();
+}
+
+function cachedRow(key: string, db: Db): { row: SettingRow } | null {
+  if (cacheTtlMs <= 0 || db !== prisma) return null;
+  const entry = settingCache.get(key);
+  return entry && Date.now() - entry.at < cacheTtlMs ? { row: entry.row } : null;
+}
+
+function rememberRow(key: string, row: SettingRow, db: Db) {
+  if (cacheTtlMs > 0 && db === prisma) settingCache.set(key, { row, at: Date.now() });
+}
+
 export async function getSetting<K extends SettingKey>(key: K, db: Db = prisma): Promise<SettingValue<K>> {
+  const cached = cachedRow(key, db);
+  if (cached) return readSettingValue(key, cached.row, db);
   const row = await db.systemSetting.findUnique({ where: { key } });
+  rememberRow(key, row, db);
   return readSettingValue(key, row, db);
 }
 
@@ -296,11 +328,22 @@ export async function getSettings<const K extends readonly SettingKey[]>(
   db: Db = prisma,
 ): Promise<{ [P in K[number]]: SettingValue<P> }> {
   const uniqueKeys = [...new Set(keys)];
-  const rows =
-    uniqueKeys.length === 0
-      ? []
-      : await db.systemSetting.findMany({ where: { key: { in: uniqueKeys } } });
-  const byKey = new Map(rows.map((row) => [row.key, row]));
+  const byKey = new Map<string, SettingRow>();
+  const missing: SettingKey[] = [];
+  for (const key of uniqueKeys) {
+    const cached = cachedRow(key, db);
+    if (cached) byKey.set(key, cached.row);
+    else missing.push(key);
+  }
+  if (missing.length > 0) {
+    const rows = await db.systemSetting.findMany({ where: { key: { in: missing } } });
+    const found = new Map(rows.map((row) => [row.key, row]));
+    for (const key of missing) {
+      const row = found.get(key) ?? null;
+      byKey.set(key, row);
+      rememberRow(key, row, db);
+    }
+  }
 
   const result = {} as { [P in K[number]]: SettingValue<P> };
   await Promise.all(
@@ -324,6 +367,8 @@ export async function setSetting<K extends SettingKey>(
   }
   const next = parsed.data as SettingValue<K>;
 
+  // Whatever happens below, this process must not serve the old value afterwards.
+  settingCache.delete(key);
   return auditedMutation(context, "setting.updated", "system_setting", async (tx) => {
     if (next !== null && DISTINCT_GUILD_KEYS.includes(key)) {
       const otherKey = DISTINCT_GUILD_KEYS.find((k) => k !== key) as SettingKey;

@@ -1,6 +1,14 @@
 import type { Client } from "discord.js";
 import type { Job } from "@mirror/db";
-import { claimNextJob, completeJob, deferJob, failJob, requeueStaleJobs, type Logger } from "@mirror/core";
+import {
+  claimNextJob,
+  clearSettingsCache,
+  completeJob,
+  deferJob,
+  failJob,
+  requeueStaleJobs,
+  type Logger,
+} from "@mirror/core";
 
 /** A handler answers this when it cannot run yet (e.g. the target channel is not configured). */
 function deferredReason(result: unknown): string | null {
@@ -98,6 +106,9 @@ export class JobWorker {
       return;
     }
     try {
+      // A job often runs right after its channel or roles were configured in the dashboard:
+      // it must see the settings as they are now, not as the bot remembered them.
+      clearSettingsCache();
       const payload = (job.payload ?? {}) as Record<string, unknown>;
       const result = await handler(payload, { client: this.client, job, log });
       const reason = deferredReason(result);

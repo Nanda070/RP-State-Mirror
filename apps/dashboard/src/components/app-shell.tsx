@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BrandMark } from "./brand-mark";
 import { CommandPalette, openCommandPalette } from "./command-palette";
 import { NotificationsBell } from "./notifications-bell";
@@ -513,6 +513,17 @@ export function AppShell({
   canManageModules?: boolean;
 }) {
   const pathname = usePathname();
+  // Phone layout: the menu is a drawer. It closes when a page opens and on Escape.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [pathname]);
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNavOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [navOpen]);
   const visibleNav = NAV.filter(
     (item) =>
       (!item.requiresSystemSettings || canManageSystemSettings) &&
@@ -524,8 +535,9 @@ export function AppShell({
   const handleLabel = username ? `@${username}` : displayName;
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className="shell" data-nav-open={navOpen ? "" : undefined}>
+      <div className="nav-backdrop" aria-hidden onClick={() => setNavOpen(false)} />
+      <aside className="sidebar" id="app-sidebar">
         <div className="sidebar-server-card">
           <BrandMark />
           <div className="sidebar-server-meta">
@@ -586,6 +598,18 @@ export function AppShell({
       <div className="shell-main">
         <header className="topbar">
           <div className="topbar-left">
+            <button
+              type="button"
+              className="icon-btn nav-burger"
+              aria-label={navOpen ? "Закрыть меню" : "Открыть меню"}
+              aria-expanded={navOpen}
+              aria-controls="app-sidebar"
+              onClick={() => setNavOpen((value) => !value)}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" aria-hidden>
+                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
             <Link href="/overview" className="topbar-brand">
               <BrandMark />
               <span className="brand">Mirror</span>
@@ -611,7 +635,7 @@ export function AppShell({
               <kbd className="topbar-kbd">Ctrl K</kbd>
             </button>
 
-            <NotificationsBell variant="icon" />
+            <NotificationsBell />
 
             <div className="topbar-user">
               {avatarUrl ? (
@@ -637,7 +661,7 @@ export function AppShell({
 
         <motion.main
           className="content"
-          initial={{ opacity: 0, y: 8 }}
+          initial={{ y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: "easeOut" }}
         >
