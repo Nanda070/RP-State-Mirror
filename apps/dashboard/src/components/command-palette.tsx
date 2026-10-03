@@ -24,6 +24,8 @@ const ITEMS: PaletteItem[] = [
   { href: "/wanted", label: "Розыск", group: "Информация" },
   { href: "/fines", label: "Штрафы", group: "Информация" },
   { href: "/personnel", label: "Персонал", group: "Информация" },
+  { href: "/registrations/vehicles", label: "Регистрации ТС", group: "Информация" },
+  { href: "/registrations/uniforms", label: "Регистрации форм", group: "Информация" },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация" },
   { href: "/feedback", label: "Обратная связь", group: "Информация" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование" },

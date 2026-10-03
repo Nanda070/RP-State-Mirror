@@ -182,6 +182,8 @@ export default async function OverviewPage() {
                 { label: "Розыск", href: "/wanted", ready: true },
                 { label: "Штрафы", href: "/fines", ready: true },
                 { label: "Персонал", href: "/personnel", ready: true },
+                { label: "Регистрации ТС", href: "/registrations/vehicles", ready: true },
+                { label: "Регистрации форм", href: "/registrations/uniforms", ready: true },
                 { label: "Эмбеды", href: "/settings/embeds", ready: true },
                 { label: "IC ЧС", href: "/ic-blacklist", ready: true },
                 { label: "Обратная связь", href: "/feedback", ready: true },

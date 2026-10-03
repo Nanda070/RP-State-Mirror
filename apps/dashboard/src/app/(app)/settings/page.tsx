@@ -169,6 +169,12 @@ export default async function SettingsIndexPage() {
           <Link href="/personnel" className="btn btn-secondary">
             Реестр персонала ({personnelCount})
           </Link>
+          <Link href="/registrations/vehicles" className="btn btn-secondary">
+            Регистрации ТС
+          </Link>
+          <Link href="/registrations/uniforms" className="btn btn-secondary">
+            Регистрации форм
+          </Link>
           <Link href="/ic-blacklist" className="btn btn-secondary">
             IC ЧС реестр
           </Link>

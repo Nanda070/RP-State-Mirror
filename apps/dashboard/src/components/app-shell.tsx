@@ -26,6 +26,8 @@ type NavItem = {
     | "people"
     | "blacklist"
     | "feedback"
+    | "vehicle"
+    | "uniform"
     | "settings"
     | "system"
     | "roles"
@@ -43,6 +45,20 @@ const NAV: NavItem[] = [
   { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted" },
   { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines" },
   { href: "/personnel", label: "Персонал", group: "Информация", match: "prefix", icon: "people" },
+  {
+    href: "/registrations/vehicles",
+    label: "Регистрации ТС",
+    group: "Информация",
+    match: "prefix",
+    icon: "vehicle",
+  },
+  {
+    href: "/registrations/uniforms",
+    label: "Регистрации форм",
+    group: "Информация",
+    match: "prefix",
+    icon: "uniform",
+  },
   { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist" },
   { href: "/feedback", label: "Обратная связь", group: "Информация", match: "prefix", icon: "feedback" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", match: "prefix", icon: "embeds" },
@@ -254,6 +270,37 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
         <svg {...common}>
           <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.6" />
           <path d="M7.5 7.5 16.5 16.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    case "vehicle":
+      return (
+        <svg {...common}>
+          <path
+            d="M5 15.5h14l-1.2-4.2a2 2 0 0 0-1.9-1.4H8.1a2 2 0 0 0-1.9 1.4L5 15.5Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M7 15.5v1.8a1 1 0 0 0 1 1h1.2a1 1 0 0 0 1-1V15.5M13.8 15.5v1.8a1 1 0 0 0 1 1H16a1 1 0 0 0 1-1V15.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path d="M8 10.2 9.2 7.5h5.6L16 10.2" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        </svg>
+      );
+    case "uniform":
+      return (
+        <svg {...common}>
+          <path
+            d="M9 5.5h6l2.5 3.2V19a1 1 0 0 1-1 1H7.5a1 1 0 0 1-1-1V8.7L9 5.5Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path d="M9 5.5 12 8.5 15 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M9.5 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       );
     case "feedback":

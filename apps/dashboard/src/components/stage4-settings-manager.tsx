@@ -145,7 +145,15 @@ export function Stage4SettingsManager({
             <h2 className="panel-title">Регистрации ТС и униформы</h2>
             <p className="muted" style={{ marginTop: 0 }}>
               Подать заявку могут все. Каналы ТС и формы раздельные; координаторы общие — одобряют и
-              получают пинг в обоих каналах.
+              получают пинг в обоих каналах. Реестры — в{" "}
+              <Link href="/registrations/vehicles" className="stub-link">
+                Информация → Регистрации ТС
+              </Link>{" "}
+              и{" "}
+              <Link href="/registrations/uniforms" className="stub-link">
+                Регистрации форм
+              </Link>
+              .
             </p>
             <label className="field">
               <span>Срок действия, дней</span>
