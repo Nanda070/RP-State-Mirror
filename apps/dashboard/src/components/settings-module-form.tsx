@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { ToggleRow } from "./toggle-row";
 
 type ModuleKey = "documents" | "wanted" | "fines";
 
@@ -103,18 +104,12 @@ export function SettingsWantedForm({
         { key: "wanted.coordinatorRoleIds", value: coordinatorRoleIds },
       ]}
     >
-      <div className="field">
-        <label htmlFor="wantedEnabled">
-          <input
-            id="wantedEnabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            style={{ marginRight: "0.5rem" }}
-          />
-          Модуль розыска включён
-        </label>
-      </div>
+      <ToggleRow
+        id="wantedEnabled"
+        checked={enabled}
+        onChange={setEnabled}
+        label="Модуль розыска включён"
+      />
       <div className="field">
         <label htmlFor="wantedChannel">Канал на сервере ЧП</label>
         <ChannelSelect

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { GuildChipPicker, RoleChipPicker, type RoleChipOption } from "./role-chip-picker";
+import { ToggleRow } from "./toggle-row";
 
 export type Stage4SettingsValues = {
   "registrations.ttlDays": number;
@@ -199,17 +200,12 @@ export function Stage4SettingsManager({
               </Link>
               .
             </p>
-            <label className="field">
-              <span>
-                <input
-                  type="checkbox"
-                  checked={values["icBlacklist.enabled"]}
-                  onChange={(e) => patch("icBlacklist.enabled", e.target.checked)}
-                  style={{ marginRight: "0.5rem" }}
-                />
-                Модуль IC ЧС включён
-              </span>
-            </label>
+            <ToggleRow
+              id="ic-blacklist-enabled"
+              checked={values["icBlacklist.enabled"]}
+              onChange={(checked) => patch("icBlacklist.enabled", checked)}
+              label="Модуль IC ЧС включён"
+            />
             <label className="field">
               <span>Канал публикации</span>
               <ChannelSelect

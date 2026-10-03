@@ -64,8 +64,11 @@ export default async function SettingsDocumentsPage() {
           </li>
         </ul>
         <p className="muted" style={{ marginBottom: 0, fontSize: "0.85rem" }}>
-          Канал документов задаётся в <code>faction.settings.documentsChannelId</code> (или webhook
-          URL). Пока нет UI редактора фракций — значение правится через сид/БД.
+          Канал документов или webhook настраивается в разделе{" "}
+          <Link href="/settings/factions" className="stub-link">
+            Фракции
+          </Link>
+          .
         </p>
       </div>
 

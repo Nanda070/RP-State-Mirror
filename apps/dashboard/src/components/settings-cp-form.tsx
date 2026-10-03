@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
+import { ToggleRow } from "./toggle-row";
 
 type RoleOption = { discordId: string; name: string };
 
@@ -68,18 +69,12 @@ export function SettingsCpForm({
       {!incidentGuildId ? (
         <p className="muted">Сначала укажите сервер ЧП в блоке выше.</p>
       ) : null}
-      <div className="field">
-        <label htmlFor="cpEnabled">
-          <input
-            id="cpEnabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            style={{ marginRight: "0.5rem" }}
-          />
-          Синхронизация включена (cp.syncEnabled)
-        </label>
-      </div>
+      <ToggleRow
+        id="cpEnabled"
+        checked={enabled}
+        onChange={setEnabled}
+        label="Синхронизация включена"
+      />
       <div className="field">
         <label htmlFor="cpLog">Канал логов</label>
         <ChannelSelect
