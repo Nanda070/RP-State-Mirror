@@ -3,6 +3,8 @@
  */
 import {
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ModalBuilder,
   MessageFlags,
   TextInputBuilder,
@@ -17,18 +19,24 @@ import {
   createFeedbackTicket,
   canDecideTransferSide,
   canReviewRegistrationAccess,
+  discordFormSteps,
   ensureUserByDiscordId,
   formatTokenDisplay,
   formatUserError,
   getSetting,
   getDiscordForm,
+  getFormDraft,
   getButtonAction,
+  isDiscordCompatible,
+  saveFormDraft,
+  validateFormValues,
   parseCustomId,
   receiveTokenForStatic,
   submitDiscordForm,
   resolveIdentity,
   writeAuditEvent,
   type AuditContext,
+  type FormValue,
   type Logger,
 } from "@mirror/core";
 import { AuditActorType, DecisionStatus } from "@mirror/db";
@@ -264,30 +272,150 @@ async function handleCallback(interaction: ButtonInteraction, params: Record<str
   await respondEphemeral(interaction, message);
 }
 
+type LoadedForm = NonNullable<Awaited<ReturnType<typeof getDiscordForm>>>;
+type LoadedField = LoadedForm["fields"][number];
+
+/** Step index travels in the modal id as `<formId>.<step>`, so opening a modal needs no DB write. */
+function formModalId(formId: string, step: number) {
+  return `mirror:form.submit:${formId}.${step}`;
+}
+
+function parseFormModalId(id: string): { formId: string; step: number } {
+  const [formId = "", rawStep = "0"] = id.split(".");
+  const step = Number.parseInt(rawStep, 10);
+  return { formId, step: Number.isInteger(step) && step >= 0 ? step : 0 };
+}
+
+function draftValues(draft: { values: unknown } | null): Record<string, FormValue> {
+  return draft?.values && typeof draft.values === "object" && !Array.isArray(draft.values)
+    ? (draft.values as Record<string, FormValue>)
+    : {};
+}
+
+function fieldInput(field: LoadedField, previous: FormValue | undefined) {
+  const rules =
+    field.validation && typeof field.validation === "object" && !Array.isArray(field.validation)
+      ? (field.validation as { minLength?: number; maxLength?: number; min?: number; max?: number })
+      : {};
+  const paragraph = field.type === "paragraph";
+  const input = new TextInputBuilder()
+    .setCustomId(`field:${field.key}`)
+    .setLabel(field.label.slice(0, 45))
+    .setStyle(paragraph ? TextInputStyle.Paragraph : TextInputStyle.Short)
+    .setRequired(field.required);
+
+  if (field.type === "date") {
+    input.setPlaceholder("ДД.ММ.ГГГГ").setMaxLength(10);
+  } else if (field.type === "number") {
+    const range = [
+      rules.min !== undefined ? `от ${rules.min}` : null,
+      rules.max !== undefined ? `до ${rules.max}` : null,
+    ].filter(Boolean);
+    input.setPlaceholder(range.length > 0 ? `Число ${range.join(" ")}` : "Число").setMaxLength(20);
+  } else {
+    const limit = paragraph ? 4000 : 300;
+    input.setMaxLength(Math.min(rules.maxLength ?? limit, limit));
+    if (rules.minLength) input.setMinLength(Math.min(rules.minLength, limit));
+    if (field.helpText) input.setPlaceholder(field.helpText.slice(0, 100));
+  }
+  // Re-opening a step shows what was already typed.
+  if (typeof previous === "string" || typeof previous === "number") {
+    const text = String(previous);
+    if (text.length > 0 && text.length <= 4000) input.setValue(text);
+  }
+  return new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+}
+
+function formStepModal(form: LoadedForm, steps: LoadedField[][], step: number, previous: Record<string, FormValue>) {
+  const title =
+    steps.length > 1 ? `${form.name.slice(0, 34)} · ${step + 1}/${steps.length}` : form.name.slice(0, 45);
+  return new ModalBuilder()
+    .setCustomId(formModalId(form.id, step))
+    .setTitle(title)
+    .addComponents(...(steps[step] ?? []).map((field) => fieldInput(field, previous[field.key])));
+}
+
+/** Forms with choice / checkbox fields cannot be shown in a Discord modal — point to the web page. */
+async function replyWebOnlyForm(interaction: ButtonInteraction, form: LoadedForm) {
+  const baseUrl = form.publicEnabled && form.slug ? await getSetting("app.publicBaseUrl") : null;
+  await respondEphemeral(
+    interaction,
+    baseUrl
+      ? `Эта форма заполняется на сайте: ${baseUrl}/f/${form.slug}`
+      : "В этой форме есть поля выбора, которые нельзя заполнить в Discord. Попросите администрацию открыть её веб-страницу.",
+  );
+}
+
 async function handleFormOpen(interaction: ButtonInteraction, params: Record<string, unknown>) {
-  const formId = String(params.formId ?? "");
+  const form = await getDiscordForm(String(params.formId ?? ""));
+  if (!form || form.fields.length === 0) {
+    await respondEphemeral(interaction, "Форма недоступна.");
+    return;
+  }
+  if (!isDiscordCompatible(form.fields)) {
+    await replyWebOnlyForm(interaction, form);
+    return;
+  }
+  const steps = discordFormSteps(form.fields);
+  const previous = steps.length > 1 ? draftValues(await getFormDraft(form.id, interaction.user.id)) : {};
+  await interaction.showModal(formStepModal(form, steps, 0, previous));
+}
+
+/** «Продолжить» after a non-final step: opens the modal of the step stored in the draft. */
+async function handleFormStep(interaction: ButtonInteraction, formId: string) {
+  const form = await getDiscordForm(formId);
+  const draft = form ? await getFormDraft(form.id, interaction.user.id) : null;
+  if (!form || !draft) {
+    await respondEphemeral(interaction, "Черновик не найден. Откройте форму заново.");
+    return;
+  }
+  const steps = discordFormSteps(form.fields);
+  if (draft.step >= steps.length) {
+    await respondEphemeral(interaction, "Форма изменилась. Откройте её заново.");
+    return;
+  }
+  await interaction.showModal(formStepModal(form, steps, draft.step, draftValues(draft)));
+}
+
+/** One modal step: validates its fields, then either asks for the next step or stores the answer. */
+async function handleFormSubmit(interaction: ModalSubmitInteraction, id: string) {
+  await deferModalEphemeral(interaction);
+  const { formId, step } = parseFormModalId(id);
   const form = await getDiscordForm(formId);
   if (!form) {
     await respondEphemeral(interaction, "Форма недоступна.");
     return;
   }
-  if (form.fields.length > 5) {
-    await respondEphemeral(interaction, "Форма содержит больше пяти полей и требует многошагового режима.");
+  const steps = discordFormSteps(form.fields);
+  const fields = steps[step];
+  if (!fields) {
+    await respondEphemeral(interaction, "Форма изменилась. Откройте её заново.");
     return;
   }
-  const modal = new ModalBuilder().setCustomId(`mirror:form.submit:${form.id}`).setTitle(form.name.slice(0, 45));
-  modal.addComponents(
-    ...form.fields.map((field) =>
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId(`field:${field.key}`)
-          .setLabel(field.label.slice(0, 45))
-          .setStyle(field.type === "paragraph" ? TextInputStyle.Paragraph : TextInputStyle.Short)
-          .setRequired(field.required),
-      ),
-    ),
+  const raw = Object.fromEntries(
+    fields.map((field) => [field.key, interaction.fields.getTextInputValue(`field:${field.key}`)]),
   );
-  await interaction.showModal(modal);
+  const previous = steps.length > 1 ? draftValues(await getFormDraft(form.id, interaction.user.id)) : {};
+  // Validating the step now reports a mistake right away instead of after the last step.
+  const merged = { ...previous, ...validateFormValues(fields, raw) };
+
+  if (step + 1 < steps.length) {
+    await saveFormDraft(form.id, interaction.user.id, merged, step + 1);
+    await interaction.editReply({
+      content: `Шаг ${step + 1} из ${steps.length} сохранён.`,
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`mirror:form.step:${form.id}`)
+            .setLabel(`Продолжить · шаг ${step + 2} из ${steps.length}`)
+            .setStyle(ButtonStyle.Primary),
+        ),
+      ],
+    });
+    return;
+  }
+  await submitDiscordForm(form.id, merged, interaction.user.id);
+  await interaction.editReply({ content: "Ответ на форму сохранён.", components: [] });
 }
 
 function reasonModal(customId: string) {
@@ -447,17 +575,7 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
   const parsed = parseCustomId(interaction.customId);
   if (!parsed) return false;
   if (parsed.action === "form.submit") {
-    await deferModalEphemeral(interaction);
-    const form = await getDiscordForm(parsed.id);
-    if (!form) {
-      await respondEphemeral(interaction, "Форма недоступна.");
-      return true;
-    }
-    const values = Object.fromEntries(
-      form.fields.map((field) => [field.key, interaction.fields.getTextInputValue(`field:${field.key}`)]),
-    );
-    await submitDiscordForm(form.id, values, interaction.user.id);
-    await interaction.editReply({ content: "Ответ на форму сохранён." });
+    await handleFormSubmit(interaction, parsed.id);
     return true;
   }
   if (parsed.action === "feedback.submit") {
@@ -562,6 +680,12 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
 
   if (underCooldown(interaction.user.id, parsed.id)) {
     await respondEphemeral(interaction, "Подождите пару секунд.");
+    return true;
+  }
+
+  // «Продолжить» of a multi-step form carries the form id itself, not a stored button action.
+  if (parsed.action === "form.step") {
+    await handleFormStep(interaction, parsed.id);
     return true;
   }
 

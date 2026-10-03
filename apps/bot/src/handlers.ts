@@ -16,6 +16,7 @@ import {
   checkDiscordLimits,
   discordIdentity,
   embedSpecSchema,
+  formatFormValue,
   formatPersonnelDetailsText,
   formatRoleMentions,
   getSetting,
@@ -1340,11 +1341,14 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
   }
 
   const values = (submission.values ?? {}) as Record<string, unknown>;
-  const fields = form.fields.map((field) => ({
-    name: field.label.slice(0, 256),
-    value: String(values[field.key] ?? "—").slice(0, 1024) || "—",
-    inline: false,
-  }));
+  // Archived fields are shown only when this (older) answer actually has a value for them.
+  const fields = form.fields
+    .filter((field) => field.status === RecordStatus.ACTIVE || field.key in values)
+    .map((field) => ({
+      name: field.label.slice(0, 256),
+      value: formatFormValue(values[field.key]).slice(0, 1024),
+      inline: false,
+    }));
   const classic: ClassicEmbed = {
     type: "embed",
     title: `Ответ: ${form.name}`.slice(0, 256),
@@ -1355,7 +1359,9 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log }) => {
         name: "Автор",
         value: submission.authorDiscordId
           ? `<@${submission.authorDiscordId}> (${submission.authorDiscordId})`
-          : "аноним",
+          : submission.source === "web"
+            ? "с сайта, без входа"
+            : "аноним",
         inline: true,
       },
       { name: "ID ответа", value: submission.id, inline: true },
