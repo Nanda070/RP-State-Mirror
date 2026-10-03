@@ -214,3 +214,194 @@ model AuditLogArchive {
 
   @@map("audit_log_archive")
 }
+
+// ──────────────────────────────────────────────────────────────
+// Embed manager & button engine
+// ──────────────────────────────────────────────────────────────
+
+/// Saved embed / Components V2 design template.
+model MessageDesign {
+  id           String        @id @default(cuid())
+  name         String
+  description  String?
+  /// Full EmbedSpec JSON: { version, embeds } or { version:2, components }
+  spec         Json
+  status       RecordStatus  @default(ACTIVE)
+  createdById  String?       @map("created_by_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  sentMessages SentMessage[] @relation("DesignMessages")
+
+  @@map("message_designs")
+}
+
+/// Record of a message actually sent to Discord by the bot.
+model SentMessage {
+  id               String           @id @default(cuid())
+  guildDiscordId   String           @map("guild_discord_id")
+  channelDiscordId String           @map("channel_discord_id")
+  messageDiscordId String           @map("message_discord_id")
+  designId         String?          @map("design_id")
+  design           MessageDesign?   @relation("DesignMessages", fields: [designId], references: [id])
+  /// Snapshot of the spec at send time (may differ from design after edits).
+  spec             Json
+  status           RecordStatus     @default(ACTIVE)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  links            SentMessageLink[]
+
+  @@unique([channelDiscordId, messageDiscordId])
+  @@index([guildDiscordId])
+  @@map("sent_messages")
+}
+
+/// Persistent button action: custom_id = "mirror:<action>:<id>".
+/// Keeps working after bot restarts because params live in the DB.
+model ButtonAction {
+  id        String       @id @default(cuid())
+  /// Action identifier, e.g. "wanted.close", "role.toggle".
+  action    String
+  params    Json         @default("{}")
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@index([action, status])
+  @@map("button_actions")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Documents
+// ──────────────────────────────────────────────────────────────
+
+model Document {
+  id              String             @id @default(cuid())
+  number          String             @unique
+  factionCode     String             @map("faction_code")
+  authorDiscordId String             @map("author_discord_id")
+  subject         String
+  content         String
+  status          RecordStatus       @default(ACTIVE)
+  expiresAt       DateTime?          @map("expires_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  sentMessages    SentMessageLink[]  @relation("DocumentMessages")
+  responses       DocumentResponse[]
+
+  @@index([factionCode, status])
+  @@index([authorDiscordId])
+  @@map("documents")
+}
+
+model DocumentResponse {
+  id              String           @id @default(cuid())
+  documentId      String           @map("document_id")
+  document        Document         @relation(fields: [documentId], references: [id])
+  authorDiscordId String           @map("author_discord_id")
+  content         String
+  status          RecordStatus     @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  sentMessages    SentMessageLink[] @relation("ResponseMessages")
+
+  @@index([documentId])
+  @@map("document_responses")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Federal wanted
+// ──────────────────────────────────────────────────────────────
+
+model Wanted {
+  id                String           @id @default(cuid())
+  number            String           @unique
+  staticId          String           @map("static_id")
+  characterName     String           @map("character_name")
+  reason            String
+  issuedByDiscordId String           @map("issued_by_discord_id")
+  closedByDiscordId String?          @map("closed_by_discord_id")
+  evidence          String?
+  status            RecordStatus     @default(ACTIVE)
+  expiresAt         DateTime?        @map("expires_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  sentMessages      SentMessageLink[] @relation("WantedMessages")
+
+  @@index([staticId])
+  @@index([status])
+  @@map("wanteds")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Fines
+// ──────────────────────────────────────────────────────────────
+
+model Fine {
+  id                String           @id @default(cuid())
+  number            String           @unique
+  staticId          String           @map("static_id")
+  characterName     String           @map("character_name")
+  amount            Int
+  reason            String
+  issuedByDiscordId String           @map("issued_by_discord_id")
+  factionCode       String           @map("faction_code")
+  paidAt            DateTime?        @map("paid_at")
+  paidByDiscordId   String?          @map("paid_by_discord_id")
+  status            RecordStatus     @default(ACTIVE)
+  dueAt             DateTime?        @map("due_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  sentMessages      SentMessageLink[] @relation("FineMessages")
+
+  @@index([staticId])
+  @@index([status])
+  @@index([factionCode])
+  @@map("fines")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Personnel events (кадровый аудит)
+// ──────────────────────────────────────────────────────────────
+
+/// Type values: promotion | dismissal | transfer | reinstatement | appointment
+model PersonnelEvent {
+  id               String           @id @default(cuid())
+  factionCode      String           @map("faction_code")
+  type             String
+  subjectDiscordId String           @map("subject_discord_id")
+  subjectName      String           @map("subject_name")
+  actorDiscordId   String           @map("actor_discord_id")
+  details          Json             @default("{}")
+  status           RecordStatus     @default(ACTIVE)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  sentMessages     SentMessageLink[] @relation("PersonnelMessages")
+
+  @@index([factionCode])
+  @@index([subjectDiscordId])
+  @@map("personnel_events")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Polymorphic link: sent_messages ↔ module entities
+// (avoids nullable FK explosion on SentMessage)
+// ──────────────────────────────────────────────────────────────
+
+model SentMessageLink {
+  id              String          @id @default(cuid())
+  sentMessageId   String          @map("sent_message_id")
+  sentMessage     SentMessage     @relation(fields: [sentMessageId], references: [id])
+  documentId      String?         @map("document_id")
+  document        Document?       @relation("DocumentMessages", fields: [documentId], references: [id])
+  responseId      String?         @map("response_id")
+  response        DocumentResponse? @relation("ResponseMessages", fields: [responseId], references: [id])
+  wantedId        String?         @map("wanted_id")
+  wanted          Wanted?         @relation("WantedMessages", fields: [wantedId], references: [id])
+  fineId          String?         @map("fine_id")
+  fine            Fine?           @relation("FineMessages", fields: [fineId], references: [id])
+  personnelId     String?         @map("personnel_id")
+  personnelEvent  PersonnelEvent? @relation("PersonnelMessages", fields: [personnelId], references: [id])
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  @@index([sentMessageId])
+  @@map("sent_message_links")
+}

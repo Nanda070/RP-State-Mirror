@@ -37,6 +37,9 @@ client.once(Events.ClientReady, (ready) => {
   log.info({ user: ready.user.tag, guilds: ready.guilds.cache.size }, "connected to Discord");
   guarded("ready", async () => {
     await syncAllGuilds(ready, log);
+    const { registerCommands } = await import("./commands.js");
+    await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
+    log.info({ commands: 7 }, "slash commands registered");
     worker.start();
     reconcileTimer = setInterval(() => guarded("reconcile", () => syncAllGuilds(ready, log)), RECONCILE_INTERVAL_MS);
   });

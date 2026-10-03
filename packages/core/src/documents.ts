@@ -1,0 +1,142 @@
+/**
+ * Document module: /пост and /ответ.
+ *
+ * Document numbers are per-faction, auto-incremented by finding the max
+ * existing number for that faction. The TTL is read from system settings.
+ */
+import { RecordStatus, prisma } from "@mirror/db";
+import { z } from "zod";
+import { auditedMutation, type AuditContext } from "./audit.js";
+import { type Db } from "./db.js";
+import { getSetting } from "./settings.js";
+
+// ──────────────────────────────────────────────────────────────
+// Input schemas
+// ──────────────────────────────────────────────────────────────
+
+export const createDocumentSchema = z.object({
+  factionCode: z.string().min(1).max(32),
+  authorDiscordId: z.string().min(1),
+  subject: z.string().min(1).max(256),
+  content: z.string().min(1).max(4000),
+});
+export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
+
+export const createDocumentResponseSchema = z.object({
+  documentNumber: z.string().min(1),
+  authorDiscordId: z.string().min(1),
+  content: z.string().min(1).max(4000),
+});
+export type CreateDocumentResponseInput = z.infer<typeof createDocumentResponseSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Number generation
+// ──────────────────────────────────────────────────────────────
+
+async function nextDocumentNumber(factionCode: string, db: Db): Promise<string> {
+  const prefix = `${factionCode}-`;
+  const last = await db.document.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { createdAt: "desc" },
+    select: { number: true },
+  });
+  let seq = 1;
+  if (last) {
+    const n = Number.parseInt(last.number.slice(prefix.length), 10);
+    if (Number.isFinite(n)) seq = n + 1;
+  }
+  return `${prefix}${String(seq).padStart(3, "0")}`;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Mutations
+// ──────────────────────────────────────────────────────────────
+
+export async function createDocument(input: CreateDocumentInput, context: AuditContext) {
+  const data = createDocumentSchema.parse(input);
+  const ttlHours = await getSetting("documents.ttlHours");
+  const expiresAt = new Date(Date.now() + ttlHours * 3_600_000);
+
+  return auditedMutation(context, "document.created", "document", async (tx) => {
+    const number = await nextDocumentNumber(data.factionCode, tx);
+    const doc = await tx.document.create({
+      data: {
+        number,
+        factionCode: data.factionCode,
+        authorDiscordId: data.authorDiscordId,
+        subject: data.subject,
+        content: data.content,
+        expiresAt,
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    return { entityId: doc.id, after: doc, result: doc };
+  });
+}
+
+export async function createDocumentResponse(input: CreateDocumentResponseInput, context: AuditContext) {
+  const data = createDocumentResponseSchema.parse(input);
+
+  return auditedMutation(context, "document_response.created", "document_response", async (tx) => {
+    const doc = await tx.document.findUnique({ where: { number: data.documentNumber } });
+    if (!doc || doc.status !== RecordStatus.ACTIVE) {
+      throw new Error(`Документ ${data.documentNumber} не найден или не активен`);
+    }
+
+    const response = await tx.documentResponse.create({
+      data: {
+        documentId: doc.id,
+        authorDiscordId: data.authorDiscordId,
+        content: data.content,
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    return { entityId: response.id, after: response, result: { response, document: doc } };
+  });
+}
+
+export async function expireDocuments() {
+  const now = new Date();
+  const { count } = await prisma.document.updateMany({
+    where: { status: RecordStatus.ACTIVE, expiresAt: { lte: now } },
+    data: { status: RecordStatus.EXPIRED },
+  });
+  return count;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Queries
+// ──────────────────────────────────────────────────────────────
+
+export async function getDocumentByNumber(number: string) {
+  return prisma.document.findUnique({
+    where: { number },
+    include: { responses: { where: { status: RecordStatus.ACTIVE }, orderBy: { createdAt: "asc" } } },
+  });
+}
+
+export interface ListDocumentsFilter {
+  factionCode?: string;
+  status?: RecordStatus;
+  authorDiscordId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listDocuments(filter: ListDocumentsFilter = {}) {
+  const where = {
+    ...(filter.factionCode ? { factionCode: filter.factionCode } : {}),
+    ...(filter.status ? { status: filter.status } : {}),
+    ...(filter.authorDiscordId ? { authorDiscordId: filter.authorDiscordId } : {}),
+  };
+  const [total, items] = await Promise.all([
+    prisma.document.count({ where }),
+    prisma.document.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: filter.limit ?? 50,
+      skip: filter.offset ?? 0,
+    }),
+  ]);
+  return { total, items };
+}

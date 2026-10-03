@@ -28,6 +28,9 @@ export const settingDefinitions = {
     "Порог свободных номеров нашивок для перехода на следующую длину, %",
   ),
   "backups.retentionDays": defineSetting(z.number().int().positive(), 14, "Срок хранения бэкапов, дни"),
+  "fines.dueDays": defineSetting(z.number().int().positive(), 14, "Срок оплаты штрафа, дни"),
+  "wanted.enabled": defineSetting(z.boolean(), true, "Модуль розыска включён"),
+  "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
 };
 
 export type SettingKey = keyof typeof settingDefinitions;

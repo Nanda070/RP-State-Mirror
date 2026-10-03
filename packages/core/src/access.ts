@@ -53,6 +53,30 @@ export function isStaffIdentity(identity: Pick<Identity, "adminLevel">): boolean
   return identity.adminLevel !== null;
 }
 
+/**
+ * Can view and manage bot module records (documents, wanted, fines, personnel).
+ * PLAN: Администратор и выше.
+ */
+export function canManageModules(identity: Pick<Identity, "adminLevel" | "isSuperAdmin">): boolean {
+  return identity.isSuperAdmin || hasMinAdminLevel(identity, AdminLevel.ADMIN);
+}
+
+/**
+ * Can view module records (read-only).
+ * PLAN: Хелпер и выше.
+ */
+export function canViewModules(identity: Pick<Identity, "adminLevel" | "isSuperAdmin">): boolean {
+  return identity.isSuperAdmin || hasMinAdminLevel(identity, AdminLevel.HELPER);
+}
+
+/**
+ * Can close wanted / mark fines paid from the dashboard.
+ * Same as ADMIN+ but exposed separately for clarity.
+ */
+export function canActOnModuleRecord(identity: Pick<Identity, "adminLevel" | "isSuperAdmin">): boolean {
+  return canManageModules(identity);
+}
+
 export const ADMIN_LEVEL_LABELS_RU: Record<AdminLevel, string> = {
   [AdminLevel.SUPER_ADMIN]: "Главный администратор",
   [AdminLevel.SENIOR_ADMIN]: "Старший администратор",

@@ -29,6 +29,7 @@ export const baseEnvSchema = z.object({
 
 export const botEnvSchema = baseEnvSchema.extend({
   DISCORD_BOT_TOKEN: z.string().min(1),
+  DISCORD_CLIENT_ID: snowflakeSchema,
 });
 
 export const dashboardEnvSchema = baseEnvSchema.extend({
