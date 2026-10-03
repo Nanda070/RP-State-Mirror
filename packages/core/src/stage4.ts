@@ -551,6 +551,8 @@ export const createWebhookRequestSchema = z.object({
   guildDiscordId: snowflakeLike,
   channelDiscordId: snowflakeLike,
   description: nonEmptyText(2000),
+  /** Discord webhook URL created by the bot; omit only for tests / deferred creation. */
+  webhookUrl: z.string().url().optional(),
 });
 
 export async function createWebhookRequest(
@@ -559,7 +561,15 @@ export async function createWebhookRequest(
 ) {
   const data = createWebhookRequestSchema.parse(input);
   return auditedMutation(context, "webhook_request.created", "webhook_request", async (tx) => {
-    const request = await tx.webhookRequest.create({ data });
+    const request = await tx.webhookRequest.create({
+      data: {
+        requesterDiscordId: data.requesterDiscordId,
+        guildDiscordId: data.guildDiscordId,
+        channelDiscordId: data.channelDiscordId,
+        description: data.description,
+        webhookUrl: data.webhookUrl ?? null,
+      },
+    });
     return { entityId: request.id, after: request, result: request };
   });
 }

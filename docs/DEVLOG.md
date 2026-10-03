@@ -1,5 +1,23 @@
 # Mirror: dev blog
 
+## 2026-10-03: этап 4 — реальное создание webhook (§4.7)
+
+### Цель
+
+`/создать-webhook` создаёт Discord webhook, сохраняет URL и уведомляет админов.
+
+### Что сделано
+
+- бот проверяет Manage Webhooks, создаёт webhook «Mirror form», пишет `webhook_requests.webhook_url`;
+- при ошибке записи в БД — откат (удаление) Discord webhook;
+- уведомление в `webhooks.notifyChannelId` (без публикации секрета URL в канал).
+
+### Проверка
+
+- `pnpm check`, `pnpm lint`, `pnpm test`, `pnpm db:status` — см. коммит.
+
+Этап 4 остаётся **в работе**.
+
 ## 2026-10-03: этап 4 — `/token find` и статики (§4.4)
 
 ### Цель

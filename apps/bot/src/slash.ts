@@ -3,6 +3,7 @@
  * Mutations go through core APIs; Discord delivery is enqueued as jobs.
  */
 import {
+  PermissionFlagsBits,
   type Attachment,
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
@@ -538,17 +539,82 @@ async function handleWebhookRequest(interaction: ChatInputCommandInteraction, ct
     await interaction.reply(ephemeral("Запрос webhook доступен сотрудникам фракций и администраторам."));
     return;
   }
-  const channel = interaction.options.getChannel("канал", true);
-  const request = await createWebhookRequest(
-    {
-      requesterDiscordId: interaction.user.id,
-      guildDiscordId: interaction.guildId,
-      channelDiscordId: channel.id,
-      description: interaction.options.getString("описание", true),
-    },
-    auditFromInteraction(interaction),
-  );
-  await interaction.reply(ephemeral(`Запрос webhook **${request.id}** принят админами.`));
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const channelRef = interaction.options.getChannel("канал", true);
+  const description = interaction.options.getString("описание", true);
+  const channel = await interaction.client.channels.fetch(channelRef.id);
+  if (!channel || !channel.isTextBased() || channel.isDMBased() || !("createWebhook" in channel)) {
+    await interaction.editReply("Укажите текстовый канал сервера, в котором бот может создать webhook.");
+    return;
+  }
+  const me = channel.guild.members.me ?? (await channel.guild.members.fetchMe());
+  if (!channel.permissionsFor(me)?.has(PermissionFlagsBits.ManageWebhooks)) {
+    await interaction.editReply("У бота нет права **Manage Webhooks** в этом канале.");
+    return;
+  }
+
+  let created: { id: string; url: string };
+  try {
+    const webhook = await channel.createWebhook({
+      name: "Mirror form",
+      reason: `Запрос формы от ${interaction.user.tag}: ${description.slice(0, 200)}`,
+    });
+    created = { id: webhook.id, url: webhook.url };
+  } catch (error) {
+    ctx.log.warn({ err: error, channelId: channel.id }, "discord webhook create failed");
+    await interaction.editReply("Не удалось создать webhook в Discord. Проверьте права бота и лимит вебхуков канала.");
+    return;
+  }
+
+  try {
+    const request = await createWebhookRequest(
+      {
+        requesterDiscordId: interaction.user.id,
+        guildDiscordId: interaction.guildId,
+        channelDiscordId: channel.id,
+        description,
+        webhookUrl: created.url,
+      },
+      auditFromInteraction(interaction),
+    );
+
+    const notifyChannelId = await getSetting("webhooks.notifyChannelId");
+    if (notifyChannelId) {
+      try {
+        const notify = await interaction.client.channels.fetch(notifyChannelId);
+        if (notify?.isTextBased() && !notify.isDMBased() && "send" in notify) {
+          await notify.send({
+            content: [
+              "**Новый запрос формы** — нужно собрать форму в конструкторе.",
+              `Заявитель: <@${interaction.user.id}>`,
+              `Канал: <#${channel.id}>`,
+              `Описание: ${description.slice(0, 500)}`,
+              `ID запроса: \`${request.id}\``,
+              `Webhook Discord ID: \`${created.id}\` (URL сохранён в системе).`,
+            ].join("\n"),
+            allowedMentions: { parse: [], users: [interaction.user.id] },
+          });
+        }
+      } catch (error) {
+        ctx.log.warn({ err: error, notifyChannelId }, "webhook request admin notify failed");
+      }
+    }
+
+    await interaction.editReply(
+      notifyChannelId
+        ? `Webhook создан в <#${channel.id}>, запрос \`${request.id}\` отправлен админам. Форму соберут в дашборде.`
+        : `Webhook создан в <#${channel.id}>, запрос \`${request.id}\` сохранён. Настройте \`webhooks.notifyChannelId\`, чтобы админы получали уведомления.`,
+    );
+  } catch (error) {
+    // Best-effort cleanup so a failed DB write does not leave an orphan Discord webhook.
+    await interaction.client
+      .fetchWebhook(created.id)
+      .then((hook) => hook.delete("Откат: не удалось сохранить запрос Mirror"))
+      .catch((cleanupError: unknown) =>
+        ctx.log.warn({ err: cleanupError, webhookId: created.id }, "failed to delete orphan discord webhook"),
+      );
+    throw error;
+  }
 }
 
 async function handleIcBlacklist(interaction: ChatInputCommandInteraction, ctx: SlashHandlerContext) {

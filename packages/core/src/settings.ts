@@ -80,6 +80,11 @@ export const settingDefinitions = {
     "Ваш перевод одобрен обеими сторонами. Можете подойти в холл на собеседование.",
     "Текст ЛС игроку после одобрения перевода обеими фракциями",
   ),
+  "webhooks.notifyChannelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал уведомлений админам о новых запросах форм (/создать-webhook)",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
