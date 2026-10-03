@@ -2,7 +2,7 @@ import { getPublishedLegal } from "@mirror/core";
 import { Markdown } from "@/components/markdown";
 import Link from "next/link";
 import { LegalContact, LegalLayout } from "@/components/legal-layout";
-import { legalOperator } from "@/lib/legal";
+import { LEGAL_OPERATOR } from "@/lib/legal";
 
 export const metadata = { title: "Условия использования " };
 export const dynamic = "force-dynamic";
@@ -16,14 +16,13 @@ export default async function TermsPage() {
       </LegalLayout>
     );
   }
-  const operator = legalOperator();
   return (
     <LegalLayout current="/terms" title="Условия использования">
       <h2>1. О сервисе</h2>
       <p>
         Mirror — это сайт (дашборд) и Discord-бот для государственных фракций игрового проекта GTA5RP: учёт
         документов, розыска и штрафов, нашивок, регистраций транспорта и униформы, переводов между фракциями,
-        кадровых событий и обращений. Сервисом управляет {operator.name} (далее — «администрация»).
+        кадровых событий и обращений. Сервисом управляет {LEGAL_OPERATOR} (далее — «администрация»).
       </p>
       <p>
         Сервис неофициальный: он не принадлежит и не одобрен Rockstar Games, Take-Two Interactive, проектом
@@ -84,7 +83,7 @@ export default async function TermsPage() {
       <p>
         При нарушении этих условий или правил проекта администрация может отклонить заявку, отозвать запись,
         завершить ваши сессии или выдать технический бан — запрет пользоваться ботом и сайтом (по аккаунту
-        Discord) либо подавать заявки (по статику). Бан можно обжаловать: обратитесь <LegalContact email={operator.email} />,
+        Discord) либо подавать заявки (по статику). Бан можно обжаловать: обратитесь <LegalContact />,
         указав свой Discord ID и обстоятельства. Обращение рассматривает администрация проекта.
       </p>
 
@@ -109,16 +108,9 @@ export default async function TermsPage() {
         пользоваться сервисом после этой даты, вы принимаете новую редакцию.
       </p>
 
-      {operator.law ? (
-        <>
-          <h2>11. Применимое право</h2>
-          <p>К этим условиям применяется {operator.law}. Споры сначала решаются обращением к администрации.</p>
-        </>
-      ) : null}
-
-      <h2>{operator.law ? "12" : "11"}. Связь с администрацией</h2>
+      <h2>11. Связь с администрацией</h2>
       <p>
-        По вопросам об условиях и о работе сервиса обращайтесь <LegalContact email={operator.email} />.
+        По вопросам об условиях и о работе сервиса обращайтесь <LegalContact />.
       </p>
     </LegalLayout>
   );

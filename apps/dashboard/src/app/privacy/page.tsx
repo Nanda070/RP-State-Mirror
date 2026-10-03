@@ -2,7 +2,7 @@ import { getPublishedLegal } from "@mirror/core";
 import { Markdown } from "@/components/markdown";
 import Link from "next/link";
 import { LegalContact, LegalLayout } from "@/components/legal-layout";
-import { legalOperator } from "@/lib/legal";
+import { LEGAL_OPERATOR } from "@/lib/legal";
 
 export const metadata = { title: "Политика конфиденциальности " };
 export const dynamic = "force-dynamic";
@@ -67,12 +67,11 @@ export default async function PrivacyPage() {
       </LegalLayout>
     );
   }
-  const operator = legalOperator();
   return (
     <LegalLayout current="/privacy" title="Политика конфиденциальности">
       <h2>1. Кто обрабатывает данные</h2>
       <p>
-        Оператор данных — {operator.name}. Обратиться по вопросам данных можно <LegalContact email={operator.email} />.
+        Оператор данных — {LEGAL_OPERATOR}. Обратиться по вопросам данных можно <LegalContact />.
       </p>
 
       <h2>2. Какие данные мы обрабатываем и зачем</h2>
@@ -158,7 +157,7 @@ export default async function PrivacyPage() {
         <li>обратиться с жалобой в надзорный орган по защите данных своей страны.</li>
       </ul>
       <p>
-        Чтобы воспользоваться правом, обратитесь <LegalContact email={operator.email} /> с того аккаунта Discord, о
+        Чтобы воспользоваться правом, обратитесь <LegalContact /> с того аккаунта Discord, о
         данных которого идёт речь, — так мы убедимся, что запрос ваш. Ответ даётся в течение 30 дней. Свои
         персонажи, заявки, штрафы и активные сессии вы видите сами в <Link href="/profile">профиле</Link>.
       </p>

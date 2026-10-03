@@ -61,12 +61,6 @@ export function LegalLayout({
 }
 
 /** How to reach the operator, phrased once for all three documents. */
-export function LegalContact({ email }: { email: string | null }) {
-  return email ? (
-    <>
-      по адресу <a href={`mailto:${email}`}>{email}</a> или через раздел «Обратная связь» в Discord
-    </>
-  ) : (
-    <>через раздел «Обратная связь» в Discord (кнопка обращения на сервере проекта)</>
-  );
+export function LegalContact() {
+  return <>через раздел «Обратная связь» в Discord (кнопка обращения на сервере проекта)</>;
 }

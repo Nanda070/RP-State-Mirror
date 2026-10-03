@@ -137,7 +137,6 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `SESSION_SECRET` | дашборд | подпись сессионной cookie, не короче 16 символов |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` | оба | хранилище файлов |
 | `POSTGRES_PASSWORD`, `BACKUP_AT`, `BACKUP_KEEP_DAYS` | Docker Compose | пароль базы и расписание резервных копий (в разработке — значения по умолчанию) |
-| `LEGAL_OPERATOR_NAME`, `LEGAL_CONTACT_EMAIL`, `LEGAL_GOVERNING_LAW` | дашборд | оператор сервиса в юридических текстах |
 | `NEXT_DIST_DIR` | сборка | проверочная сборка в отдельную папку рядом с работающим dev-сервером |
 
 Приложения читают корневой `.env` через `node --env-file-if-exists=../../.env`; на сервере — `--env-file=/opt/mirror/.env` в unit-файлах systemd.
