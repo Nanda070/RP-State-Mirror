@@ -254,13 +254,11 @@ export const characterCommand = new SlashCommandBuilder()
       .addStringOption((o) =>
         o
           .setName("фракция")
-          .setDescription("Код фракции для формата нашивки (необязательно)")
+          .setDescription("Код фракции (необязательно)")
           .setMaxLength(32)
           .setAutocomplete(true),
       )
-      .addStringOption((o) =>
-        o.setName("отдел").setDescription("Отдел для формата нашивки (необязательно)").setMaxLength(128),
-      ),
+      .addStringOption((o) => o.setName("отдел").setDescription("Отдел (необязательно)").setMaxLength(128)),
   )
   .addSubcommand((sub) => sub.setName("список").setDescription("Показать своих персонажей"))
   .addSubcommand((sub) =>
@@ -282,12 +280,7 @@ export const tokenCommand = new SlashCommandBuilder()
         o.setName("статик").setDescription("Статик — единственное поле; персонаж создаётся автоматически").setRequired(true).setMaxLength(32),
       ),
   )
-  .addSubcommand((sub) =>
-    sub
-      .setName("get")
-      .setDescription("Показать номер нашивки")
-      .addStringOption((o) => o.setName("статик").setDescription("Статик персонажа").setRequired(true).setMaxLength(32)),
-  )
+  .addSubcommand((sub) => sub.setName("list").setDescription("Показать все ваши нашивки и даты получения"))
   .addSubcommand((sub) =>
     sub
       .setName("find")

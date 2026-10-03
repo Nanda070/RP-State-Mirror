@@ -6,7 +6,9 @@ import {
   findTokens,
   formatTokenDisplay,
   issueToken,
+  listTokensForUser,
   receiveTokenForStatic,
+  revokeToken,
   updateCharacterStaticId,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
@@ -17,11 +19,9 @@ afterAll(() => prisma.$disconnect());
 const context = { actorType: AuditActorType.SYSTEM, source: "stage4.tokens.test" } as const;
 
 describe("token display and lookup", () => {
-  it("formats the faction badge", () => {
-    expect(formatTokenDisplay({ factionCode: "LSPD", department: "Patrol", number: "1234" })).toBe(
-      "[LSPD | Patrol | 1234]",
-    );
-    expect(formatTokenDisplay({ number: "99" })).toBe("[— | — | 99]");
+  it("displays only the token number", () => {
+    expect(formatTokenDisplay({ number: "1234" })).toBe("1234");
+    expect(formatTokenDisplay("99")).toBe("99");
   });
 
   it("finds by number, static id and discord id", async () => {
@@ -39,10 +39,27 @@ describe("token display and lookup", () => {
     );
     const token = await issueToken(character.id, context);
 
-    expect((await findTokens(token.number))[0]?.display).toBe("[GOV | ОГП | " + token.number + "]");
+    expect((await findTokens(token.number))[0]?.display).toBe(token.number);
     expect((await findTokens("S-700"))[0]?.ownerDiscordId).toBe(user.discordId);
     expect((await findTokens(user.discordId))[0]?.character.staticId).toBe("S-700");
     expect(await findTokens("missing")).toEqual([]);
+  });
+
+  it("lists all badges for a user with issued dates", async () => {
+    const user = await prisma.user.create({ data: { discordId: "705000000000000001" } });
+    const character = await createCharacter(
+      { userId: user.id, slot: 1, staticId: "S-705", name: "List Me" },
+      context,
+    );
+    const first = await issueToken(character.id, context);
+    await revokeToken(first.number, context);
+    const second = await issueToken(character.id, context);
+
+    const listed = await listTokensForUser(user.id);
+    expect(listed.map((item) => item.display)).toEqual([second.number, first.number]);
+    expect(listed[0]?.token.status).toBe(RecordStatus.ACTIVE);
+    expect(listed[1]?.token.status).toBe(RecordStatus.REVOKED);
+    expect(listed[0]?.token.issuedAt).toBeInstanceOf(Date);
   });
 
   it("lets admins rename a static and keeps archived ones free", async () => {

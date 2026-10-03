@@ -88,15 +88,51 @@ export async function getCharacterForUser(userId: string, staticId: string) {
   });
 }
 
-/** Faction badge for token get/find: `[LSPD | Отдел | 1234]`. */
-export function formatTokenDisplay(input: {
-  factionCode?: string | null;
-  department?: string | null;
-  number: string;
-}): string {
-  const faction = input.factionCode?.trim() || "—";
-  const department = input.department?.trim() || "—";
-  return `[${faction} | ${department} | ${input.number}]`;
+/** Badge display is the token number only (no faction/department prefix). */
+export function formatTokenDisplay(input: { number: string } | string): string {
+  return typeof input === "string" ? input : input.number;
+}
+
+const TOKEN_STATUS_LABEL_RU: Record<RecordStatus, string> = {
+  ACTIVE: "активна",
+  CLOSED: "закрыта",
+  EXPIRED: "истекла",
+  REVOKED: "отозвана",
+  ARCHIVED: "в архиве",
+};
+
+export function tokenStatusLabelRu(status: RecordStatus): string {
+  return TOKEN_STATUS_LABEL_RU[status] ?? status;
+}
+
+export type UserTokenListItem = {
+  token: { id: string; number: string; status: RecordStatus; issuedAt: Date; revokedAt: Date | null };
+  character: { id: string; name: string; staticId: string };
+  display: string;
+};
+
+/** All badges ever issued to the user's characters (active + revoked), newest first. */
+export async function listTokensForUser(userId: string): Promise<UserTokenListItem[]> {
+  const tokens = await prisma.token.findMany({
+    where: { character: { userId } },
+    include: {
+      character: {
+        select: { id: true, name: true, staticId: true },
+      },
+    },
+    orderBy: { issuedAt: "desc" },
+  });
+  return tokens.map((token) => ({
+    token: {
+      id: token.id,
+      number: token.number,
+      status: token.status,
+      issuedAt: token.issuedAt,
+      revokedAt: token.revokedAt,
+    },
+    character: token.character,
+    display: formatTokenDisplay(token.number),
+  }));
 }
 
 export const updateCharacterStaticSchema = z.object({
@@ -191,11 +227,7 @@ export async function findTokens(query: string): Promise<TokenLookupResult[]> {
         rank: token.character.rank,
       },
       ownerDiscordId: token.character.user.discordId,
-      display: formatTokenDisplay({
-        factionCode: token.character.factionCode,
-        department: token.character.department,
-        number: token.number,
-      }),
+      display: formatTokenDisplay(token.number),
     });
   }
   return results;

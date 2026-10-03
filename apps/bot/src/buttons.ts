@@ -426,7 +426,7 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     const { user } = await ensureUserByDiscordId(interaction.user.id);
     const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
     const factionCode = identity.factions[0]?.code;
-    const { character, token } = await receiveTokenForStatic(
+    const { token } = await receiveTokenForStatic(
       {
         userId: user.id,
         staticId,
@@ -434,15 +434,7 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
       },
       auditContext(interaction, "discord.modal"),
     );
-    await interaction.reply(
-      ephemeral(
-        `Выдан номер нашивки: **${formatTokenDisplay({
-          factionCode: character.factionCode,
-          department: character.department,
-          number: token.number,
-        })}**.`,
-      ),
-    );
+    await interaction.reply(ephemeral(`Выдан номер нашивки: **${formatTokenDisplay(token.number)}**.`));
     return true;
   }
   return false;

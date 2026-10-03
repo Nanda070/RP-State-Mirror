@@ -33,6 +33,8 @@ import {
   findTokens,
   formatTokenDisplay,
   listActiveIcBlacklistForStatics,
+  listTokensForUser,
+  tokenStatusLabelRu,
   createDocument,
   createDocumentResponse,
   createFine,
@@ -411,13 +413,7 @@ async function handleCharacter(interaction: ChatInputCommandInteraction, ctx: Sl
                 character.factionCode || character.department
                   ? `${character.factionCode ?? "—"} / ${character.department ?? "—"}`
                   : null,
-                token
-                  ? `нашивка ${formatTokenDisplay({
-                      factionCode: character.factionCode,
-                      department: character.department,
-                      number: token.number,
-                    })}`
-                  : null,
+                token ? `нашивка ${formatTokenDisplay(token.number)}` : null,
                 bl ? `⚠ в IC чёрном списке (${bl.number})` : null,
               ]
                 .filter(Boolean)
@@ -468,32 +464,35 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     return;
   }
 
-  const staticId = interaction.options.getString("статик", true);
-  if (subcommand === "get") {
-    const character = await getCharacterForUser(user.id, staticId);
-    if (!character) {
-      await interaction.reply(ephemeral("Персонаж с таким статиком не найден в вашем профиле."));
+  if (subcommand === "list") {
+    const items = await listTokensForUser(user.id);
+    if (items.length === 0) {
+      await interaction.reply(ephemeral("У вас пока нет нашивок."));
       return;
     }
-    const token = character.tokens[0];
+    const dateOpts = { timeZone: "Europe/Moscow" } as const;
     await interaction.reply(
       ephemeral(
-        token
-          ? `Нашивка: **${formatTokenDisplay({
-              factionCode: character.factionCode,
-              department: character.department,
-              number: token.number,
-            })}**`
-          : "У персонажа ещё нет нашивки.",
+        items
+          .map((item) => {
+            const received = item.token.issuedAt.toLocaleDateString("ru-RU", dateOpts);
+            const status =
+              item.token.status === "ACTIVE" ? null : `статус: ${tokenStatusLabelRu(item.token.status)}`;
+            return [`**${item.display}**`, [`Получена: ${received}`, status].filter(Boolean).join(" · ")].join(
+              "\n",
+            );
+          })
+          .join("\n\n"),
       ),
     );
     return;
   }
 
   // receive — create character from static if needed, then issue badge
+  const staticId = interaction.options.getString("статик", true);
   const identity = await loadIdentity(interaction.user.id, ctx);
   const factionCode = primaryFactionCode(identity);
-  const { character, token } = await receiveTokenForStatic(
+  const { token } = await receiveTokenForStatic(
     {
       userId: user.id,
       staticId,
@@ -501,15 +500,7 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
     },
     auditFromInteraction(interaction),
   );
-  await interaction.reply(
-    ephemeral(
-      `Выдан номер нашивки: **${formatTokenDisplay({
-        factionCode: character.factionCode,
-        department: character.department,
-        number: token.number,
-      })}**.`,
-    ),
-  );
+  await interaction.reply(ephemeral(`Выдан номер нашивки: **${formatTokenDisplay(token.number)}**.`));
 }
 
 /** Validates a slash attachment as an image ≤ 10 MB and stores it in media_files. */
