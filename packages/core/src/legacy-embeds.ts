@@ -7,7 +7,7 @@
  * as a field when the Python bot did the same.
  */
 import type { ClassicEmbed } from "./embeds.js";
-import { normalizeLinkOrText, spoilerLink } from "./text.js";
+import { formatMoney, normalizeLinkOrText, spoilerLink } from "./text.js";
 
 // ──────────────────────────────────────────────────────────────
 // Colors (embeds.py)
@@ -292,7 +292,7 @@ export function makeFineEmbed(input: {
         `**ФИО:** ${input.fio}`,
         `**Паспорт:** ${input.passport}`,
         `**Статья:** ${input.article}`,
-        `**Сумма штрафа:** ${input.amount}`,
+        `**Сумма штрафа:** ${formatMoney(input.amount)}`,
         `**Срок оплаты:** ${input.paymentDeadlineText}`,
       ].join("\n"),
       author: {
@@ -321,7 +321,7 @@ export function makeFinePaidEmbed(input: {
         `**Номер штрафа:** ${input.fineNumber}`,
         `**ФИО:** ${input.fio}`,
         `**Паспорт:** ${input.passport}`,
-        `**Сумма:** ${input.amount}`,
+        `**Сумма:** ${formatMoney(input.amount)}`,
         `**Оплату зарегистрировал:** ${discordIdentity(actor.displayName, actor.username)}`,
       ].join("\n"),
       author: {
@@ -348,7 +348,7 @@ export function makeFineOverdueEmbed(input: {
         `**ФИО:** ${fine.fio}`,
         `**Паспорт:** ${fine.passport}`,
         `**Статья:** ${fine.article}`,
-        `**Сумма штрафа:** ${fine.amount}`,
+        `**Сумма штрафа:** ${formatMoney(fine.amount)}`,
         `**Срок оплаты истёк:** ${fine.paymentDeadlineText}`,
         `**Штраф выписал:** ${fine.createdByDisplayName} (${fine.createdByUsername})`,
       ].join("\n"),

@@ -25,6 +25,7 @@ import {
   enqueuePersonnelPublish,
   enqueueWantedEditClosed,
   enqueueWantedPublish,
+  formatMoney,
   getActiveFactionByCode,
   getDocumentByNumber,
   getSetting,
@@ -416,7 +417,7 @@ async function handleFineCreate(interaction: ChatInputCommandInteraction, ctx: S
   await enqueueFinePublish(fine.id);
   const target = await resolveFineDelivery(factionCode);
   await interaction.editReply(
-    `Штраф **${fine.number}** на ${fine.amount.toLocaleString("ru-RU")} ₽ создан.\n${deliveryDeferredMessage(target)}`,
+    `Штраф **${fine.number}** на ${formatMoney(fine.amount)} создан.\n${deliveryDeferredMessage(target)}`,
   );
 }
 

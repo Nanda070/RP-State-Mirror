@@ -1,4 +1,4 @@
-import { canViewModules, listFines } from "@mirror/core";
+import { canViewModules, formatMoney, listFines } from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -56,7 +56,7 @@ export default async function FinesRegistryPage() {
                     </td>
                     <td>{row.staticId}</td>
                     <td>{row.characterName}</td>
-                    <td>{row.amount.toLocaleString("ru-RU")} ₽</td>
+                    <td>{formatMoney(row.amount)}</td>
                     <td>{row.factionCode}</td>
                     <td>
                       <span

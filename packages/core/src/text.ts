@@ -49,3 +49,13 @@ export function spoilerLink(url: string): string {
   if (!text) return "Не указано";
   return `||${text}||`;
 }
+
+/**
+ * Format a server money amount in USD for Russian UI copy.
+ * Example: `5000` → `$5 000`.
+ */
+export function formatMoney(amount: string | number): string {
+  const n = typeof amount === "number" ? amount : Number(String(amount).replace(/\s/g, ""));
+  if (!Number.isFinite(n)) return String(amount);
+  return `$${Math.trunc(n).toLocaleString("ru-RU")}`;
+}

@@ -190,7 +190,7 @@ describe("legacy embed builders", () => {
     expect(fine.color).toBe(COLOR_FINE);
     expect(fine.title).toBe("Новый штраф от Иван");
     expect(fine.description).toContain("**Уведомляемая фракция:** LSPD");
-    expect(fine.description).toContain("**Сумма штрафа:** 5000");
+    expect(fine.description).toContain("**Сумма штрафа:** $5\u00a0000");
     expect(fine.fields).toBeUndefined();
 
     const paid = makeFinePaidEmbed({
@@ -203,7 +203,7 @@ describe("legacy embed builders", () => {
     });
     expect(paid.color).toBe(COLOR_FINE_PAID);
     expect(paid.title).toBe("Штраф оплачен");
-    expect(paid.description).toContain("**Сумма:** 5000");
+    expect(paid.description).toContain("**Сумма:** $5\u00a0000");
 
     const overdue = makeFineOverdueEmbed({
       fine: {

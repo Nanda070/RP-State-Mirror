@@ -172,7 +172,7 @@ export const fineCommand = factionOption(
     o.setName("статья").setDescription("Статья / основание").setRequired(true).setMaxLength(1000),
   )
   .addIntegerOption((o) =>
-    o.setName("сумма").setDescription("Сумма штрафа (целое число > 0)").setRequired(true).setMinValue(1),
+    o.setName("сумма").setDescription("Сумма штрафа в долларах (целое число > 0)").setRequired(true).setMinValue(1),
   )
   .addStringOption((o) =>
     o
