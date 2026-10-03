@@ -112,6 +112,28 @@ export function canActOnModuleRecord(identity: Pick<Identity, "adminLevel" | "is
   return canManageModules(identity);
 }
 
+/** Registration review: module admins or holders of configured coordinator roles. */
+export function canReviewRegistrationAccess(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
+  heldRoleIds: readonly string[],
+  coordinatorRoleIds: readonly string[],
+): boolean {
+  if (canManageModules(identity)) return true;
+  return holdsAnyRole(heldRoleIds, coordinatorRoleIds);
+}
+
+/** Transfer side decision: module admins or leader/deputy of that faction. */
+export function canDecideTransferSide(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin" | "factions">,
+  factionCode: string,
+): boolean {
+  if (canManageModules(identity)) return true;
+  const code = factionCode.trim().toUpperCase();
+  if (!code) return false;
+  const faction = identity.factions.find((item) => item.code.toUpperCase() === code);
+  return Boolean(faction?.isLeader || faction?.isDeputy);
+}
+
 export const ADMIN_LEVEL_LABELS_RU: Record<AdminLevel, string> = {
   [AdminLevel.SUPER_ADMIN]: "Главный администратор",
   [AdminLevel.SENIOR_ADMIN]: "Старший администратор",

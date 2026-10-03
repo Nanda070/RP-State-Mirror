@@ -4,8 +4,10 @@ import {
   buildStatusBadge,
   canAccessAdminArea,
   canBootstrapDashboard,
+  canDecideTransferSide,
   canManageSystemSettings,
   canMapSuperAdminLevel,
+  canReviewRegistrationAccess,
   hasMinAdminLevel,
   type Identity,
 } from "@mirror/core";
@@ -45,6 +47,32 @@ describe("access gates", () => {
     expect(canBootstrapDashboard(identity({ isSuperAdmin: false }), null)).toBe(false);
     expect(canBootstrapDashboard(identity({ isSuperAdmin: true }), null)).toBe(true);
     expect(canBootstrapDashboard(identity({ isSuperAdmin: false }), "200000000000000001")).toBe(true);
+  });
+
+  it("denies registration review without coordinator role or admin", () => {
+    expect(canReviewRegistrationAccess(identity({}), ["1"], ["2"])).toBe(false);
+    expect(canReviewRegistrationAccess(identity({}), ["2"], ["2"])).toBe(true);
+    expect(canReviewRegistrationAccess(identity({ adminLevel: AdminLevel.ADMIN }), [], ["2"])).toBe(true);
+  });
+
+  it("denies transfer side decision for the wrong faction", () => {
+    const govLeader = identity({
+      factions: [
+        {
+          code: "GOV",
+          name: "GOV",
+          color: null,
+          isLeader: true,
+          isDeputy: false,
+          rank: null,
+          departments: [],
+        },
+      ],
+    });
+    expect(canDecideTransferSide(govLeader, "GOV")).toBe(true);
+    expect(canDecideTransferSide(govLeader, "ARMY")).toBe(false);
+    expect(canDecideTransferSide(identity({ adminLevel: AdminLevel.ADMIN }), "ARMY")).toBe(true);
+    expect(canDecideTransferSide(identity({}), "")).toBe(false);
   });
 });
 

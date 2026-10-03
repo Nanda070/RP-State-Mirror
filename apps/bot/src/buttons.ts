@@ -15,7 +15,8 @@ import {
   decideRegistration,
   decideTransfer,
   createFeedbackTicket,
-  canManageModules,
+  canDecideTransferSide,
+  canReviewRegistrationAccess,
   ensureUserByDiscordId,
   formatTokenDisplay,
   formatUserError,
@@ -50,6 +51,9 @@ const COOLDOWN_MS = 3_000;
 const recentClicks = new Map<string, number>();
 type AnyInteraction = ButtonInteraction | ModalSubmitInteraction;
 
+const ACCESS_DENIED = "Нет доступа.";
+const ACCESS_DENIED_TRANSFER_SIDE = "Нет доступа к решению этой стороны.";
+
 function cooldownKey(userId: string, actionId: string) {
   return `${userId}:${actionId}`;
 }
@@ -66,12 +70,25 @@ function ephemeral(content: string) {
   return { content, flags: MessageFlags.Ephemeral } as const;
 }
 
+/** Safe ephemeral reply/followUp — never throws (expired interactions stay quiet in logs). */
+async function respondEphemeral(interaction: AnyInteraction, content: string) {
+  const payload = ephemeral(content);
+  try {
+    if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
+    else await interaction.reply(payload);
+  } catch {
+    // Interaction may already have timed out or been acknowledged elsewhere.
+  }
+}
+
+async function denyAccess(interaction: AnyInteraction, detail: string = ACCESS_DENIED) {
+  await respondEphemeral(interaction, detail);
+}
+
 /** Replies with an ephemeral error whether or not the interaction was already acknowledged. */
 export async function replyInteractionError(interaction: AnyInteraction, error: unknown) {
   const message = formatUserError(error);
-  const payload = ephemeral(`Ошибка: ${message}`);
-  if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
-  else await interaction.reply(payload);
+  await respondEphemeral(interaction, `Ошибка: ${message}`);
 }
 
 function interactionRoleIds(interaction: AnyInteraction): string[] {
@@ -96,11 +113,14 @@ function storedParams(stored: { params: unknown } | null): Record<string, unknow
 }
 
 async function canReviewRegistration(interaction: AnyInteraction, ctx: InteractionContext): Promise<boolean> {
-  const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
-  if (canManageModules(identity)) return true;
-  const coordinatorRoleIds = await getSetting("registrations.coordinatorRoleIds");
   const held = interactionRoleIds(interaction);
-  return coordinatorRoleIds.some((roleId) => held.includes(roleId));
+  const coordinatorRoleIds = await getSetting("registrations.coordinatorRoleIds");
+  // Fast path: coordinator role on the interaction member — skip identity resolve.
+  if (canReviewRegistrationAccess({ adminLevel: null, isSuperAdmin: false }, held, coordinatorRoleIds)) {
+    return true;
+  }
+  const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
+  return canReviewRegistrationAccess(identity, held, coordinatorRoleIds);
 }
 
 async function canReviewTransfer(
@@ -109,10 +129,20 @@ async function canReviewTransfer(
   ctx: InteractionContext,
 ): Promise<boolean> {
   const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
-  if (canManageModules(identity)) return true;
-  const factionCode = String(params.factionCode ?? "").toUpperCase();
-  const faction = identity.factions.find((item) => item.code.toUpperCase() === factionCode);
-  return Boolean(faction?.isLeader || faction?.isDeputy);
+  return canDecideTransferSide(identity, String(params.factionCode ?? ""));
+}
+
+/** Acknowledge component interaction before slow work when a modal will not be shown. */
+async function deferComponent(interaction: ButtonInteraction) {
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferUpdate();
+  }
+}
+
+async function deferModalEphemeral(interaction: ModalSubmitInteraction) {
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  }
 }
 
 /** Updates the message the interaction came from, or the stored review message otherwise. */
@@ -123,8 +153,30 @@ async function applyReviewUpdate(
   payload: ReviewMessagePayload,
   confirmation: string,
 ) {
-  const fromMessage = interaction.isButton() || interaction.isFromMessage();
-  if (fromMessage && interaction.message?.id === location.reviewMessageId) {
+  const fromMessage =
+    (interaction.isButton() || interaction.isFromMessage()) &&
+    interaction.message?.id === location.reviewMessageId;
+
+  if (interaction.deferred || interaction.replied) {
+    if (fromMessage) {
+      await interaction.editReply(payload);
+      await interaction.followUp(ephemeral(confirmation));
+      return;
+    }
+    try {
+      await editStoredReviewMessage(ctx.client, location, payload);
+    } catch (error) {
+      ctx.log.warn({ err: error }, "failed to edit stored review message");
+    }
+    if (interaction.deferred && !interaction.replied) {
+      await interaction.editReply({ content: confirmation });
+    } else {
+      await interaction.followUp(ephemeral(confirmation));
+    }
+    return;
+  }
+
+  if (fromMessage) {
     await interaction.update(payload);
     await interaction.followUp(ephemeral(confirmation));
     return;
@@ -145,29 +197,31 @@ function asSnowflakeArray(value: unknown): string[] {
 async function handleRoleToggle(interaction: ButtonInteraction, params: Record<string, unknown>, log: Logger) {
   const roleDiscordId = String(params.roleDiscordId ?? "");
   if (!/^\d{17,20}$/.test(roleDiscordId)) {
-    await interaction.reply(ephemeral("Кнопка настроена некорректно (роль)."));
+    await respondEphemeral(interaction, "Кнопка настроена некорректно (роль).");
     return;
   }
   if (!interaction.guild || !interaction.member) {
-    await interaction.reply(ephemeral("Кнопка работает только на сервере."));
+    await respondEphemeral(interaction, "Кнопка работает только на сервере.");
     return;
   }
+
+  await deferComponent(interaction);
 
   const role = await interaction.guild.roles.fetch(roleDiscordId).catch(() => null);
   const me = interaction.guild.members.me;
   if (!role || !me) {
-    await interaction.reply(ephemeral("Роль недоступна."));
+    await respondEphemeral(interaction, "Роль недоступна.");
     return;
   }
   if (role.managed || role.position >= me.roles.highest.position) {
-    await interaction.reply(ephemeral("Не могу выдать или снять эту роль (иерархия / managed)."));
+    await respondEphemeral(interaction, "Не могу выдать или снять эту роль (иерархия / managed).");
     return;
   }
 
   const member = await interaction.guild.members.fetch(interaction.user.id);
   const allowedRoleIds = asSnowflakeArray(params.allowedRoleIds);
   if (allowedRoleIds.length > 0 && !allowedRoleIds.some((id) => member.roles.cache.has(id))) {
-    await interaction.reply(ephemeral("У вас нет роли, необходимой для нажатия этой кнопки."));
+    await denyAccess(interaction);
     return;
   }
 
@@ -198,26 +252,27 @@ async function handleRoleToggle(interaction: ButtonInteraction, params: Record<s
     },
   });
 
-  await interaction.reply(ephemeral(has ? `Роль **${role.name}** снята.` : `Роль **${role.name}** выдана.`));
+  await respondEphemeral(interaction, has ? `Роль **${role.name}** снята.` : `Роль **${role.name}** выдана.`);
   log.info({ userId: interaction.user.id, roleId: role.id, removed: has }, "role.toggle");
 }
 
 async function handleCallback(interaction: ButtonInteraction, params: Record<string, unknown>) {
-  const message = typeof params.message === "string" && params.message.trim()
-    ? params.message.trim().slice(0, 500)
-    : "Кнопка нажата.";
-  await interaction.reply(ephemeral(message));
+  const message =
+    typeof params.message === "string" && params.message.trim()
+      ? params.message.trim().slice(0, 500)
+      : "Кнопка нажата.";
+  await respondEphemeral(interaction, message);
 }
 
 async function handleFormOpen(interaction: ButtonInteraction, params: Record<string, unknown>) {
   const formId = String(params.formId ?? "");
   const form = await getDiscordForm(formId);
   if (!form) {
-    await interaction.reply(ephemeral("Форма недоступна."));
+    await respondEphemeral(interaction, "Форма недоступна.");
     return;
   }
   if (form.fields.length > 5) {
-    await interaction.reply(ephemeral("Форма содержит больше пяти полей и требует многошагового режима."));
+    await respondEphemeral(interaction, "Форма содержит больше пяти полей и требует многошагового режима.");
     return;
   }
   const modal = new ModalBuilder().setCustomId(`mirror:form.submit:${form.id}`).setTitle(form.name.slice(0, 45));
@@ -274,12 +329,20 @@ async function handleRegistrationDecision(
   actionId: string,
   ctx: InteractionContext,
 ) {
-  if (!(await canReviewRegistration(interaction, ctx))) {
-    await interaction.reply(ephemeral("Недостаточно прав для обработки заявок."));
+  const registrationId = String(params.registrationId ?? "");
+  if (!registrationId) {
+    await respondEphemeral(interaction, "Заявка не указана.");
     return;
   }
-  const registrationId = String(params.registrationId ?? "");
-  if (!registrationId) throw new Error("Заявка не указана.");
+  // Approve cannot show a modal — defer first so a slow identity lookup never times out.
+  // Reject must keep the initial response free for showModal / deny reply.
+  if (decision !== DecisionStatus.REJECTED) {
+    await deferComponent(interaction);
+  }
+  if (!(await canReviewRegistration(interaction, ctx))) {
+    await denyAccess(interaction);
+    return;
+  }
   if (decision === DecisionStatus.REJECTED) {
     await interaction.showModal(reasonModal(`mirror:registration.reject:${actionId}`));
     return;
@@ -324,16 +387,25 @@ async function handleTransferDecision(
   ctx: InteractionContext,
 ) {
   const transferId = String(params.transferId ?? "");
-  if (!transferId) throw new Error("Перевод не указан.");
-  const side = action.endsWith(".source") ? "source" : "target";
-  if (!(await canReviewTransfer(interaction, params, ctx))) {
-    await interaction.reply(ephemeral("Решение доступно лидеру/заместителю соответствующей фракции."));
+  if (!transferId) {
+    await respondEphemeral(interaction, "Перевод не указан.");
     return;
   }
-  if (action.startsWith("transfer.reject")) {
+  const isReject = action.startsWith("transfer.reject");
+  // Approve: defer before permission check so Discord never shows "didn't respond in time".
+  // Reject: initial response must remain free for showModal or an immediate deny reply.
+  if (!isReject) {
+    await deferComponent(interaction);
+  }
+  if (!(await canReviewTransfer(interaction, params, ctx))) {
+    await denyAccess(interaction, ACCESS_DENIED_TRANSFER_SIDE);
+    return;
+  }
+  if (isReject) {
     await interaction.showModal(reasonModal(`mirror:transfer.reject:${actionId}`));
     return;
   }
+  const side = action.endsWith(".source") ? "source" : "target";
   await decideTransfer(
     transferId,
     side,
@@ -365,30 +437,50 @@ async function handleFeedbackOpen(interaction: ButtonInteraction) {
   await interaction.showModal(modal);
 }
 
+async function deferRejectModal(interaction: ModalSubmitInteraction) {
+  if (interaction.deferred || interaction.replied) return;
+  if (interaction.isFromMessage()) await interaction.deferUpdate();
+  else await deferModalEphemeral(interaction);
+}
+
 async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: InteractionContext): Promise<boolean> {
   const parsed = parseCustomId(interaction.customId);
   if (!parsed) return false;
   if (parsed.action === "form.submit") {
+    await deferModalEphemeral(interaction);
     const form = await getDiscordForm(parsed.id);
-    if (!form) throw new Error("Форма недоступна.");
-    const values = Object.fromEntries(form.fields.map((field) => [field.key, interaction.fields.getTextInputValue(`field:${field.key}`)]));
+    if (!form) {
+      await respondEphemeral(interaction, "Форма недоступна.");
+      return true;
+    }
+    const values = Object.fromEntries(
+      form.fields.map((field) => [field.key, interaction.fields.getTextInputValue(`field:${field.key}`)]),
+    );
     await submitDiscordForm(form.id, values, interaction.user.id);
-    await interaction.reply(ephemeral("Ответ на форму сохранён."));
+    await interaction.editReply({ content: "Ответ на форму сохранён." });
     return true;
   }
   if (parsed.action === "feedback.submit") {
+    await deferModalEphemeral(interaction);
     const category = interaction.fields.getTextInputValue("category");
     const content = interaction.fields.getTextInputValue("content");
-    await createFeedbackTicket({ authorDiscordId: interaction.user.id, category, content }, auditContext(interaction, "discord.modal"));
-    await interaction.reply(ephemeral("Обращение создано."));
+    await createFeedbackTicket(
+      { authorDiscordId: interaction.user.id, category, content },
+      auditContext(interaction, "discord.modal"),
+    );
+    await interaction.editReply({ content: "Обращение создано." });
     return true;
   }
   if (parsed.action === "registration.reject") {
     const params = storedParams(await getButtonAction(parsed.id));
     const registrationId = String(params.registrationId ?? "");
-    if (!registrationId) throw new Error("Кнопка устарела или отключена.");
+    if (!registrationId) {
+      await respondEphemeral(interaction, "Кнопка устарела или отключена.");
+      return true;
+    }
+    await deferRejectModal(interaction);
     if (!(await canReviewRegistration(interaction, ctx))) {
-      await interaction.reply(ephemeral("Недостаточно прав для обработки заявок."));
+      await denyAccess(interaction);
       return true;
     }
     await decideRegistration(
@@ -404,9 +496,13 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
   if (parsed.action === "transfer.reject") {
     const params = storedParams(await getButtonAction(parsed.id));
     const transferId = String(params.transferId ?? "");
-    if (!transferId) throw new Error("Кнопка устарела или отключена.");
+    if (!transferId) {
+      await respondEphemeral(interaction, "Кнопка устарела или отключена.");
+      return true;
+    }
+    await deferRejectModal(interaction);
     if (!(await canReviewTransfer(interaction, params, ctx))) {
-      await interaction.reply(ephemeral("Решение доступно лидеру/заместителю соответствующей фракции."));
+      await denyAccess(interaction, ACCESS_DENIED_TRANSFER_SIDE);
       return true;
     }
     const side = params.side === "target" ? "target" : "source";
@@ -422,7 +518,11 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     return true;
   }
   if (parsed.action === "token.receive") {
-    if (!(await getButtonAction(parsed.id))) throw new Error("Кнопка устарела или отключена.");
+    await deferModalEphemeral(interaction);
+    if (!(await getButtonAction(parsed.id))) {
+      await respondEphemeral(interaction, "Кнопка устарела или отключена.");
+      return true;
+    }
     const staticId = interaction.fields.getTextInputValue("static").trim();
     const { user } = await ensureUserByDiscordId(interaction.user.id);
     const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
@@ -435,7 +535,7 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
       },
       auditContext(interaction, "discord.modal"),
     );
-    await interaction.reply(ephemeral(`Выдан номер нашивки: **${formatTokenDisplay(token.number)}**.`));
+    await interaction.editReply({ content: `Выдан номер нашивки: **${formatTokenDisplay(token.number)}**.` });
     return true;
   }
   return false;
@@ -443,7 +543,12 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
 
 export async function handleModalSubmit(interaction: ModalSubmitInteraction, ctx: InteractionContext) {
   try {
-    return await routeModalSubmit(interaction, ctx);
+    const handled = await routeModalSubmit(interaction, ctx);
+    if (!handled && !interaction.replied && !interaction.deferred) {
+      await respondEphemeral(interaction, "Форма не поддерживается.");
+      return true;
+    }
+    return handled;
   } catch (error) {
     ctx.log.warn({ err: error, customId: interaction.customId }, "modal submit failed");
     await replyInteractionError(interaction, error);
@@ -456,18 +561,19 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
   if (!parsed) return false;
 
   if (underCooldown(interaction.user.id, parsed.id)) {
-    await interaction.reply(ephemeral("Подождите пару секунд."));
+    await respondEphemeral(interaction, "Подождите пару секунд.");
     return true;
   }
 
   const stored = await getButtonAction(parsed.id);
   if (!stored) {
-    await interaction.reply(ephemeral("Кнопка устарела или отключена."));
+    await respondEphemeral(interaction, "Кнопка устарела или отключена.");
     return true;
   }
 
   const params = storedParams(stored);
   const action = stored.action || parsed.action;
+
   if (action === "role.toggle") {
     await handleRoleToggle(interaction, params, ctx.log);
   } else if (action === "form.open") {
@@ -485,14 +591,19 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
   } else if (action === "callback") {
     await handleCallback(interaction, params);
   } else {
-    await interaction.reply(ephemeral(`Неизвестное действие кнопки: ${action}`));
+    await respondEphemeral(interaction, `Неизвестное действие кнопки: ${action}`);
   }
   return true;
 }
 
 export async function handleButtonInteraction(interaction: ButtonInteraction, ctx: InteractionContext) {
   try {
-    return await routeButton(interaction, ctx);
+    const handled = await routeButton(interaction, ctx);
+    if (!handled && !interaction.replied && !interaction.deferred) {
+      await respondEphemeral(interaction, "Кнопка не поддерживается.");
+      return true;
+    }
+    return handled;
   } catch (error) {
     ctx.log.warn({ err: error, customId: interaction.customId }, "button interaction failed");
     await replyInteractionError(interaction, error);
