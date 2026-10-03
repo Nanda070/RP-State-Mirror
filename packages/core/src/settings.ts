@@ -1,7 +1,7 @@
 import { prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, writeAuditEvents, type AuditContext } from "./audit.js";
-import { toJsonValue, type Db } from "./db.js";
+import { fromJsonValue, toJsonValue, type Db } from "./db.js";
 import { snowflakeSchema } from "./env.js";
 
 function defineSetting<S extends z.ZodTypeAny>(schema: S, defaultValue: z.output<S>, description: string) {
@@ -80,7 +80,22 @@ export async function getSetting<K extends SettingKey>(key: K, db: Db = prisma):
   const definition = settingDefinitions[key];
   const row = await db.systemSetting.findUnique({ where: { key } });
   if (!row) return definition.defaultValue as SettingValue<K>;
-  return definition.schema.parse(row.value) as SettingValue<K>;
+
+  const decoded = fromJsonValue(row.value);
+  const parsed = definition.schema.safeParse(decoded);
+  if (!parsed.success) {
+    throw parsed.error;
+  }
+
+  // Heal rows where JSON null was persisted as `{}` (Prisma.JsonNull stringify artifact).
+  if (decoded !== row.value) {
+    await db.systemSetting.update({
+      where: { key },
+      data: { value: toJsonValue(parsed.data) },
+    });
+  }
+
+  return parsed.data as SettingValue<K>;
 }
 
 const DISTINCT_GUILD_KEYS: readonly SettingKey[] = ["core.mainGuildId", "core.incidentGuildId"];

@@ -1,11 +1,12 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { AuditActorType } from "@mirror/db";
+import { AuditActorType, Prisma } from "@mirror/db";
 import {
   SettingValidationError,
   auditedMutation,
   getSetting,
   setMainAndIncidentGuilds,
   setSetting,
+  toJsonValue,
   type AuditContext,
 } from "@mirror/core";
 import { prisma, resetDatabase } from "../../../test/db.js";
@@ -101,5 +102,33 @@ describe("settings", () => {
     expect(await getSetting("core.mainGuildId")).toBe("100000000000000010");
     expect(await getSetting("core.incidentGuildId")).toBe("100000000000000011");
     expect(await prisma.auditLog.count({ where: { action: "setting.updated" } })).toBe(2);
+  });
+
+  it("round-trips null, boolean, and array JSON settings without collapsing null to {}", async () => {
+    expect(toJsonValue(null)).toBe(Prisma.JsonNull);
+    expect(toJsonValue(Prisma.JsonNull)).toBe(Prisma.JsonNull);
+    expect(toJsonValue(undefined)).toBe(Prisma.JsonNull);
+
+    await setSetting("cp.logChannelId", null, ctx);
+    await setSetting("cp.syncEnabled", false, ctx);
+    await setSetting("cp.excludedRoleIds", ["100000000000000020"], ctx);
+
+    expect(await getSetting("cp.logChannelId")).toBeNull();
+    expect(await getSetting("cp.syncEnabled")).toBe(false);
+    expect(await getSetting("cp.excludedRoleIds")).toEqual(["100000000000000020"]);
+
+    const logRow = await prisma.systemSetting.findUniqueOrThrow({ where: { key: "cp.logChannelId" } });
+    expect(logRow.value).toBeNull();
+  });
+
+  it("coerces and heals JsonNull stringify artifacts stored as {}", async () => {
+    await prisma.systemSetting.create({
+      data: { key: "cp.logChannelId", value: {} },
+    });
+
+    expect(await getSetting("cp.logChannelId")).toBeNull();
+
+    const healed = await prisma.systemSetting.findUniqueOrThrow({ where: { key: "cp.logChannelId" } });
+    expect(healed.value).toBeNull();
   });
 });
