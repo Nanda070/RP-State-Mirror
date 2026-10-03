@@ -24,6 +24,8 @@ export interface Identity {
   adminLevel: AdminLevel | null;
   factions: FactionIdentity[];
   permissions: string[];
+  /** Discord role IDs currently held across all active guild memberships. */
+  heldRoleIds: string[];
 }
 
 export interface ResolveIdentityOptions {
@@ -117,5 +119,12 @@ export async function resolveIdentity(discordUserId: string, options: ResolveIde
     ...new Set(mappings.filter((m) => m.kind === RoleMappingKind.PERMISSION).map((m) => m.value)),
   ].sort();
 
-  return { discordUserId, isSuperAdmin, adminLevel, factions: factionIdentities, permissions };
+  return {
+    discordUserId,
+    isSuperAdmin,
+    adminLevel,
+    factions: factionIdentities,
+    permissions,
+    heldRoleIds: allRoleIds.sort(),
+  };
 }

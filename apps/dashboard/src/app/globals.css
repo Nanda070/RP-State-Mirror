@@ -2213,6 +2213,25 @@ h3 {
   margin-top: 0.35rem;
 }
 
+.chip-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.chip-group .chip-row {
+  margin-top: 0.25rem;
+}
+
+.chip-group-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
 .chip-check {
   display: inline-flex;
   align-items: center;

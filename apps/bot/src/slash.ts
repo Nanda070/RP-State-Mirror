@@ -444,7 +444,8 @@ async function handleToken(interaction: ChatInputCommandInteraction, ctx: SlashH
   if (subcommand === "find") {
     const identity = await loadIdentity(interaction.user.id, ctx);
     const finderRoleIds = await getSetting("tokens.finderRoleIds");
-    const roleIds = interactionRoleIds(interaction);
+    // Cross-guild: ОГП/Юстиция may live on GOV while the command runs on ЧП (or vice versa).
+    const roleIds = [...new Set([...identity.heldRoleIds, ...interactionRoleIds(interaction)])];
     if (!canFindTokens(identity, roleIds, finderRoleIds)) {
       await interaction.reply(ephemeral("Поиск нашивок доступен ролям ОГП/Юстиция и администраторам."));
       return;

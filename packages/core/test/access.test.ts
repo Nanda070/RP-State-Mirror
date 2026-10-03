@@ -17,6 +17,7 @@ function identity(partial: Partial<Identity>): Identity {
     adminLevel: null,
     factions: [],
     permissions: [],
+    heldRoleIds: [],
     ...partial,
   };
 }

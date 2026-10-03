@@ -1,4 +1,5 @@
 import { getSettings, migrateLegacyRegistrationChannels } from "@mirror/core";
+import { RecordStatus, prisma } from "@mirror/db";
 import Link from "next/link";
 import {
   Stage4SettingsManager,
@@ -60,17 +61,20 @@ export default async function Stage4SettingsPage({
       "tokens.expandThresholdPercent",
       "tokens.finderRoleIds",
       "core.incidentGuildId",
-      "core.mainGuildId",
     ] as const),
     getActiveChannelOptions(),
     getActiveGuildOptions(),
   ]);
 
   const incidentGuildId = settings["core.incidentGuildId"];
-  const mainGuildId = settings["core.mainGuildId"];
-  const [incidentRoles, mainRoles] = await Promise.all([
+  const govFaction = await prisma.faction.findFirst({
+    where: { code: "GOV", status: RecordStatus.ACTIVE },
+    select: { guild: { select: { discordId: true } } },
+  });
+  const govGuildId = govFaction?.guild?.discordId ?? null;
+  const [incidentRoles, govRoles] = await Promise.all([
     incidentGuildId ? getRolesForGuild(incidentGuildId) : Promise.resolve([]),
-    mainGuildId ? getRolesForGuild(mainGuildId) : Promise.resolve([]),
+    govGuildId ? getRolesForGuild(govGuildId) : Promise.resolve([]),
   ]);
 
   const initial: Stage4SettingsValues = {
@@ -114,10 +118,10 @@ export default async function Stage4SettingsPage({
           guildDiscordId: c.guild.discordId,
         }))}
         incidentRoles={incidentRoles}
-        mainRoles={mainRoles}
+        govRoles={govRoles}
         guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         incidentGuildId={incidentGuildId}
-        mainGuildId={mainGuildId}
+        govGuildId={govGuildId}
       />
     </div>
   );

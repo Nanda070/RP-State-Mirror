@@ -49,19 +49,19 @@ export function Stage4SettingsManager({
   initialTab = "registrations",
   channels,
   incidentRoles,
-  mainRoles,
+  govRoles,
   guilds,
   incidentGuildId,
-  mainGuildId,
+  govGuildId,
 }: {
   initial: Stage4SettingsValues;
   initialTab?: TabId;
   channels: ChannelOption[];
   incidentRoles: RoleChipOption[];
-  mainRoles: RoleChipOption[];
+  govRoles: RoleChipOption[];
   guilds: Array<{ discordId: string; name: string }>;
   incidentGuildId: string | null;
-  mainGuildId: string | null;
+  govGuildId: string | null;
 }) {
   const [tab, setTab] = useState<TabId>(initialTab);
   const [values, setValues] = useState(initial);
@@ -105,9 +105,21 @@ export function Stage4SettingsManager({
   const incidentRolesEmpty = incidentGuildId
     ? "Нет ролей сервера ЧП в снимке. Дождитесь синхронизации бота."
     : "Сначала задайте сервер ЧП";
-  const mainRolesEmpty = mainGuildId
-    ? "Нет ролей главного сервера в снимке. Дождитесь синхронизации бота."
-    : "Сначала задайте главный сервер";
+  const govRoleIds = new Set(govRoles.map((role) => role.discordId));
+  const finderRoles: RoleChipOption[] = [
+    ...govRoles.map((role) => ({ ...role, group: "GOV" })),
+    ...incidentRoles
+      .filter((role) => !govRoleIds.has(role.discordId))
+      .map((role) => ({ ...role, group: "ЧП" })),
+  ];
+  const finderRolesEmpty =
+    !govGuildId && !incidentGuildId
+      ? "Сначала привяжите сервер GOV к фракции и задайте сервер ЧП"
+      : !govGuildId
+        ? "Сначала привяжите сервер GOV к фракции"
+        : !incidentGuildId
+          ? "Сначала задайте сервер ЧП"
+          : "Нет ролей GOV/ЧП в снимке. Дождитесь синхронизации бота.";
 
   return (
     <div className="stack">
@@ -269,13 +281,13 @@ export function Stage4SettingsManager({
             <div className="field">
               <span className="field-label">Роли /token find</span>
               <p className="muted" style={{ margin: "0 0 0.35rem", fontSize: "0.85rem" }}>
-                Роли главного сервера, которым разрешён поиск нашивок.
+                Роли серверов GOV и ЧП, которым разрешён поиск нашивок.
               </p>
               <RoleChipPicker
-                roles={mainRoles}
+                roles={finderRoles}
                 selected={values["tokens.finderRoleIds"]}
                 onChange={(next) => patch("tokens.finderRoleIds", next)}
-                emptyHint={mainRolesEmpty}
+                emptyHint={finderRolesEmpty}
               />
             </div>
           </>

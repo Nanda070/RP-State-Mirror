@@ -30,7 +30,7 @@ export const settingDefinitions = {
   "tokens.finderRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
     [],
-    "Роли на сервере GOV (ОГП/Юстиция): право /token find",
+    "Роли на серверах GOV и ЧП (ОГП/Юстиция): право /token find",
   ),
   "backups.retentionDays": defineSetting(z.number().int().positive(), 14, "Срок хранения бэкапов, дни"),
   "fines.dueDays": defineSetting(z.number().int().positive(), 14, "Срок оплаты штрафа, дни"),

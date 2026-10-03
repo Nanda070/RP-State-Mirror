@@ -131,6 +131,14 @@ describe("resolveIdentity", () => {
       expect.objectContaining({ code: "LSPD", isLeader: true, isDeputy: false, rank: 7, departments: ["SWAT"] }),
     ]);
     expect(identity.permissions).toEqual(["token.find"]);
+    expect(identity.heldRoleIds).toEqual(
+      expect.arrayContaining([
+        "500000000000000001",
+        "500000000000000002",
+        "600000000000000001",
+        "600000000000000006",
+      ]),
+    );
   });
 
   it("ignores admin roles held on a guild other than the main guild", async () => {
