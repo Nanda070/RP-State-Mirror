@@ -10,40 +10,106 @@ export function openCommandPalette() {
   window.dispatchEvent(new Event(COMMAND_PALETTE_EVENT));
 }
 
-const ITEMS = [
-  { href: "/overview", label: "Обзор" },
-  { href: "/profile", label: "Профиль" },
-  { href: "/documents", label: "Реестр документов" },
-  { href: "/wanted", label: "Реестр розыска" },
-  { href: "/fines", label: "Реестр штрафов" },
-  { href: "/personnel", label: "Реестр персонала" },
-  { href: "/settings", label: "Настройки — каталог модулей" },
-  { href: "/settings/system", label: "Система: главный сервер и ЧП" },
-  { href: "/settings/roles", label: "Привязка ролей" },
-  { href: "/settings/factions", label: "Каналы фракций" },
-  { href: "/settings/documents", label: "Настройки документов" },
-  { href: "/settings/wanted", label: "Настройки розыска" },
-  { href: "/settings/fines", label: "Настройки штрафов" },
-  { href: "/settings/embeds", label: "Эмбеды" },
-  { href: "/settings/buttons", label: "Кнопки" },
-  { href: "/settings/tokens", label: "Токены (скоро)" },
-  { href: "/settings/registrations", label: "Регистрации (скоро)" },
-  { href: "/terms", label: "Условия использования" },
-  { href: "/privacy", label: "Конфиденциальность" },
-  { href: "/cookies", label: "Cookie" },
+type PaletteItem = {
+  href: string;
+  label: string;
+  group: string;
+  requiresSystemSettings?: boolean;
+};
+
+const ITEMS: PaletteItem[] = [
+  { href: "/overview", label: "Главная", group: "Главная" },
+  { href: "/profile", label: "Профиль", group: "Главная" },
+  { href: "/documents", label: "Документы", group: "Информация" },
+  { href: "/wanted", label: "Розыск", group: "Информация" },
+  { href: "/fines", label: "Штрафы", group: "Информация" },
+  { href: "/personnel", label: "Персонал", group: "Информация" },
+  { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование" },
+  { href: "/settings/buttons", label: "Кнопки", group: "Администрирование" },
+  {
+    href: "/settings",
+    label: "Настройки — каталог модулей",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/system",
+    label: "Система: главный сервер и ЧП",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/roles",
+    label: "Привязка ролей",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/factions",
+    label: "Каналы фракций",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/documents",
+    label: "Настройки документов",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/wanted",
+    label: "Настройки розыска",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/fines",
+    label: "Настройки штрафов",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/tokens",
+    label: "Токены (скоро)",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/registrations",
+    label: "Регистрации (скоро)",
+    group: "Настройка Фракций",
+    requiresSystemSettings: true,
+  },
+  { href: "/terms", label: "Условия использования", group: "Прочее" },
+  { href: "/privacy", label: "Конфиденциальность", group: "Прочее" },
+  { href: "/cookies", label: "Cookie", group: "Прочее" },
 ];
 
-export function CommandPalette() {
+export function CommandPalette({
+  canManageSystemSettings = false,
+}: {
+  canManageSystemSettings?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
 
+  const allowedItems = useMemo(
+    () => ITEMS.filter((item) => !item.requiresSystemSettings || canManageSystemSettings),
+    [canManageSystemSettings],
+  );
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return ITEMS;
-    return ITEMS.filter((item) => item.label.toLowerCase().includes(q) || item.href.includes(q));
-  }, [query]);
+    if (!q) return allowedItems;
+    return allowedItems.filter(
+      (item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.href.includes(q) ||
+        item.group.toLowerCase().includes(q),
+    );
+  }, [allowedItems, query]);
 
   useEffect(() => {
     const openPalette = () => {
@@ -121,7 +187,8 @@ export function CommandPalette() {
                   router.push(item.href);
                 }}
               >
-                {item.label}
+                <span className="command-item-label">{item.label}</span>
+                <span className="command-item-group muted">{item.group}</span>
               </button>
             ))
           )}

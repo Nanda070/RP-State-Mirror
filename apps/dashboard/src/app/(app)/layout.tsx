@@ -1,3 +1,4 @@
+import { canManageSystemSettings } from "@mirror/core";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
@@ -17,9 +18,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     session.user.name ?? session.user.username ?? session.user.discordId;
   const username = session.user.username ?? null;
   const avatarUrl = session.user.image ?? null;
+  const canSystemSettings = session.identity
+    ? canManageSystemSettings(session.identity)
+    : false;
 
   return (
-    <AppShell displayName={displayName} username={username} avatarUrl={avatarUrl}>
+    <AppShell
+      displayName={displayName}
+      username={username}
+      avatarUrl={avatarUrl}
+      canManageSystemSettings={canSystemSettings}
+    >
       {children}
     </AppShell>
   );

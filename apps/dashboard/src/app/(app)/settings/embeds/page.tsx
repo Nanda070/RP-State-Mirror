@@ -40,11 +40,11 @@ export default async function SettingsEmbedsPage() {
           Конструктор Classic / Components V2: превью, сохранение, архив и отправка ботом в канал
           выбранного сервера. Панели кнопок — отдельно в разделе «Кнопки».
         </p>
-        <div className="row" style={{ marginTop: "0.75rem", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="status-link-row">
           <span className="stub-badge" data-ready>
             Готово
           </span>
-          <Link href="/settings/buttons" className="btn btn-secondary">
+          <Link href="/settings/buttons" className="stub-link">
             К кнопкам
           </Link>
         </div>

@@ -15,22 +15,52 @@ type NavItem = {
   label: string;
   group: string;
   match?: "exact" | "prefix";
+  /** Hide unless SUPER_ADMIN / ГА (`canManageSystemSettings`). */
+  requiresSystemSettings?: boolean;
   icon: "home" | "user" | "docs" | "wanted" | "fines" | "people" | "settings" | "system" | "roles" | "factions" | "embeds" | "buttons";
 };
 
 const NAV: NavItem[] = [
   { href: "/overview", label: "Главная", group: "Главная", match: "exact", icon: "home" },
   { href: "/profile", label: "Профиль", group: "Главная", match: "exact", icon: "user" },
-  { href: "/documents", label: "Документы", group: "Модули", match: "prefix", icon: "docs" },
-  { href: "/wanted", label: "Розыск", group: "Модули", match: "prefix", icon: "wanted" },
-  { href: "/fines", label: "Штрафы", group: "Модули", match: "prefix", icon: "fines" },
-  { href: "/personnel", label: "Персонал", group: "Модули", match: "prefix", icon: "people" },
-  { href: "/settings", label: "Настройки", group: "Администрирование", match: "exact", icon: "settings" },
-  { href: "/settings/system", label: "Система", group: "Администрирование", match: "prefix", icon: "system" },
-  { href: "/settings/roles", label: "Роли", group: "Администрирование", match: "prefix", icon: "roles" },
-  { href: "/settings/factions", label: "Фракции", group: "Администрирование", match: "prefix", icon: "factions" },
+  { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs" },
+  { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted" },
+  { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines" },
+  { href: "/personnel", label: "Персонал", group: "Информация", match: "prefix", icon: "people" },
   { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", match: "prefix", icon: "embeds" },
   { href: "/settings/buttons", label: "Кнопки", group: "Администрирование", match: "prefix", icon: "buttons" },
+  {
+    href: "/settings",
+    label: "Настройки",
+    group: "Настройка Фракций",
+    match: "exact",
+    icon: "settings",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/system",
+    label: "Система",
+    group: "Настройка Фракций",
+    match: "prefix",
+    icon: "system",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/roles",
+    label: "Роли",
+    group: "Настройка Фракций",
+    match: "prefix",
+    icon: "roles",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/factions",
+    label: "Фракции",
+    group: "Настройка Фракций",
+    match: "prefix",
+    icon: "factions",
+    requiresSystemSettings: true,
+  },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {
@@ -184,14 +214,19 @@ export function AppShell({
   displayName,
   username,
   avatarUrl,
+  canManageSystemSettings = false,
 }: {
   children: ReactNode;
   displayName: string;
   username: string | null;
   avatarUrl: string | null;
+  canManageSystemSettings?: boolean;
 }) {
   const pathname = usePathname();
-  const groups = [...new Set(NAV.map((item) => item.group))];
+  const visibleNav = NAV.filter(
+    (item) => !item.requiresSystemSettings || canManageSystemSettings,
+  );
+  const groups = [...new Set(visibleNav.map((item) => item.group))];
   const initial = (displayName.trim().charAt(0) || "?").toUpperCase();
   const handleLabel = username ? `@${username}` : displayName;
 
@@ -210,19 +245,21 @@ export function AppShell({
           {groups.map((group) => (
             <div key={group} className="nav-group">
               <div className="nav-label">{group}</div>
-              {NAV.filter((item) => item.group === group).map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="nav-link"
-                  data-active={isActive(pathname, item)}
-                >
-                  <span className="nav-link-icon">
-                    <NavIcon name={item.icon} />
-                  </span>
-                  <span className="nav-link-label">{item.label}</span>
-                </Link>
-              ))}
+              {visibleNav
+                .filter((item) => item.group === group)
+                .map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="nav-link"
+                    data-active={isActive(pathname, item)}
+                  >
+                    <span className="nav-link-icon">
+                      <NavIcon name={item.icon} />
+                    </span>
+                    <span className="nav-link-label">{item.label}</span>
+                  </Link>
+                ))}
             </div>
           ))}
         </nav>
@@ -314,7 +351,7 @@ export function AppShell({
           {children}
         </motion.main>
       </div>
-      <CommandPalette />
+      <CommandPalette canManageSystemSettings={canManageSystemSettings} />
     </div>
   );
 }

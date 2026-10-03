@@ -41,11 +41,11 @@ export default async function SettingsButtonsPage() {
           Панели role.toggle и callback: настройка кнопок, превью, сохранение и отправка ботом.
           Действия пишутся в button_actions при материализации.
         </p>
-        <div className="row" style={{ marginTop: "0.75rem", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="status-link-row">
           <span className="stub-badge" data-ready>
             Готово
           </span>
-          <Link href="/settings/embeds" className="btn btn-secondary">
+          <Link href="/settings/embeds" className="stub-link">
             К эмбедам
           </Link>
         </div>
