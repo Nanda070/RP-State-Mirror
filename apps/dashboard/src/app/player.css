@@ -115,3 +115,51 @@
   padding: 0.45rem 0.7rem;
   font-size: 0.85rem;
 }
+
+/* ——— Transfer calculator ——— */
+.calc-result {
+  margin: 0;
+}
+
+.calc-result-ok {
+  padding: 0.8rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: 1.02rem;
+}
+
+.calc-table-head {
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.calc-table-head .panel-title {
+  margin: 0;
+}
+
+.calc-edit-rows {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.calc-edit-row {
+  display: grid;
+  grid-template-columns: minmax(4rem, 7rem) auto minmax(4rem, 7rem) auto;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: start;
+}
+
+.calc-edit-row input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+}
+
+.registry-table tr[data-highlight] td {
+  background: var(--accent-soft);
+}
