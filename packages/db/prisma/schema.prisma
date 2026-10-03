@@ -565,17 +565,20 @@ model Registration {
   @@map("registrations")
 }
 
-/// Allowed vehicle models (§4.5 / §5.3). Editing UI belongs to stage 5; empty catalog = free text.
+/// Reference catalog of vehicle models (§5.3). Does not restrict `/регистрация-тс` (free-text model).
 model VehicleModel {
-  id        String       @id @default(cuid())
-  name      String       @unique
-  brand     String?
-  year      Int?
-  status    RecordStatus @default(ACTIVE)
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
+  id          String       @id @default(cuid())
+  name        String       @unique
+  brand       String?
+  year        Int?
+  /// media_files id of the card photo, never a raw URL.
+  imageFileId String?      @map("image_file_id")
+  status      RecordStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
 
   @@index([status, name])
+  @@index([status, brand])
   @@map("vehicle_models")
 }
 
@@ -743,10 +746,19 @@ model DiscordForm {
   expiresAt            DateTime?    @map("expires_at")
   responseLimit        Int?         @map("response_limit")
   createdByDiscordId   String       @map("created_by_discord_id")
+  /// Public page address `/f/<slug>`; null until the form is published on the web.
+  slug                 String?      @unique
+  publicEnabled        Boolean      @default(false) @map("public_enabled")
+  /// Turnstile is enforced only when keys are configured in the environment.
+  captchaRequired      Boolean      @default(true) @map("captcha_required")
+  /// Public submissions allowed per IP per hour.
+  ipLimitPerHour       Int          @default(3) @map("ip_limit_per_hour")
+  successMessage       String?      @map("success_message")
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
   fields               FormField[]
   submissions          FormSubmission[]
+  drafts               FormDraft[]
 
   @@index([status, expiresAt])
   @@index([webhookUrl])
@@ -754,30 +766,141 @@ model DiscordForm {
 }
 
 model FormField {
-  id          String      @id @default(cuid())
-  formId      String      @map("form_id")
-  form        DiscordForm @relation(fields: [formId], references: [id])
+  id          String       @id @default(cuid())
+  formId      String       @map("form_id")
+  form        DiscordForm  @relation(fields: [formId], references: [id])
   position    Int
   key         String
   label       String
+  /// short | paragraph | number | select | multiselect | checkbox | date
   type        String
-  required    Boolean     @default(false)
-  validation  Json        @default("{}")
+  required    Boolean      @default(false)
+  /// { minLength, maxLength, min, max } depending on the type.
+  validation  Json         @default("{}")
+  /// Choices for select / multiselect.
+  options     Json         @default("[]")
+  helpText    String?      @map("help_text")
+  /// Removed fields are archived so old submissions keep their labels.
+  status      RecordStatus @default(ACTIVE)
 
   @@unique([formId, key])
-  @@unique([formId, position])
+  @@index([formId, status, position])
   @@map("form_fields")
 }
 
 model FormSubmission {
-  id             String      @id @default(cuid())
-  formId         String      @map("form_id")
-  form           DiscordForm @relation(fields: [formId], references: [id])
-  authorDiscordId String?    @map("author_discord_id")
-  source         String      @default("discord")
-  values         Json
-  createdAt      DateTime    @default(now()) @map("created_at")
+  id              String      @id @default(cuid())
+  formId          String      @map("form_id")
+  form            DiscordForm @relation(fields: [formId], references: [id])
+  authorDiscordId String?     @map("author_discord_id")
+  /// discord | web
+  source          String      @default("discord")
+  values          Json
+  ipAddress       String?     @map("ip_address")
+  userAgent       String?     @map("user_agent")
+  createdAt       DateTime    @default(now()) @map("created_at")
 
   @@index([formId, createdAt])
+  @@index([formId, ipAddress, createdAt])
   @@map("form_submissions")
+}
+
+/// Partial answers of a multi-step Discord form (more than 5 fields); transient working state.
+model FormDraft {
+  id              String      @id @default(cuid())
+  formId          String      @map("form_id")
+  form            DiscordForm @relation(fields: [formId], references: [id])
+  authorDiscordId String      @map("author_discord_id")
+  values          Json        @default("{}")
+  /// Index of the next step to show.
+  step            Int         @default(0)
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@unique([formId, authorDiscordId])
+  @@map("form_drafts")
+}
+
+/// IPs blocked from public forms. One ACTIVE row per IP (partial index in SQL).
+model FormIpBan {
+  id                 String       @id @default(cuid())
+  ipAddress          String       @map("ip_address")
+  reason             String
+  status             RecordStatus @default(ACTIVE)
+  createdByDiscordId String       @map("created_by_discord_id")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  @@index([ipAddress, status])
+  @@map("form_ip_bans")
+}
+
+model FaqSection {
+  id        String       @id @default(cuid())
+  title     String
+  position  Int          @default(0)
+  status    RecordStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  items     FaqItem[]
+
+  @@index([status, position])
+  @@map("faq_sections")
+}
+
+model FaqItem {
+  id                 String       @id @default(cuid())
+  sectionId          String       @map("section_id")
+  section            FaqSection   @relation(fields: [sectionId], references: [id])
+  title              String
+  /// Markdown.
+  body               String
+  position           Int          @default(0)
+  status             RecordStatus @default(ACTIVE)
+  updatedByDiscordId String?      @map("updated_by_discord_id")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  @@index([sectionId, status, position])
+  @@map("faq_items")
+}
+
+/// Account recovery request (§5.3): moves project data from the old Discord account to the new one.
+/// One PENDING request per new account (partial index in SQL).
+model AccountRecovery {
+  id                 String         @id @default(cuid())
+  newDiscordId       String         @map("new_discord_id")
+  oldDiscordId       String         @map("old_discord_id")
+  characterName      String         @map("character_name")
+  staticId           String         @map("static_id")
+  reason             String
+  decision           DecisionStatus @default(PENDING)
+  decidedByDiscordId String?        @map("decided_by_discord_id")
+  decidedAt          DateTime?      @map("decided_at")
+  rejectionReason    String?        @map("rejection_reason")
+  /// Character ids moved on approval (for the audit trail and the admin card).
+  movedCharacterIds  String[]       @default([]) @map("moved_character_ids")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@index([decision, createdAt])
+  @@index([newDiscordId])
+  @@index([oldDiscordId])
+  @@map("account_recoveries")
+}
+
+/// Public «share» link to a registry record (§5.8). Revoked links answer 404.
+model ShareLink {
+  id                 String       @id @default(cuid())
+  token              String       @unique
+  /// wanted | ic_blacklist | fine | document | registration
+  entityType         String       @map("entity_type")
+  entityId           String       @map("entity_id")
+  status             RecordStatus @default(ACTIVE)
+  createdByDiscordId String       @map("created_by_discord_id")
+  revokedByDiscordId String?      @map("revoked_by_discord_id")
+  revokedAt          DateTime?    @map("revoked_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, status])
+  @@map("share_links")
 }

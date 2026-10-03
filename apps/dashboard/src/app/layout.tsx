@@ -3,6 +3,7 @@ import { Manrope, Outfit } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/providers";
 import "./globals.css";
+import "./player.css";
 
 const manrope = Manrope({
   subsets: ["latin", "cyrillic"],

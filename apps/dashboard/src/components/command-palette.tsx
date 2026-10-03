@@ -15,22 +15,34 @@ type PaletteItem = {
   label: string;
   group: string;
   requiresSystemSettings?: boolean;
+  requiresStaff?: boolean;
+  requiresModuleManager?: boolean;
 };
 
 const ITEMS: PaletteItem[] = [
   { href: "/overview", label: "Главная", group: "Главная" },
   { href: "/profile", label: "Профиль", group: "Главная" },
-  { href: "/documents", label: "Документы", group: "Информация" },
-  { href: "/wanted", label: "Розыск", group: "Информация" },
-  { href: "/fines", label: "Штрафы", group: "Информация" },
-  { href: "/personnel", label: "Персонал", group: "Информация" },
-  { href: "/registrations/vehicles", label: "Регистрации ТС", group: "Информация" },
-  { href: "/registrations/uniforms", label: "Регистрации форм", group: "Информация" },
-  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация" },
-  { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование" },
-  { href: "/settings/forms", label: "Discord-формы", group: "Администрирование" },
-  { href: "/feedback", label: "Обратная связь", group: "Администрирование" },
-  { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование" },
+  { href: "/catalog", label: "Каталог ТС", group: "Игрокам" },
+  { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам" },
+  { href: "/faq", label: "FAQ и документация", group: "Игрокам" },
+  { href: "/recovery", label: "Восстановление аккаунта", group: "Игрокам" },
+  { href: "/documents", label: "Документы", group: "Информация", requiresStaff: true },
+  { href: "/wanted", label: "Розыск", group: "Информация", requiresStaff: true },
+  { href: "/fines", label: "Штрафы", group: "Информация", requiresStaff: true },
+  { href: "/personnel", label: "Персонал", group: "Информация", requiresStaff: true },
+  { href: "/registrations/vehicles", label: "Регистрации ТС", group: "Информация", requiresStaff: true },
+  { href: "/registrations/uniforms", label: "Регистрации форм", group: "Информация", requiresStaff: true },
+  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", requiresStaff: true },
+  {
+    href: "/recoveries",
+    label: "Заявки на восстановление",
+    group: "Администрирование",
+    requiresModuleManager: true,
+  },
+  { href: "/feedback", label: "Обратная связь", group: "Администрирование", requiresStaff: true },
+  { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", requiresSystemSettings: true },
+  { href: "/settings/forms", label: "Формы", group: "Администрирование", requiresSystemSettings: true },
+  { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование", requiresSystemSettings: true },
   {
     href: "/settings",
     label: "Настройки — каталог модулей",
@@ -86,8 +98,12 @@ const ITEMS: PaletteItem[] = [
 
 export function CommandPalette({
   canManageSystemSettings = false,
+  canViewModules = false,
+  canManageModules = false,
 }: {
   canManageSystemSettings?: boolean;
+  canViewModules?: boolean;
+  canManageModules?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -95,8 +111,14 @@ export function CommandPalette({
   const [active, setActive] = useState(0);
 
   const allowedItems = useMemo(
-    () => ITEMS.filter((item) => !item.requiresSystemSettings || canManageSystemSettings),
-    [canManageSystemSettings],
+    () =>
+      ITEMS.filter(
+        (item) =>
+          (!item.requiresSystemSettings || canManageSystemSettings) &&
+          (!item.requiresStaff || canViewModules) &&
+          (!item.requiresModuleManager || canManageModules),
+      ),
+    [canManageSystemSettings, canViewModules, canManageModules],
   );
 
   const results = useMemo(() => {

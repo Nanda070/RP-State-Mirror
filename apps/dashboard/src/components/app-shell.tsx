@@ -17,6 +17,10 @@ type NavItem = {
   match?: "exact" | "prefix";
   /** Hide unless SUPER_ADMIN / ГА (`canManageSystemSettings`). */
   requiresSystemSettings?: boolean;
+  /** Hide unless «Хелпер» or above (`canViewModules`). */
+  requiresStaff?: boolean;
+  /** Hide unless «Админ» or above (`canManageModules`). */
+  requiresModuleManager?: boolean;
   icon:
     | "home"
     | "user"
@@ -35,22 +39,30 @@ type NavItem = {
     | "embeds"
     | "forms"
     | "webhooks"
-    | "modules";
+    | "modules"
+    | "calculator"
+    | "faq"
+    | "recovery";
 };
 
 const NAV: NavItem[] = [
   { href: "/overview", label: "Главная", group: "Главная", match: "exact", icon: "home" },
   { href: "/profile", label: "Профиль", group: "Главная", match: "exact", icon: "user" },
-  { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs" },
-  { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted" },
-  { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines" },
-  { href: "/personnel", label: "Персонал", group: "Информация", match: "prefix", icon: "people" },
+  { href: "/catalog", label: "Каталог ТС", group: "Игрокам", match: "prefix", icon: "vehicle" },
+  { href: "/calculator", label: "Калькулятор переводов", group: "Игрокам", match: "prefix", icon: "calculator" },
+  { href: "/faq", label: "FAQ", group: "Игрокам", match: "prefix", icon: "faq" },
+  { href: "/recovery", label: "Восстановление", group: "Игрокам", match: "prefix", icon: "recovery" },
+  { href: "/documents", label: "Документы", group: "Информация", match: "prefix", icon: "docs", requiresStaff: true },
+  { href: "/wanted", label: "Розыск", group: "Информация", match: "prefix", icon: "wanted", requiresStaff: true },
+  { href: "/fines", label: "Штрафы", group: "Информация", match: "prefix", icon: "fines", requiresStaff: true },
+  { href: "/personnel", label: "Персонал", group: "Информация", match: "prefix", icon: "people", requiresStaff: true },
   {
     href: "/registrations/vehicles",
     label: "Регистрации ТС",
     group: "Информация",
     match: "prefix",
     icon: "vehicle",
+    requiresStaff: true,
   },
   {
     href: "/registrations/uniforms",
@@ -58,12 +70,49 @@ const NAV: NavItem[] = [
     group: "Информация",
     match: "prefix",
     icon: "uniform",
+    requiresStaff: true,
   },
-  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist" },
-  { href: "/settings/embeds", label: "Эмбеды", group: "Администрирование", match: "prefix", icon: "embeds" },
-  { href: "/settings/forms", label: "Discord-формы", group: "Администрирование", match: "prefix", icon: "forms" },
-  { href: "/feedback", label: "Обратная связь", group: "Администрирование", match: "prefix", icon: "feedback" },
-  { href: "/settings/webhooks", label: "Webhooks", group: "Администрирование", match: "prefix", icon: "webhooks" },
+  { href: "/ic-blacklist", label: "IC ЧС реестр", group: "Информация", match: "prefix", icon: "blacklist", requiresStaff: true },
+  {
+    href: "/recoveries",
+    label: "Заявки на восстановление",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "recovery",
+    requiresModuleManager: true,
+  },
+  {
+    href: "/feedback",
+    label: "Обратная связь",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "feedback",
+    requiresStaff: true,
+  },
+  {
+    href: "/settings/embeds",
+    label: "Эмбеды",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "embeds",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/forms",
+    label: "Формы",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "forms",
+    requiresSystemSettings: true,
+  },
+  {
+    href: "/settings/webhooks",
+    label: "Webhooks",
+    group: "Администрирование",
+    match: "prefix",
+    icon: "webhooks",
+    requiresSystemSettings: true,
+  },
   {
     href: "/settings",
     label: "Настройки",
@@ -314,6 +363,52 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
           />
         </svg>
       );
+    case "calculator":
+      return (
+        <svg {...common}>
+          <rect x="5.5" y="3.75" width="13" height="16.5" rx="2" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8.5 7.5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path
+            d="M8.75 11.5h.01M12 11.5h.01M15.25 11.5h.01M8.75 14.5h.01M12 14.5h.01M15.25 14.5h.01M8.75 17.25h.01M12 17.25h.01M15.25 17.25h.01"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      );
+    case "faq":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
+          <path
+            d="M9.75 9.75a2.25 2.25 0 1 1 3.4 1.93c-.7.42-1.15.95-1.15 1.82"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+          <path d="M12 16.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "recovery":
+      return (
+        <svg {...common}>
+          <path d="M5 12a7 7 0 1 0 2.2-5.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path
+            d="M5 5.5v3.75h3.75"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 8.75V12l2.25 1.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
     case "modules":
       return (
         <svg {...common}>
@@ -334,16 +429,23 @@ export function AppShell({
   username,
   avatarUrl,
   canManageSystemSettings = false,
+  canViewModules = false,
+  canManageModules = false,
 }: {
   children: ReactNode;
   displayName: string;
   username: string | null;
   avatarUrl: string | null;
   canManageSystemSettings?: boolean;
+  canViewModules?: boolean;
+  canManageModules?: boolean;
 }) {
   const pathname = usePathname();
   const visibleNav = NAV.filter(
-    (item) => !item.requiresSystemSettings || canManageSystemSettings,
+    (item) =>
+      (!item.requiresSystemSettings || canManageSystemSettings) &&
+      (!item.requiresStaff || canViewModules) &&
+      (!item.requiresModuleManager || canManageModules),
   );
   const groups = [...new Set(visibleNav.map((item) => item.group))];
   const initial = (displayName.trim().charAt(0) || "?").toUpperCase();
@@ -470,7 +572,11 @@ export function AppShell({
           {children}
         </motion.main>
       </div>
-      <CommandPalette canManageSystemSettings={canManageSystemSettings} />
+      <CommandPalette
+        canManageSystemSettings={canManageSystemSettings}
+        canViewModules={canViewModules}
+        canManageModules={canManageModules}
+      />
     </div>
   );
 }

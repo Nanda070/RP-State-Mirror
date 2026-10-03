@@ -1,5 +1,5 @@
 import { Prisma } from "@mirror/db";
-import { RoleMappingError, SettingValidationError } from "@mirror/core";
+import { RoleMappingError, SettingValidationError, UserError } from "@mirror/core";
 import { ZodError } from "zod";
 import { AuthRequiredError, ForbiddenError } from "./session";
 
@@ -14,7 +14,11 @@ export function jsonError(error: unknown): Response {
   if (error instanceof AuthRequiredError || error instanceof ForbiddenError) {
     return Response.json({ error: error.message }, { status: error.status });
   }
-  if (error instanceof SettingValidationError || error instanceof RoleMappingError) {
+  if (
+    error instanceof SettingValidationError ||
+    error instanceof RoleMappingError ||
+    error instanceof UserError
+  ) {
     return Response.json({ error: error.message }, { status: 400 });
   }
   if (error instanceof ZodError) {

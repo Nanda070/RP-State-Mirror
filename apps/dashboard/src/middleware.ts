@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+/** Sections that need a session. Public pages (`/f/*`, `/s/*`, legal) are intentionally absent. */
 const PROTECTED_PREFIXES = [
   "/settings",
   "/profile",
@@ -8,6 +9,14 @@ const PROTECTED_PREFIXES = [
   "/wanted",
   "/fines",
   "/registrations",
+  "/personnel",
+  "/feedback",
+  "/ic-blacklist",
+  "/catalog",
+  "/calculator",
+  "/faq",
+  "/recovery",
+  "/recoveries",
 ];
 
 function hasSessionCookie(req: NextRequest): boolean {
@@ -32,21 +41,23 @@ export function middleware(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+// Next.js requires a static literal here; keep it in sync with PROTECTED_PREFIXES.
 export const config = {
   matcher: [
-    "/settings",
     "/settings/:path*",
-    "/profile",
     "/profile/:path*",
-    "/overview",
     "/overview/:path*",
-    "/documents",
     "/documents/:path*",
-    "/wanted",
     "/wanted/:path*",
-    "/fines",
     "/fines/:path*",
-    "/registrations",
     "/registrations/:path*",
+    "/personnel/:path*",
+    "/feedback/:path*",
+    "/ic-blacklist/:path*",
+    "/catalog/:path*",
+    "/calculator/:path*",
+    "/faq/:path*",
+    "/recovery/:path*",
+    "/recoveries/:path*",
   ],
 };

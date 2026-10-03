@@ -43,3 +43,11 @@ export function formatUserError(error: unknown, fallback = "Неизвестна
   }
   return fallback;
 }
+
+/**
+ * Expected, user-correctable failure. Its message is written for the end user and is safe to show
+ * as-is (Discord reply, dashboard toast); everything else is reported as an internal error.
+ */
+export class UserError extends Error {
+  override name = "UserError";
+}

@@ -27,4 +27,5 @@ export * from "./status-badge.js";
 export * from "./text.js";
 export * from "./users.js";
 export * from "./utilities.js";
+export * from "./vehicles.js";
 export * from "./wanted.js";

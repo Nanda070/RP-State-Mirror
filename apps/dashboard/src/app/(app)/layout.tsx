@@ -1,4 +1,4 @@
-import { canManageSystemSettings } from "@mirror/core";
+import { canManageModules, canManageSystemSettings, canViewModules } from "@mirror/core";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
@@ -18,9 +18,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     session.user.name ?? session.user.username ?? session.user.discordId;
   const username = session.user.username ?? null;
   const avatarUrl = session.user.image ?? null;
-  const canSystemSettings = session.identity
-    ? canManageSystemSettings(session.identity)
-    : false;
+  // The session identity may lag behind Discord by one refresh: it only decides which links are shown.
+  // Every page and API route re-checks access against a freshly resolved identity.
+  const identity = session.identity;
+  const canSystemSettings = identity ? canManageSystemSettings(identity) : false;
 
   return (
     <AppShell
@@ -28,6 +29,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       username={username}
       avatarUrl={avatarUrl}
       canManageSystemSettings={canSystemSettings}
+      canViewModules={identity ? canViewModules(identity) : false}
+      canManageModules={identity ? canManageModules(identity) : false}
     >
       {children}
     </AppShell>

@@ -2,6 +2,7 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3
 import { RecordStatus, prisma } from "@mirror/db";
 import { randomUUID } from "node:crypto";
 import { auditedMutation, type AuditContext } from "./audit.js";
+import { UserError } from "./errors.js";
 
 export const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -11,7 +12,7 @@ export const DISCORD_MEDIA_HOSTS = new Set(["cdn.discordapp.com", "media.discord
 
 export const IMAGE_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
-export class MediaValidationError extends Error {
+export class MediaValidationError extends UserError {
   override name = "MediaValidationError";
 }
 
@@ -105,7 +106,41 @@ export async function storeMediaFromUrl(
     throw new MediaValidationError("Недопустимый тип файла: нужно изображение PNG, JPEG, WEBP или GIF.");
   }
   const body = await readBodyWithLimit(response);
+  return putMediaObject(bucket, body, contentType, metadata, context);
+}
 
+/** Detects the real image type from magic bytes; a client-declared content type is never trusted. */
+export function sniffImageContentType(bytes: Uint8Array): string | null {
+  const starts = (...signature: number[]) => signature.every((byte, index) => bytes[index] === byte);
+  if (starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (starts(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (starts(0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (starts(0x52, 0x49, 0x46, 0x46) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+    return "image/webp";
+  }
+  return null;
+}
+
+/** Stores an image uploaded through the dashboard. The type comes from the bytes, not from the request. */
+export async function storeUploadedImage(
+  bytes: Uint8Array,
+  metadata: { originalName: string; createdById?: string },
+  context: AuditContext,
+) {
+  if (bytes.byteLength === 0) throw new MediaValidationError("Файл пустой.");
+  if (bytes.byteLength > MAX_MEDIA_BYTES) throw new MediaValidationError("Файл превышает лимит 10 МБ.");
+  const contentType = sniffImageContentType(bytes);
+  if (!contentType) throw new MediaValidationError("Недопустимый тип файла: нужно изображение PNG, JPEG, WEBP или GIF.");
+  return putMediaObject(storageBucket(), bytes, contentType, metadata, context);
+}
+
+async function putMediaObject(
+  bucket: string,
+  body: Uint8Array,
+  contentType: string,
+  metadata: { originalName: string; createdById?: string },
+  context: AuditContext,
+) {
   const objectKey = `media/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${metadata.originalName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80)}`;
   await storageClient().send(
     new PutObjectCommand({ Bucket: bucket, Key: objectKey, Body: body, ContentType: contentType }),

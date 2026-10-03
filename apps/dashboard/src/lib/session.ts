@@ -1,5 +1,6 @@
 import {
   canAccessAdminArea,
+  canManageModules,
   canManageSystemSettings,
   getSetting,
   resolveIdentity,
@@ -45,6 +46,22 @@ export async function requireAdminArea() {
   const identity = await resolveFreshIdentity(session.user.discordId);
   if (!canAccessAdminArea(identity)) {
     throw new ForbiddenError("Недостаточно прав для раздела администрации");
+  }
+  return { session, identity };
+}
+
+/** Any signed-in user with a freshly resolved identity (player sections). */
+export async function requireIdentity() {
+  const session = await requireSession();
+  const identity = await resolveFreshIdentity(session.user.discordId);
+  return { session, identity };
+}
+
+/** «Админ» and above: may change module data (catalog, recovery decisions, share links). */
+export async function requireModuleManager() {
+  const { session, identity } = await requireIdentity();
+  if (!canManageModules(identity)) {
+    throw new ForbiddenError("Действие доступно администраторам");
   }
   return { session, identity };
 }

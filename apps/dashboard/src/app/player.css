@@ -1,0 +1,117 @@
+/* Stage 5: player sections, form builder, public pages. Tokens come from globals.css. */
+
+.form-error {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: 0.92rem;
+}
+
+.form-ok {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  color: var(--ok);
+  font-size: 0.92rem;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 2.25rem 1.3rem;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+/* ——— Vehicle catalog ——— */
+.catalog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: flex-end;
+}
+
+.catalog-toolbar .field {
+  margin-bottom: 0;
+  min-width: 12rem;
+}
+
+.catalog-toolbar .catalog-search {
+  flex: 1 1 16rem;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  gap: 1rem;
+}
+
+.catalog-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.catalog-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.catalog-card-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.85rem;
+}
+
+.catalog-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.catalog-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem 1rem;
+  flex: 1;
+}
+
+.catalog-card-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-family: var(--font-display);
+  overflow-wrap: anywhere;
+}
+
+.catalog-card-meta {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.catalog-card-actions {
+  margin-top: auto;
+  padding-top: 0.6rem;
+  gap: 0.4rem;
+}
+
+.catalog-card-actions .btn {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.85rem;
+}
