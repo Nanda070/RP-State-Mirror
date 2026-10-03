@@ -20,7 +20,7 @@ export function LoginHero({ nextPath }: { nextPath?: string }) {
         >
           <BrandMark />
           <p className="hero-brand">Mirror · GTA5RP</p>
-          <h1 className="hero-title">С возвращением</h1>
+          <h1 className="hero-title">Панель управления</h1>
           <p className="lead">Войдите, чтобы продолжить.</p>
           <LoginButton label="Продолжить через Discord" />
           {nextPath ? (

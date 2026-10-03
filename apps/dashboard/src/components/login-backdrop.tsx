@@ -200,6 +200,13 @@ export function LoginBackdrop() {
       </svg>
       <StarField />
       <div className="login-bg-horizon" />
+      {/* Los Santos against the glow: two rows of buildings, the far one lighter. */}
+      <svg className="login-bg-skyline login-bg-skyline-far" viewBox="0 0 1200 200" preserveAspectRatio="xMidYMax slice">
+        <path d="M0 200V150h40v-22h26v22h30v-46h18v-14h22v14h16v60h34v-34h40v34h22v-72h14v-18h26v18h12v72h30v-50h44v50h20v-96h10v-22h14v-16h10v16h14v22h10v96h36v-58h38v58h22v-40h46v40h18v-84h16v-16h28v16h14v84h32v-52h40v52h24v-30h50v30h20v-66h34v66h28v-44h44v44h30v50Z" />
+      </svg>
+      <svg className="login-bg-skyline" viewBox="0 0 1200 200" preserveAspectRatio="xMidYMax slice">
+        <path d="M0 200V168h56v-26h34v26h22v-58h20v-12h30v12h18v70h40v-40h52v40h26v-92h16v-20h34v20h14v92h38v-64h48v64h30v-124h12v-26h16v-22h12v22h16v26h12v124h44v-78h46v78h26v-50h58v50h22v-104h20v-18h36v18h16v104h40v-66h50v66h28v-38h62v38h24v-84h42v84h30v32Z" />
+      </svg>
       <div className="login-bg-horizon-line" />
       <div className="login-bg-vignette" />
       <div className="login-bg-grain" />

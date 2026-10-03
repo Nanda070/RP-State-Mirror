@@ -1,7 +1,5 @@
 import {
   archiveDiscordForm,
-  closeFeedbackTicket,
-  addFeedbackMessage,
   disableDiscordForm,
   enableDiscordForm,
   listFeedbackTickets,
@@ -77,8 +75,6 @@ export async function GET() {
 }
 
 const actionSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("close-feedback"), id: z.string().min(1) }),
-  z.object({ action: z.literal("reply-feedback"), id: z.string().min(1), content: z.string().trim().min(1).max(4000) }),
   z.object({
     action: z.literal("webhook-status"),
     id: z.string().min(1),
@@ -111,9 +107,6 @@ export async function PATCH(request: Request) {
     const { session } = await requireSystemSettings();
     const action = actionSchema.parse(await request.json());
     const context = await dashboardAuditContext(session.user.id);
-    if (action.action === "close-feedback") {
-      return Response.json(await closeFeedbackTicket(action.id, context));
-    }
     if (action.action === "webhook-status") {
       return Response.json(
         await setWebhookRequestStatus(action.id, action.status as WebhookRequestStatus, undefined, context),
@@ -160,10 +153,7 @@ export async function PATCH(request: Request) {
     if (action.action === "enable-form") {
       return Response.json(await enableDiscordForm(action.formId, context));
     }
-    if (action.action === "archive-form") {
-      return Response.json(await archiveDiscordForm(action.formId, context));
-    }
-    return Response.json(await addFeedbackMessage(action.id, session.user.discordId, action.content, context));
+    return Response.json(await archiveDiscordForm(action.formId, context));
   } catch (error) {
     return jsonError(error);
   }
