@@ -753,11 +753,15 @@ h3 {
   border-radius: 12px;
   padding: 0.68rem 1.05rem;
   cursor: pointer;
-  font-family: var(--font-display);
+  font-family: var(--font-body);
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: 0;
   line-height: 1.2;
   white-space: nowrap;
+  text-shadow: none;
+  filter: none;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
   transition:
     background 160ms ease,
     color 160ms ease,
@@ -813,15 +817,15 @@ h3 {
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: #1c1c20;
+  border-color: rgba(255, 255, 255, 0.1);
   color: var(--ink);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: none;
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: #242428;
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .btn-danger {
@@ -1548,6 +1552,15 @@ h3 {
   padding-top: 0;
   padding-bottom: 0;
   justify-content: center;
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  text-shadow: none;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  transform: none;
 }
 
 @keyframes shimmer {
