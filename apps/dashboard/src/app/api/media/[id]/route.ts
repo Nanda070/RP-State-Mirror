@@ -1,4 +1,4 @@
-import { canViewModules, isVehicleCatalogImage, readMediaFile } from "@mirror/core";
+import { canViewModules, isOwnFeedbackAttachment, isVehicleCatalogImage, readMediaFile } from "@mirror/core";
 import { jsonError } from "@/lib/api";
 import { ForbiddenError, requireIdentity } from "@/lib/session";
 
@@ -6,13 +6,18 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 /**
  * Serves a stored image through the dashboard, so storage URLs and keys never reach the browser.
- * Catalog photos are readable by any signed-in user; every other file needs staff access.
+ * Catalog photos are readable by any signed-in user, ticket files by the ticket's author;
+ * every other file needs staff access.
  */
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const { identity } = await requireIdentity();
     const { id } = await params;
-    if (!canViewModules(identity) && !(await isVehicleCatalogImage(id))) {
+    if (
+      !canViewModules(identity) &&
+      !(await isVehicleCatalogImage(id)) &&
+      !(await isOwnFeedbackAttachment(id, identity.discordUserId))
+    ) {
       throw new ForbiddenError("Нет доступа к файлу");
     }
     const media = await readMediaFile(id);
@@ -24,7 +29,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
         // Files are immutable (a new upload gets a new id); `private` keeps them out of shared caches.
         "Cache-Control": "private, max-age=86400, immutable",
         "X-Content-Type-Options": "nosniff",
-        "Content-Disposition": "inline",
+        // A PDF is downloaded, never rendered on the site's origin; pictures open in place.
+        "Content-Disposition": media.file.contentType.startsWith("image/")
+          ? "inline"
+          : `attachment; filename="${media.attachmentName}"; filename*=UTF-8''${encodeURIComponent(media.file.originalName)}`,
       },
     });
   } catch (error) {

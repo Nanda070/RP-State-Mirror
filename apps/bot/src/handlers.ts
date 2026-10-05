@@ -8,7 +8,9 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  DiscordAPIError,
   MessageFlags,
+  Routes,
   ThreadAutoArchiveDuration,
   type Client,
   type TextChannel,
@@ -18,6 +20,9 @@ import {
   MODULE_JOB_TYPES,
   PERSONNEL_AUDIT_META,
   checkDiscordLimits,
+  discordMessageToSpec,
+  formatUserError,
+  type RawDiscordMessage,
   discordIdentity,
   embedSpecSchema,
   formatFormValue,
@@ -879,6 +884,36 @@ const personnelPublish: JobHandler = async (payload, { client, log, job }) => {
   return { status: "sent", personnelEventId: event.id, messageId: result.messageId };
 };
 
+/** Why a message could not be read, in words for the editor. */
+function importError(error: unknown): string {
+  if (error instanceof DiscordAPIError) {
+    if (error.code === 10008) return "Сообщение не найдено: возможно, его удалили.";
+    if (error.code === 10003) return "Канал не найден.";
+    if (error.code === 50001 || error.code === 50013) {
+      return "У бота нет доступа к этому каналу: нужны права «Просмотр канала» и «Читать историю сообщений».";
+    }
+  }
+  return formatUserError(error);
+}
+
+/**
+ * Reads an existing message for the editor. The answer — a template or the reason — is the job's
+ * result: a wrong link is not a failure of the bot and does not go to the error channel.
+ */
+const messageDesignImport: JobHandler = async (payload, { client, log }) => {
+  const channelDiscordId = String(payload.channelDiscordId ?? "");
+  const messageDiscordId = String(payload.messageDiscordId ?? "");
+  try {
+    const raw = (await client.rest.get(Routes.channelMessage(channelDiscordId, messageDiscordId))) as RawDiscordMessage;
+    const { spec, notes } = await discordMessageToSpec(raw);
+    log.info({ channelDiscordId, messageDiscordId, notes: notes.length }, "message imported into the editor");
+    return { spec, notes };
+  } catch (error) {
+    log.info({ err: error, channelDiscordId, messageDiscordId }, "message import refused");
+    return { error: importError(error) };
+  }
+};
+
 const messageDesignSend: JobHandler = async (payload, { client, log, job }) => {
   const designId = String(payload.designId ?? "");
   const guildDiscordId = String(payload.guildDiscordId ?? "");
@@ -1289,6 +1324,33 @@ const rolePanelArchive: JobHandler = async (payload, { client, log }) => {
   }
 };
 
+/** Discord refuses bigger uploads from a bot; files over the budget are linked to the site instead. */
+const TICKET_FILES_UPLOAD_BUDGET = 8 * 1024 * 1024;
+
+/**
+ * Files of a ticket message for a Discord message: attached while they fit the upload budget,
+ * the rest named with a pointer to the site page where they open (`sitePath`).
+ */
+async function ticketFilesPayload(fileIds: readonly string[], sitePath: string) {
+  const files: Array<{ attachment: Buffer; name: string }> = [];
+  const linked: string[] = [];
+  let total = 0;
+  for (const id of fileIds) {
+    const media = await readMediaFile(id);
+    if (!media) continue;
+    if (total + media.body.byteLength <= TICKET_FILES_UPLOAD_BUDGET) {
+      total += media.body.byteLength;
+      files.push({ attachment: media.body, name: media.attachmentName });
+    } else {
+      linked.push(media.file.originalName);
+    }
+  }
+  const siteUrl = (process.env.PUBLIC_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const note =
+    linked.length > 0 ? `\n📎 Не поместились в сообщение (откройте на сайте ${siteUrl}${sitePath}): ${linked.join(", ")}` : "";
+  return { files, note };
+}
+
 const feedbackTicketNotify: JobHandler = async (payload, { client, log }) => {
   const ticketId = String(payload.ticketId ?? "");
   const ticket = await prisma.feedbackTicket.findUnique({
@@ -1309,7 +1371,9 @@ const feedbackTicketNotify: JobHandler = async (payload, { client, log }) => {
 
   // With a message id it is the player's answer in an existing ticket, otherwise a new ticket.
   const followUp = payload.messageId ? ticket.messages.find((entry) => entry.id === String(payload.messageId)) : null;
-  const initialContent = followUp?.content ?? ticket.messages[0]?.content ?? "—";
+  const shown = followUp ?? ticket.messages[0];
+  const initialContent = shown?.content || (shown?.attachmentFileIds.length ? "📎 Файлы без текста" : "—");
+  const attachments = await ticketFilesPayload(shown?.attachmentFileIds ?? [], "/feedback");
   const embed: ClassicEmbed = {
     type: "embed",
     title: followUp ? `Ответ игрока по обращению: ${ticket.category}` : `Новое обращение: ${ticket.category}`,
@@ -1323,8 +1387,13 @@ const feedbackTicketNotify: JobHandler = async (payload, { client, log }) => {
     timestamp: true,
   };
 
-  const message = await channel.send({ embeds: [classicToEmbed(embed)] });
-  log.info({ ticketId, messageId: message.id }, "feedback ticket notification sent");
+  const message = await channel.send({
+    embeds: [classicToEmbed(embed)],
+    files: attachments.files,
+    ...(attachments.note ? { content: attachments.note.trim() } : {}),
+    allowedMentions: { parse: [] },
+  });
+  log.info({ ticketId, messageId: message.id, files: attachments.files.length }, "feedback ticket notification sent");
   return { status: "sent", ticketId, messageId: message.id };
 };
 
@@ -1336,11 +1405,13 @@ const feedbackReplySend: JobHandler = async (payload, { client, log }) => {
   if (!ticket || !message) return { status: "skipped", reason: "ticket or message not found" };
 
   // The reply carries a button, so the conversation can go on without a new ticket.
+  const attachments = await ticketFilesPayload(message.attachmentFileIds, "/support");
   let dm = false;
   try {
     const user = await client.users.fetch(ticket.authorDiscordId);
     await user.send({
-      content: `Вам поступил ответ по обращению **«${ticket.category}»**:\n\n${message.content}`,
+      content: `Вам поступил ответ по обращению **«${ticket.category}»**:\n\n${message.content}${attachments.note}`.slice(0, 2000),
+      files: attachments.files,
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder().setCustomId(`mirror:feedback.reply:${ticket.id}`).setLabel("Ответить").setStyle(ButtonStyle.Primary),
@@ -1768,6 +1839,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.PERSONNEL_PUBLISH, personnelPublish],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, messageDesignSend],
   [MODULE_JOB_TYPES.MESSAGE_DESIGN_RESEND, messageDesignResend],
+  [MODULE_JOB_TYPES.MESSAGE_DESIGN_IMPORT, messageDesignImport],
   [MODULE_JOB_TYPES.REGISTRATION_REVIEW, registrationReview],
   [MODULE_JOB_TYPES.REGISTRATION_DECIDED, registrationDecided],
   [MODULE_JOB_TYPES.REGISTRATION_EXPIRED, registrationExpired],

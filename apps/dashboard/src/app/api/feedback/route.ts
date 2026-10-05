@@ -1,4 +1,5 @@
 import {
+  MAX_FEEDBACK_ATTACHMENTS,
   UserError,
   addFeedbackMessage,
   assignFeedbackTicket,
@@ -13,12 +14,14 @@ import { jsonError } from "@/lib/api";
 import { dashboardAuditContext } from "@/lib/audit-context";
 import { requireIdentity, requireModuleManager, resolveFreshIdentity } from "@/lib/session";
 
-const text = z
-  .string()
-  .trim()
-  .min(1, "Напишите текст обращения.")
-  .max(4000, "Текст длиннее 4000 символов. Сократите его.");
-const createSchema = z.object({ category: z.string().trim().min(1, "Выберите категорию.").max(64), content: text });
+/** May be empty when files are attached; the core says what is missing. */
+const text = z.string().max(4000, "Текст длиннее 4000 символов. Сократите его.");
+const attachmentFileIds = z.array(z.string().min(1).max(64)).max(MAX_FEEDBACK_ATTACHMENTS).default([]);
+const createSchema = z.object({
+  category: z.string().trim().min(1, "Выберите категорию.").max(64),
+  content: text,
+  attachmentFileIds,
+});
 
 const UNREADABLE = "Не удалось прочитать запрос. Обновите страницу.";
 
@@ -37,7 +40,13 @@ export async function POST(request: Request) {
     const categories = await getSetting("feedback.categories");
     if (!categories.includes(body.category)) throw new UserError("Такой категории больше нет. Обновите страницу.");
     const ticket = await createFeedbackTicket(
-      { authorDiscordId: session.user.discordId, category: body.category, content: body.content },
+      {
+        authorDiscordId: session.user.discordId,
+        category: body.category,
+        content: body.content,
+        attachmentFileIds: body.attachmentFileIds,
+        uploaderUserId: session.user.id,
+      },
       await dashboardAuditContext(session.user.id),
     );
     return Response.json({ id: ticket.id });
@@ -48,8 +57,8 @@ export async function POST(request: Request) {
 
 const actionSchema = z.discriminatedUnion("action", [
   /** The author writes again in their own ticket. */
-  z.object({ action: z.literal("reply-own"), id: z.string().min(1), content: text }),
-  z.object({ action: z.literal("reply"), id: z.string().min(1), content: text }),
+  z.object({ action: z.literal("reply-own"), id: z.string().min(1), content: text, attachmentFileIds }),
+  z.object({ action: z.literal("reply"), id: z.string().min(1), content: text, attachmentFileIds }),
   z.object({ action: z.literal("close"), id: z.string().min(1) }),
   z.object({
     action: z.literal("assign"),
@@ -69,7 +78,10 @@ export async function PATCH(request: Request) {
       const { session } = await requireIdentity();
       const ticket = await prisma.feedbackTicket.findUnique({ where: { id: body.id }, select: { authorDiscordId: true } });
       if (!ticket || ticket.authorDiscordId !== session.user.discordId) throw new UserError("Обращение не найдено.");
-      await addFeedbackMessage(body.id, session.user.discordId, body.content, await dashboardAuditContext(session.user.id));
+      await addFeedbackMessage(body.id, session.user.discordId, body.content, await dashboardAuditContext(session.user.id), {
+        attachmentFileIds: body.attachmentFileIds,
+        uploaderUserId: session.user.id,
+      });
       return Response.json({ ok: true });
     }
 
@@ -77,7 +89,10 @@ export async function PATCH(request: Request) {
     const { session } = await requireModuleManager();
     const context = await dashboardAuditContext(session.user.id);
     if (body.action === "reply") {
-      await addFeedbackMessage(body.id, session.user.discordId, body.content, context);
+      await addFeedbackMessage(body.id, session.user.discordId, body.content, context, {
+        attachmentFileIds: body.attachmentFileIds,
+        uploaderUserId: session.user.id,
+      });
       return Response.json({ ok: true });
     }
     if (body.action === "close") {

@@ -3,18 +3,39 @@
  *
  * Carries over what a registry exported from Google Sheets consists of: values, formulas, fonts,
  * fills, borders, alignment, number formats, merged cells, frozen panes, column widths and row
- * heights, hidden rows and columns, dropdown lists and checkboxes. Left behind: pictures, conditional
- * formatting, charts, comments — the editor either has no place for them or the file does not
- * describe them well enough to rebuild.
+ * heights, hidden rows and columns, dropdown lists with the colours of their chips, checkboxes,
+ * pictures over the grid and conditional formatting (highlight rules, colour scales, data bars,
+ * icon sets). Left behind: charts, pivot tables, comments and pictures inside cells — the editor
+ * has no place for them.
+ *
+ * Google Sheets writes the chip colours of a dropdown as «equal to <option>» highlight rules over
+ * the dropdown's cells; such rules become the list's own colours instead of a cell highlight.
  *
  * ExcelJS is loaded only when a file is actually imported, so the bot never pays for it.
  */
-import type { Cell, CellValue, Worksheet } from "exceljs";
+import type { Cell, CellValue, Workbook, Worksheet } from "exceljs";
 import { SheetError } from "./sheets.js";
 
 export const XLSX_MAX_BYTES = 10 * 1024 * 1024;
 const MAX_SHEETS = 20;
 const MAX_CELLS = 250_000;
+const MAX_IMAGES = 50;
+// The editor's own sizes for a column and a row nobody resized, in pixels.
+const DEFAULT_COLUMN_PX = 88;
+const DEFAULT_ROW_PX = 24;
+const EMU_PER_PX = 9525;
+
+/** Stores one picture of the file and returns the address the workbook keeps (null: not a picture we take). */
+export type XlsxImageStore = (bytes: Uint8Array, name: string) => Promise<string | null>;
+
+/** What the import carried over and what it had to leave behind, for the person who imported. */
+export type XlsxImportReport = {
+  images: number;
+  skippedImages: number;
+  conditionalRules: number;
+  skippedConditionalRules: number;
+  listColors: number;
+};
 
 type Range = { startRow: number; endRow: number; startColumn: number; endColumn: number };
 type Style = Record<string, unknown>;
@@ -46,6 +67,27 @@ function rgb(color: { argb?: string } | undefined): { rgb: string } | undefined 
   const argb = color?.argb;
   if (!argb || !/^[0-9a-f]{6,8}$/i.test(argb)) return undefined;
   return { rgb: `#${argb.slice(-6).toLowerCase()}` };
+}
+
+/** Font and fill of a conditional-format rule (the file's «dxf» style) in the editor's terms. */
+function ruleStyle(style: { font?: Cell["font"]; fill?: Cell["fill"] } | undefined): Style {
+  const result: Style = {};
+  const font = style?.font;
+  if (font) {
+    if (font.bold) result.bl = 1;
+    if (font.italic) result.it = 1;
+    if (font.underline) result.ul = { s: 1 };
+    if (font.strike) result.st = { s: 1 };
+    const color = rgb(font.color);
+    if (color) result.cl = color;
+  }
+  const fill = style?.fill;
+  if (fill && fill.type === "pattern") {
+    // In a rule's style the colour of a solid fill sits in bgColor; files written by hand use fgColor.
+    const color = rgb(fill.bgColor) ?? rgb(fill.fgColor);
+    if (color) result.bg = color;
+  }
+  return result;
 }
 
 function cellStyle(cell: Cell): Style | null {
@@ -180,11 +222,414 @@ function listValidations(sheet: Worksheet, sheetIndex: number): ValidationRule[]
   return rules;
 }
 
+// ── Conditional formatting ──────────────────────────────────────────────────────────────
+
+type CfValue = { type?: string; value?: number };
+type XlsxCfRule = {
+  type?: string;
+  operator?: string;
+  formulae?: unknown[];
+  style?: { font?: Cell["font"]; fill?: Cell["fill"] };
+  priority?: number;
+  timePeriod?: string;
+  percent?: boolean;
+  bottom?: boolean;
+  rank?: number;
+  aboveAverage?: boolean;
+  cfvo?: CfValue[];
+  color?: { argb?: string }[] | { argb?: string };
+  iconSet?: string;
+  reverse?: boolean;
+  showValue?: boolean;
+};
+type CfRule = { cfId: string; ranges: Range[]; stopIfTrue: boolean; rule: Record<string, unknown> };
+
+const NUMBER_OPERATORS = new Set([
+  "equal",
+  "notEqual",
+  "greaterThan",
+  "greaterThanOrEqual",
+  "lessThan",
+  "lessThanOrEqual",
+  "between",
+  "notBetween",
+]);
+const TEXT_OPERATORS: Record<string, string> = {
+  containsText: "containsText",
+  notContains: "notContainsText",
+  notContainsText: "notContainsText",
+  beginsWith: "beginsWith",
+  endsWith: "endsWith",
+  containsBlanks: "containsBlanks",
+  notContainsBlanks: "notContainsBlanks",
+  containsErrors: "containsErrors",
+  notContainsErrors: "notContainsErrors",
+};
+const TIME_PERIODS = new Set([
+  "today",
+  "yesterday",
+  "tomorrow",
+  "last7Days",
+  "thisMonth",
+  "lastMonth",
+  "nextMonth",
+  "thisWeek",
+  "lastWeek",
+  "nextWeek",
+]);
+const ICON_SETS = new Set([
+  "3Arrows",
+  "3ArrowsGray",
+  "4Arrows",
+  "4ArrowsGray",
+  "5Arrows",
+  "5ArrowsGray",
+  "3Triangles",
+  "3TrafficLights1",
+  "3Signs",
+  "3TrafficLights2",
+  "4RedToBlack",
+  "4TrafficLights",
+  "3Symbols",
+  "3Symbols2",
+  "3Flags",
+  "4Rating",
+  "5Rating",
+  "5Quarters",
+  "5Boxes",
+  "3Stars",
+]);
+const CF_VALUE_TYPES: Record<string, string> = {
+  min: "min",
+  max: "max",
+  num: "num",
+  percent: "percent",
+  percentile: "percentile",
+};
+
+/** A formula operand of a rule: a number, a quoted text, or anything else (a reference, a formula). */
+function operand(raw: unknown): { number: number } | { text: string } | { formula: string } | null {
+  if (typeof raw === "number") return { number: raw };
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (/^-?\d+(\.\d+)?(e-?\d+)?$/i.test(value)) return { number: Number(value) };
+  const quoted = /^"((?:[^"]|"")*)"$/.exec(value);
+  if (quoted) return { text: (quoted[1] ?? "").replace(/""/g, '"') };
+  return value ? { formula: value } : null;
+}
+
+/** Top-left cell of a range in A1 notation, the cell relative formulas of a rule are written for. */
+function topLeft(range: Range): string {
+  let column = "";
+  for (let index = range.startColumn + 1; index > 0; index = Math.floor((index - 1) / 26)) {
+    column = String.fromCharCode(65 + ((index - 1) % 26)) + column;
+  }
+  return `${column}${range.startRow + 1}`;
+}
+
+const COMPARE: Record<string, string> = {
+  equal: "=",
+  notEqual: "<>",
+  greaterThan: ">",
+  greaterThanOrEqual: ">=",
+  lessThan: "<",
+  lessThanOrEqual: "<=",
+};
+
+function cfValue(raw: CfValue | undefined, fallback: string): { type: string; value?: number } {
+  const type = raw?.type ? CF_VALUE_TYPES[raw.type] : undefined;
+  if (!type) return { type: fallback };
+  if (type === "min" || type === "max") return { type };
+  return { type, value: Number.isFinite(raw?.value) ? Number(raw?.value) : 0 };
+}
+
+function colorList(color: XlsxCfRule["color"]): string[] {
+  const list = Array.isArray(color) ? color : color ? [color] : [];
+  return list.map((entry) => rgb(entry)?.rgb ?? "#ffffff");
+}
+
+/** One rule of the file in the editor's terms, or null when the editor cannot show it. */
+function convertCfRule(rule: XlsxCfRule, ranges: Range[]): Record<string, unknown> | null {
+  const first = ranges[0];
+  if (!first) return null;
+  const highlight = (subType: string, extra: Record<string, unknown>) => ({
+    type: "highlightCell",
+    subType,
+    style: ruleStyle(rule.style),
+    ...extra,
+  });
+  const formulae = rule.formulae ?? [];
+
+  switch (rule.type) {
+    case "cellIs": {
+      const operator = rule.operator ?? "";
+      if (!NUMBER_OPERATORS.has(operator)) return null;
+      const operands = formulae.map(operand);
+      if (operands.some((value) => value === null)) return null;
+      const numbers = operands.map((value) => (value && "number" in value ? value.number : null));
+      if (numbers.every((value) => value !== null)) {
+        const value = operator === "between" || operator === "notBetween" ? [numbers[0], numbers[1] ?? numbers[0]] : numbers[0];
+        return highlight("number", { operator, value });
+      }
+      const text = operands[0];
+      if (operands.length === 1 && text && "text" in text && (operator === "equal" || operator === "notEqual")) {
+        return highlight("text", { operator, value: text.text });
+      }
+      // References or formulas: the same comparison as a formula over the first cell.
+      const cell = topLeft(first);
+      const raw = formulae.map((value) => String(value));
+      if (operator === "between" || operator === "notBetween") {
+        const inside = `AND(${cell}>=${raw[0]},${cell}<=${raw[1] ?? raw[0]})`;
+        return highlight("formula", { value: `=${operator === "between" ? inside : `NOT(${inside})`}` });
+      }
+      return highlight("formula", { value: `=${cell}${COMPARE[operator]}${raw[0]}` });
+    }
+    case "expression": {
+      const formula = typeof formulae[0] === "string" ? formulae[0].trim() : "";
+      return formula ? highlight("formula", { value: `=${formula.replace(/^=/, "")}` }) : null;
+    }
+    case "containsText":
+    case "notContainsText":
+    case "beginsWith":
+    case "endsWith": {
+      const operator = TEXT_OPERATORS[rule.operator ?? rule.type] ?? TEXT_OPERATORS[rule.type];
+      if (!operator) return null;
+      if (operator.endsWith("Blanks") || operator.endsWith("Errors")) return highlight("text", { operator });
+      // The file keeps the searched text only inside the rule's formula: SEARCH("text",A1) and the like.
+      const formula = typeof formulae[0] === "string" ? formulae[0] : "";
+      const quoted = /"((?:[^"]|"")*)"/.exec(formula);
+      if (!quoted) return null;
+      return highlight("text", { operator, value: (quoted[1] ?? "").replace(/""/g, '"') });
+    }
+    case "timePeriod":
+      return rule.timePeriod && TIME_PERIODS.has(rule.timePeriod) ? highlight("timePeriod", { operator: rule.timePeriod }) : null;
+    case "top10":
+      return highlight("rank", { isBottom: !!rule.bottom, isPercent: !!rule.percent, value: rule.rank ?? 10 });
+    case "aboveAverage":
+      return highlight("average", { operator: rule.aboveAverage === false ? "lessThan" : "greaterThan" });
+    case "duplicateValues":
+      return highlight("duplicateValues", {});
+    case "uniqueValues":
+      return highlight("uniqueValues", {});
+    case "colorScale": {
+      const colors = colorList(rule.color);
+      const stops = rule.cfvo ?? [];
+      if (stops.length < 2 || colors.length < stops.length) return null;
+      return {
+        type: "colorScale",
+        config: stops.map((stop, index) => ({
+          index,
+          color: colors[index],
+          value: cfValue(stop, index === 0 ? "min" : index === stops.length - 1 ? "max" : "percentile"),
+        })),
+      };
+    }
+    case "dataBar": {
+      const [min, max] = rule.cfvo ?? [];
+      return {
+        type: "dataBar",
+        isShowValue: rule.showValue !== false,
+        config: {
+          min: cfValue(min, "min"),
+          max: cfValue(max, "max"),
+          isGradient: true,
+          positiveColor: colorList(rule.color)[0] ?? "#638ec6",
+          nativeColor: "#ff0000",
+        },
+      };
+    }
+    case "iconSet": {
+      const name = rule.iconSet ?? "3TrafficLights1";
+      // Excel's default set has no number in its name.
+      const iconType = name === "3TrafficLights" ? "3TrafficLights1" : name;
+      const stops = rule.cfvo ?? [];
+      if (!ICON_SETS.has(iconType) || stops.length < 2) return null;
+      const count = stops.length;
+      // The file lists thresholds from the lowest icon up; the editor checks from the highest icon down.
+      const config = Array.from({ length: count }, (_, index) => {
+        const level = count - 1 - index;
+        const threshold = stops[Math.max(level, 1)];
+        const icon = rule.reverse ? count - 1 - index : index;
+        return {
+          operator: level === 0 ? "lessThan" : "greaterThanOrEqual",
+          value: cfValue(threshold, "percent"),
+          iconType,
+          iconId: String(icon),
+        };
+      });
+      return { type: "iconSet", isShowValue: rule.showValue !== false, config };
+    }
+    default:
+      return null;
+  }
+}
+
+function rangesOf(ref: string | undefined): Range[] {
+  return (ref ?? "")
+    .split(/\s+/)
+    .map((part) => parseRange(part))
+    .filter((range): range is Range => range !== null);
+}
+
+function overlaps(a: Range, b: Range): boolean {
+  return a.startRow <= b.endRow && b.startRow <= a.endRow && a.startColumn <= b.endColumn && b.startColumn <= a.endColumn;
+}
+
+/**
+ * Turns the sheet's conditional formatting into the editor's rules. «Equal to <option>» rules that
+ * paint the cells of a dropdown give the list its chip colours instead (that is how Google Sheets
+ * exports them).
+ */
+function convertConditionalFormatting(
+  sheet: Worksheet,
+  sheetIndex: number,
+  lists: ValidationRule[],
+  report: XlsxImportReport,
+): CfRule[] {
+  const blocks = (sheet as unknown as { conditionalFormattings?: { ref?: string; rules?: XlsxCfRule[] }[] })
+    .conditionalFormattings ?? [];
+  const entries = blocks
+    .flatMap((block) => (block.rules ?? []).map((rule) => ({ rule, ranges: rangesOf(block.ref) })))
+    .filter((entry) => entry.ranges.length > 0)
+    .sort((a, b) => (a.rule.priority ?? Number.MAX_SAFE_INTEGER) - (b.rule.priority ?? Number.MAX_SAFE_INTEGER));
+
+  const listColors = new Map<ValidationRule, Map<string, string>>();
+  const rules: CfRule[] = [];
+  for (const { rule, ranges } of entries) {
+    if (rule.type === "cellIs" && rule.operator === "equal" && (rule.formulae ?? []).length === 1) {
+      const value = operand(rule.formulae?.[0]);
+      const fill = ruleStyle(rule.style).bg as { rgb: string } | undefined;
+      const list =
+        value && "text" in value && fill
+          ? lists.find(
+              (candidate) =>
+                candidate.type === "list" &&
+                listOptions(candidate).includes(value.text) &&
+                ranges.every((range) => candidate.ranges.some((own) => overlaps(range, own))),
+            )
+          : undefined;
+      if (list && value && "text" in value && fill) {
+        const colors = listColors.get(list) ?? new Map<string, string>();
+        if (!colors.has(value.text)) colors.set(value.text, fill.rgb);
+        listColors.set(list, colors);
+        continue;
+      }
+    }
+    const converted = convertCfRule(rule, ranges);
+    if (!converted) {
+      report.skippedConditionalRules += 1;
+      continue;
+    }
+    rules.push({ cfId: `xlsx-cf-${sheetIndex}-${rules.length}`, ranges, stopIfTrue: false, rule: converted });
+  }
+  report.conditionalRules += rules.length;
+
+  for (const [list, colors] of listColors) {
+    // The editor keeps the colours in formula2, in the same order as the options.
+    list.formula2 = listOptions(list).map((option) => colors.get(option) ?? "").join(",");
+    report.listColors += colors.size;
+  }
+  return rules;
+}
+
+function listOptions(rule: ValidationRule): string[] {
+  return (rule.formula1 ?? "")
+    .split(",")
+    .map((option) => option.trim())
+    .filter(Boolean);
+}
+
+// ── Pictures ────────────────────────────────────────────────────────────────────────────────
+
+type GridPoint = { column: number; columnOffset: number; row: number; rowOffset: number };
+
+/** Walks the grid from a cell by a distance in pixels: where a picture of that size ends. */
+function advance(start: number, offset: number, distance: number, size: (index: number) => number) {
+  let index = start;
+  let rest = offset + distance;
+  while (rest > size(index) && index < 100_000) {
+    rest -= size(index);
+    index += 1;
+  }
+  return { index, offset: Math.max(0, rest) };
+}
+
+async function convertImages(
+  workbook: Workbook,
+  sheet: Worksheet,
+  subUnitId: string,
+  sizes: { column: (index: number) => number; row: (index: number) => number },
+  storeImage: XlsxImageStore | undefined,
+  report: XlsxImportReport,
+): Promise<Record<string, unknown> | null> {
+  const images = sheet.getImages();
+  if (images.length === 0) return null;
+  const data: Record<string, unknown> = {};
+  const order: string[] = [];
+  for (const image of images) {
+    const source = workbook.getImage(Number(image.imageId)) as unknown as { buffer?: Uint8Array; extension?: string } | undefined;
+    const tl = image.range.tl as unknown as { nativeCol: number; nativeColOff: number; nativeRow: number; nativeRowOff: number };
+    const br = image.range.br as unknown as typeof tl | undefined;
+    const ext = (image.range as unknown as { ext?: { width?: number; height?: number } }).ext;
+    if (!storeImage || !source?.buffer || report.images >= MAX_IMAGES || (!br && !(ext?.width && ext.height))) {
+      report.skippedImages += 1;
+      continue;
+    }
+    const url = await storeImage(new Uint8Array(source.buffer), `${sheet.name}-${order.length + 1}.${source.extension ?? "png"}`);
+    if (!url) {
+      report.skippedImages += 1;
+      continue;
+    }
+    const from: GridPoint = {
+      column: tl.nativeCol,
+      columnOffset: Math.round(tl.nativeColOff / EMU_PER_PX),
+      row: tl.nativeRow,
+      rowOffset: Math.round(tl.nativeRowOff / EMU_PER_PX),
+    };
+    let to: GridPoint;
+    if (br) {
+      to = {
+        column: br.nativeCol,
+        columnOffset: Math.round(br.nativeColOff / EMU_PER_PX),
+        row: br.nativeRow,
+        rowOffset: Math.round(br.nativeRowOff / EMU_PER_PX),
+      };
+    } else {
+      const across = advance(from.column, from.columnOffset, ext?.width ?? 0, sizes.column);
+      const down = advance(from.row, from.rowOffset, ext?.height ?? 0, sizes.row);
+      to = { column: across.index, columnOffset: Math.round(across.offset), row: down.index, rowOffset: Math.round(down.offset) };
+    }
+    const drawingId = `xlsx-image-${subUnitId}-${order.length + 1}`;
+    const position = { from, to };
+    data[drawingId] = {
+      // The editor puts the table's own id here when it opens the workbook.
+      unitId: "",
+      subUnitId,
+      drawingId,
+      drawingType: 0,
+      imageSourceType: "URL",
+      source: url,
+      sheetTransform: position,
+      axisAlignSheetTransform: position,
+      // A two-cell picture stretches with its cells, a one-cell picture only moves.
+      anchorType: br ? "1" : "0",
+    };
+    order.push(drawingId);
+    report.images += 1;
+  }
+  return order.length > 0 ? { data, order } : null;
+}
+
 /**
  * Reads an `.xlsx` file into a workbook the editor opens. Throws `SheetError` with a message for
- * the person when the file is not a workbook or is too big.
+ * the person when the file is not a workbook or is too big. Pictures are kept only when
+ * `storeImage` is given: the workbook holds their address, not their bytes.
  */
-export async function xlsxToSheetSnapshot(bytes: Uint8Array, title: string): Promise<Record<string, unknown>> {
+export async function importXlsx(
+  bytes: Uint8Array,
+  title: string,
+  options: { storeImage?: XlsxImageStore } = {},
+): Promise<{ snapshot: Record<string, unknown>; report: XlsxImportReport }> {
   if (bytes.byteLength === 0) throw new SheetError("Файл пустой.");
   if (bytes.byteLength > XLSX_MAX_BYTES) throw new SheetError("Файл больше 10 МБ.");
   // Every .xlsx is a zip archive.
@@ -216,6 +661,9 @@ export async function xlsxToSheetSnapshot(bytes: Uint8Array, title: string): Pro
   const sheets: Record<string, unknown> = {};
   const sheetOrder: string[] = [];
   const validations: Record<string, ValidationRule[]> = {};
+  const conditional: Record<string, CfRule[]> = {};
+  const drawings: Record<string, unknown> = {};
+  const report: XlsxImportReport = { images: 0, skippedImages: 0, conditionalRules: 0, skippedConditionalRules: 0, listColors: 0 };
   let cells = 0;
 
   for (const [index, sheet] of workbook.worksheets.entries()) {
@@ -275,11 +723,32 @@ export async function xlsxToSheetSnapshot(bytes: Uint8Array, title: string): Pro
     const frozen = view && view.state === "frozen" ? { x: view.xSplit ?? 0, y: view.ySplit ?? 0 } : null;
 
     const rules = listValidations(sheet, index);
+    const cfRules = convertConditionalFormatting(sheet, index, rules, report);
+    if (cfRules.length > 0) conditional[id] = cfRules;
     const boxes = foldCells(checkboxes);
     if (boxes.length > 0) {
       rules.push({ uid: `xlsx-checkbox-${index}`, type: "checkbox", ranges: boxes, formula1: "1", formula2: "0" });
     }
     if (rules.length > 0) validations[id] = rules;
+
+    const pictures = await convertImages(
+      workbook,
+      sheet,
+      id,
+      {
+        column: (column) => {
+          const entry = columnData[column];
+          return entry?.hd ? 0 : typeof entry?.w === "number" ? entry.w : DEFAULT_COLUMN_PX;
+        },
+        row: (row) => {
+          const entry = rowData[row];
+          return entry?.hd ? 0 : typeof entry?.h === "number" ? entry.h : DEFAULT_ROW_PX;
+        },
+      },
+      options.storeImage,
+      report,
+    );
+    if (pictures) drawings[id] = pictures;
 
     sheets[id] = {
       id,
@@ -297,13 +766,22 @@ export async function xlsxToSheetSnapshot(bytes: Uint8Array, title: string): Pro
     };
   }
 
-  return {
-    name: title,
-    sheetOrder,
-    styles,
-    sheets,
+  const resources = [
     ...(Object.keys(validations).length > 0
-      ? { resources: [{ name: "SHEET_DATA_VALIDATION_PLUGIN", data: JSON.stringify(validations) }] }
-      : {}),
+      ? [{ name: "SHEET_DATA_VALIDATION_PLUGIN", data: JSON.stringify(validations) }]
+      : []),
+    ...(Object.keys(conditional).length > 0
+      ? [{ name: "SHEET_CONDITIONAL_FORMATTING_PLUGIN", data: JSON.stringify(conditional) }]
+      : []),
+    ...(Object.keys(drawings).length > 0 ? [{ name: "SHEET_DRAWING_PLUGIN", data: JSON.stringify(drawings) }] : []),
+  ];
+  return {
+    snapshot: { name: title, sheetOrder, styles, sheets, ...(resources.length > 0 ? { resources } : {}) },
+    report,
   };
+}
+
+/** The workbook alone, without pictures (see `importXlsx`). */
+export async function xlsxToSheetSnapshot(bytes: Uint8Array, title: string): Promise<Record<string, unknown>> {
+  return (await importXlsx(bytes, title)).snapshot;
 }

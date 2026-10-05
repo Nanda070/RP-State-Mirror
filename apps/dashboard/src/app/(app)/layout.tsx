@@ -3,6 +3,7 @@ import {
   canManageSystemSettings,
   canViewModules,
   currentLegalVersion,
+  getAppearance,
   legalConsentState,
   recordLegalConsent,
 } from "@mirror/core";
@@ -10,6 +11,8 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
+import { AppearanceSync } from "@/components/appearance-sync";
+import { getDashboardEnv } from "@/env";
 import { LegalUpdateBar } from "@/components/legal-update-bar";
 import { LEGAL_VERSION } from "@/lib/legal";
 import { isLockedOut } from "@/lib/session";
@@ -41,6 +44,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const consent = await legalConsentState(session.user.discordId, legalVersion);
   if (consent === "none") await recordLegalConsent(session.user.discordId, legalVersion);
   const needsConsent = consent === "outdated";
+  const appearance = await getAppearance(session.user.discordId);
 
   return (
     <AppShell
@@ -50,7 +54,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       canManageSystemSettings={canSystemSettings}
       canViewModules={identity ? canViewModules(identity) : false}
       canManageModules={identity ? canManageModules(identity) : false}
+      instanceLabel={getDashboardEnv().INSTANCE_LABEL ?? null}
     >
+      <AppearanceSync value={appearance} />
       {needsConsent ? <LegalUpdateBar /> : null}
       {children}
     </AppShell>

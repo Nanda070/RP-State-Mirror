@@ -1,6 +1,7 @@
 import { prisma } from "@mirror/db";
 
 const TABLES = [
+  "user_presences",
   "sheet_images",
   "sheet_revisions",
   "sheet_documents",

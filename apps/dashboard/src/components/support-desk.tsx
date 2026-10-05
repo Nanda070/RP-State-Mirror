@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { AttachmentList, AttachmentPicker, type TicketAttachment, uploadTicketFiles } from "./feedback-attachments";
 import { EmptyState } from "./ui";
 
 export type OwnTicket = {
@@ -10,7 +11,7 @@ export type OwnTicket = {
   status: string;
   /** Moscow time, formatted on the server. */
   createdAt: string;
-  messages: Array<{ mine: boolean; content: string; at: string }>;
+  messages: Array<{ mine: boolean; content: string; at: string; files: TicketAttachment[] }>;
 };
 
 const STATUS: Record<string, { label: string; tone: string }> = {
@@ -36,7 +37,9 @@ export function SupportDesk({ tickets, categories }: { tickets: OwnTicket[]; cat
   const [writing, setWriting] = useState(tickets.length === 0);
   const [category, setCategory] = useState(categories[0] ?? "");
   const [content, setContent] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [reply, setReply] = useState<Record<string, string>>({});
+  const [replyFiles, setReplyFiles] = useState<Record<string, File[]>>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,9 +65,13 @@ export function SupportDesk({ tickets, categories }: { tickets: OwnTicket[]; cat
           onSubmit={(event) => {
             event.preventDefault();
             void run(
-              () => call("POST", { category, content }),
+              async () => {
+                const uploaded = await uploadTicketFiles(files);
+                await call("POST", { category, content, attachmentFileIds: uploaded.map((file) => file.id) });
+              },
               () => {
                 setContent("");
+                setFiles([]);
                 setWriting(false);
               },
             );
@@ -86,14 +93,14 @@ export function SupportDesk({ tickets, categories }: { tickets: OwnTicket[]; cat
             <textarea
               id="ticketText"
               rows={5}
-              required
               maxLength={4000}
               value={content}
               onChange={(event) => setContent(event.target.value)}
             />
           </div>
+          <AttachmentPicker files={files} onChange={setFiles} disabled={pending} />
           <div className="row u-gap2">
-            <button type="submit" className="btn btn-primary" disabled={pending || !content.trim()}>
+            <button type="submit" className="btn btn-primary" disabled={pending || (!content.trim() && files.length === 0)}>
               {pending ? "Отправка…" : "Отправить"}
             </button>
             {tickets.length > 0 ? (
@@ -126,6 +133,7 @@ export function SupportDesk({ tickets, categories }: { tickets: OwnTicket[]; cat
       {tickets.map((ticket) => {
         const status = STATUS[ticket.status] ?? { label: ticket.status, tone: "muted" };
         const text = reply[ticket.id] ?? "";
+        const chosen = replyFiles[ticket.id] ?? [];
         return (
           <section key={ticket.id} className="panel ticket">
             <header className="ticket-head">
@@ -143,7 +151,8 @@ export function SupportDesk({ tickets, categories }: { tickets: OwnTicket[]; cat
                   <span className="bubble-author">
                     {item.mine ? "Вы" : "Администрация"} · {item.at}
                   </span>
-                  <p>{item.content}</p>
+                  {item.content ? <p>{item.content}</p> : null}
+                  <AttachmentList files={item.files} />
                 </div>
               ))}
             </div>
@@ -157,15 +166,31 @@ export function SupportDesk({ tickets, categories }: { tickets: OwnTicket[]; cat
                   value={text}
                   onChange={(event) => setReply((prev) => ({ ...prev, [ticket.id]: event.target.value }))}
                 />
+                <AttachmentPicker
+                  files={chosen}
+                  onChange={(next) => setReplyFiles((prev) => ({ ...prev, [ticket.id]: next }))}
+                  disabled={pending}
+                />
                 <div className="row">
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    disabled={pending || !text.trim()}
+                    disabled={pending || (!text.trim() && chosen.length === 0)}
                     onClick={() =>
                       void run(
-                        () => call("PATCH", { action: "reply-own", id: ticket.id, content: text }),
-                        () => setReply((prev) => ({ ...prev, [ticket.id]: "" })),
+                        async () => {
+                          const uploaded = await uploadTicketFiles(chosen);
+                          await call("PATCH", {
+                            action: "reply-own",
+                            id: ticket.id,
+                            content: text,
+                            attachmentFileIds: uploaded.map((file) => file.id),
+                          });
+                        },
+                        () => {
+                          setReply((prev) => ({ ...prev, [ticket.id]: "" }));
+                          setReplyFiles((prev) => ({ ...prev, [ticket.id]: [] }));
+                        },
                       )
                     }
                   >

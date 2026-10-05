@@ -26,6 +26,7 @@ const bodySchema = z.object({
   "cp.logChannelId": snowflakeSchema.nullable().optional(),
   "cp.maxKickPercent": z.number().min(0).max(100).optional(),
   "cp.dryRun": z.boolean().optional(),
+  "presence.enabled": z.boolean().optional(),
   "documents.posterRoleIds": z.array(snowflakeSchema).max(50).optional(),
   "documents.responderRoleIds": z.array(snowflakeSchema).max(50).optional(),
   "fines.managerRoleIds": z.array(snowflakeSchema).max(50).optional(),

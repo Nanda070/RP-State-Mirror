@@ -49,6 +49,29 @@ export type SheetEditorHandle = {
 };
 
 /**
+ * Pictures name the workbook they belong to. An imported file does not know the table's id yet,
+ * so every picture is pointed at this table before the workbook opens.
+ */
+function withOwnUnitId(snapshot: SheetSnapshot, unitId: string): SheetSnapshot {
+  if (!snapshot.resources?.some((resource) => resource.name === "SHEET_DRAWING_PLUGIN")) return snapshot;
+  return {
+    ...snapshot,
+    resources: snapshot.resources.map((resource) => {
+      if (resource.name !== "SHEET_DRAWING_PLUGIN" || !resource.data) return resource;
+      try {
+        const sheets = JSON.parse(resource.data) as Record<string, { data?: Record<string, { unitId?: string }> }>;
+        for (const sheet of Object.values(sheets)) {
+          for (const drawing of Object.values(sheet.data ?? {})) drawing.unitId = unitId;
+        }
+        return { ...resource, data: JSON.stringify(sheets) };
+      } catch {
+        return resource;
+      }
+    }),
+  };
+}
+
+/**
  * The spreadsheet itself: the open part of Univer, mounted on the client only.
  *
  * `view` — for everyone: no toolbar, no selection, no copying. `edit` — the admin's editor.
@@ -159,7 +182,7 @@ export function SheetEditor({
       }
     };
 
-    const workbook = univerAPI.createWorkbook({ ...snapshot, id: documentId });
+    const workbook = univerAPI.createWorkbook({ ...withOwnUnitId(snapshot, documentId), id: documentId });
     const disposables: { dispose: () => void }[] = [];
     if (handleRef) handleRef.current = { save: () => workbook.save() };
 

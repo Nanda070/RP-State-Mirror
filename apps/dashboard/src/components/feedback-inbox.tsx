@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { LinkActions } from "./copy-button";
+import { AttachmentList, AttachmentPicker, type TicketAttachment, uploadTicketFiles } from "./feedback-attachments";
 import { EmptyState } from "./ui";
 
 type StaffOption = { discordId: string; label: string };
@@ -16,7 +17,7 @@ type FeedbackTicket = {
   createdAt: string;
   assignedToDiscordId: string | null;
   assignedLabel: string | null;
-  messages: Array<{ authorLabel: string; content: string; at?: string }>;
+  messages: Array<{ authorLabel: string; content: string; at?: string; files: TicketAttachment[] }>;
 };
 
 const STATUS: Record<string, { label: string; tone: string }> = {
@@ -71,6 +72,7 @@ export function FeedbackInbox({
 }) {
   const [tickets, setTickets] = useState(initial);
   const [reply, setReply] = useState<Record<string, string>>({});
+  const [replyFiles, setReplyFiles] = useState<Record<string, File[]>>({});
   const [pending, setPending] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,15 +93,17 @@ export function FeedbackInbox({
   async function replyTicket(id: string) {
     await run(id, async () => {
       const content = reply[id] ?? "";
-      await patchFeedback({ action: "reply", id, content });
+      const files = await uploadTicketFiles(replyFiles[id] ?? []);
+      await patchFeedback({ action: "reply", id, content, attachmentFileIds: files.map((file) => file.id) });
       setTickets((prev) =>
         prev.map((ticket) =>
           ticket.id === id
-            ? { ...ticket, messages: [...ticket.messages, { authorLabel: replyAuthorLabel, content }] }
+            ? { ...ticket, messages: [...ticket.messages, { authorLabel: replyAuthorLabel, content, files }] }
             : ticket,
         ),
       );
       setReply((prev) => ({ ...prev, [id]: "" }));
+      setReplyFiles((prev) => ({ ...prev, [id]: [] }));
       setMessage("Ответ отправлен в ЛС игроку.");
     });
   }
@@ -214,7 +218,8 @@ export function FeedbackInbox({
                     {item.authorLabel}
                     {item.at ? ` · ${item.at}` : ""}
                   </span>
-                  <MessageText text={item.content} />
+                  {item.content ? <MessageText text={item.content} /> : null}
+                  <AttachmentList files={item.files} />
                 </div>
               ))}
             </div>
@@ -228,11 +233,16 @@ export function FeedbackInbox({
                   rows={2}
                   disabled={busy}
                 />
+                <AttachmentPicker
+                  files={replyFiles[ticket.id] ?? []}
+                  onChange={(next) => setReplyFiles((prev) => ({ ...prev, [ticket.id]: next }))}
+                  disabled={busy}
+                />
                 <div className="row u-wrap u-gap2">
                   <button
                     className="btn btn-primary"
                     type="button"
-                    disabled={busy || !(reply[ticket.id] ?? "").trim()}
+                    disabled={busy || (!(reply[ticket.id] ?? "").trim() && (replyFiles[ticket.id] ?? []).length === 0)}
                     onClick={() => void replyTicket(ticket.id)}
                   >
                     Ответить

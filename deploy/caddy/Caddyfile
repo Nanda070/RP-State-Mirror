@@ -1,6 +1,7 @@
-# Reverse proxy of Mirror. setup.sh / set-domain.sh copy this file to /etc/caddy/Caddyfile,
-# replacing __DOMAIN__ and __APP_ROOT__. Caddy obtains and renews the HTTPS certificate itself;
-# the domain's A record must already point to this server, ports 80 and 443 must be open.
+# Site of one Mirror installation. setup.sh / set-domain.sh copy this file to
+# /etc/caddy/sites/<installation>.caddy, replacing __DOMAIN__, __APP_ROOT__, __PORT__ and
+# __INSTANCE__ (see install_caddyfile in deploy/lib.sh). Caddy obtains and renews the HTTPS
+# certificate itself; the domain's A record must already point to this server, ports 80 and 443 must be open.
 
 __DOMAIN__ {
 	encode zstd gzip
@@ -10,10 +11,11 @@ __DOMAIN__ {
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		# __ROBOTS__
 		-Server
 	}
 
-	reverse_proxy 127.0.0.1:3000
+	reverse_proxy 127.0.0.1:__PORT__
 
 	# While the dashboard restarts (an update takes a few seconds) visitors see a holding page
 	# instead of a bare "502 Bad Gateway".
@@ -29,7 +31,7 @@ __DOMAIN__ {
 	}
 
 	log {
-		output file /var/log/caddy/mirror-access.log {
+		output file /var/log/caddy/__INSTANCE__-access.log {
 			roll_size 20mb
 			roll_keep 5
 		}

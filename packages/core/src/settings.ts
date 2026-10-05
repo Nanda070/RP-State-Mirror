@@ -188,6 +188,11 @@ export const settingDefinitions = {
     3600,
     "Срок жизни временного инвайта /инвайт-админ, секунды",
   ),
+  "presence.enabled": defineSetting(
+    z.boolean(),
+    false,
+    "Статус «в сети» в профиле: бот подключается с Presence Intent (включить в Discord Developer Portal)",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),

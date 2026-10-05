@@ -1,4 +1,11 @@
-import { LEGAL_KINDS, LEGAL_KIND_TITLES, getSettings, listLegalVersions } from "@mirror/core";
+import {
+  LEGAL_KINDS,
+  LEGAL_KIND_TITLES,
+  getBotHeartbeat,
+  getSettings,
+  isHeartbeatFresh,
+  listLegalVersions,
+} from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import { AnonymizeForm, LegalEditor } from "@/components/legal-editor";
 import { PageTabs, currentTab } from "@/components/page-tabs";
@@ -6,6 +13,7 @@ import { SettingsCpForm } from "@/components/settings-cp-form";
 import { SettingsGuildForm } from "@/components/settings-guild-form";
 import { SettingsLockdownForm } from "@/components/settings-lockdown-form";
 import { SettingsMonitoringForm } from "@/components/settings-monitoring-form";
+import { SettingsPresenceForm } from "@/components/settings-presence-form";
 import { getActiveChannelOptions, getActiveGuildOptions, getRolesForGuild } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscow, formatMoscowShort } from "@/lib/moscow";
@@ -36,6 +44,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       "monitoring.errorChannelId",
       "monitoring.alertWebhookUrl",
       "audit.archiveAfterDays",
+      "presence.enabled",
     ] as const),
     getActiveChannelOptions(),
   ]);
@@ -74,6 +83,7 @@ type Settings = Awaited<
         "monitoring.errorChannelId",
         "monitoring.alertWebhookUrl",
         "audit.archiveAfterDays",
+        "presence.enabled",
       ]
     >
   >
@@ -84,6 +94,9 @@ async function ServersTab({ settings, channels }: { settings: Settings; channels
   const guilds = await getActiveGuildOptions();
   const incidentGuildId = settings["core.incidentGuildId"];
   const incidentRoles = incidentGuildId ? await getRolesForGuild(incidentGuildId) : [];
+  const heartbeat = await getBotHeartbeat();
+  const botPresence = (heartbeat?.meta as { presence?: unknown } | null)?.presence;
+  const botState = !heartbeat || !isHeartbeatFresh(heartbeat.at) ? "unknown" : botPresence === true ? "on" : "off";
   return (
     <>
       <SettingsGuildForm
@@ -106,6 +119,7 @@ async function ServersTab({ settings, channels }: { settings: Settings; channels
         channels={channels}
         roles={incidentRoles}
       />
+      <SettingsPresenceForm initialEnabled={settings["presence.enabled"]} botState={botState} />
     </>
   );
 }

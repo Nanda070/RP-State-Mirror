@@ -9,7 +9,7 @@ import {
   type Interaction,
   type Role,
 } from "discord.js";
-import { prisma } from "@mirror/db";
+import { AuditActorType, prisma } from "@mirror/db";
 import {
   BOT_SERVICE,
   HEARTBEAT_INTERVAL_MS,
@@ -25,12 +25,18 @@ import {
   expirePendingRegistrations,
   expirePendingTransfers,
   expireRegistrations,
+  getSetting,
   markGuildUnavailable,
   markMemberLeft,
   migrateLegacyRegistrationChannels,
   parseEnv,
   recordHeartbeat,
+  recordPresenceChanges,
+  replacePresenceSnapshot,
+  setSetting,
   syncGuildChannels,
+  toPresenceStatus,
+  type PresenceStatus,
   syncGuildRoles,
   upsertGuild,
   upsertMember,
@@ -55,8 +61,17 @@ enableSettingsCache();
 enableReadCache();
 const log = createLogger("bot", env.LOG_LEVEL);
 
+// «В сети» in the profile needs the privileged presence intent; it is switched on in the dashboard.
+// A change of the switch restarts the bot (see `beat`), because intents are fixed at login.
+const presenceEnabled = await getSetting("presence.enabled").catch(() => false);
+const PRESENCE_FLUSH_MS = 5_000;
+
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    ...(presenceEnabled ? [GatewayIntentBits.GuildPresences] : []),
+  ],
   partials: [Partials.GuildMember],
   // Shown under the bot's name in Discord: «Играет в GTA5RP Mirror».
   presence: { status: "online", activities: [{ name: BOT_ACTIVITY, type: ActivityType.Playing }] },
@@ -100,9 +115,59 @@ function guarded(name: string, fn: () => Promise<unknown>) {
 
 /** Sign of life for the status page and the «bot is down» alert. */
 function beat() {
-  recordHeartbeat(BOT_SERVICE, { guilds: client.guilds.cache.size, pingMs: Math.round(client.ws.ping) }).catch(
-    (error: unknown) => log.warn({ err: error }, "heartbeat was not recorded"),
-  );
+  recordHeartbeat(BOT_SERVICE, {
+    guilds: client.guilds.cache.size,
+    pingMs: Math.round(client.ws.ping),
+    presence: presenceEnabled,
+  }).catch((error: unknown) => log.warn({ err: error }, "heartbeat was not recorded"));
+  // The presence switch was changed in the dashboard: reconnect with the other set of intents.
+  getSetting("presence.enabled")
+    .then((wanted) => {
+      if (wanted === presenceEnabled || shuttingDown) return;
+      log.info({ presence: wanted }, "presence setting changed — restarting to reconnect with the new intents");
+      process.exitCode = 1;
+      void shutdown("presence setting changed");
+    })
+    .catch(() => undefined);
+}
+
+// Discord sends a presence update for every guild the person shares with the bot and for every
+// change of activity; only a change of status is kept, and the writes go out in batches.
+const pendingPresence = new Map<string, PresenceStatus>();
+let presenceTimer: NodeJS.Timeout | undefined;
+
+function flushPresence() {
+  if (pendingPresence.size === 0) return;
+  const batch = new Map(pendingPresence);
+  pendingPresence.clear();
+  guarded("presenceFlush", () => recordPresenceChanges(batch));
+}
+
+/** Everyone the bot sees online right now; the rest are offline. */
+function snapshotPresence() {
+  if (!presenceEnabled) return;
+  const visible = new Map<string, PresenceStatus>();
+  for (const guild of client.guilds.cache.values()) {
+    for (const presence of guild.presences.cache.values()) {
+      if (presence.user?.bot) continue;
+      const status = toPresenceStatus(presence.status);
+      // A person online in one guild and idle in another: online wins.
+      if (status === "online" || !visible.has(presence.userId)) visible.set(presence.userId, status);
+    }
+  }
+  guarded("presenceSnapshot", async () => {
+    const written = await replacePresenceSnapshot(visible);
+    log.info({ visible: visible.size, written }, "presence snapshot stored");
+  });
+}
+
+if (presenceEnabled) {
+  client.on(Events.PresenceUpdate, (before, after) => {
+    if (after.user?.bot) return;
+    const status = toPresenceStatus(after.status);
+    if (before && toPresenceStatus(before.status) === status) return;
+    pendingPresence.set(after.userId, status);
+  });
 }
 
 client.once(Events.ClientReady, (ready) => {
@@ -119,11 +184,16 @@ client.once(Events.ClientReady, (ready) => {
     onJobEnqueued(() => void setTimeout(() => worker.wake(), 200));
     beat();
     heartbeatTimer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
+    if (presenceEnabled) {
+      snapshotPresence();
+      presenceTimer = setInterval(flushPresence, PRESENCE_FLUSH_MS);
+    }
     reconcileTimer = setInterval(
       () =>
         guarded("reconcile", async () => {
           await syncAllGuilds(ready, log);
           await reconcileCpAccess(ready, log.child({ component: "cp-sync" }));
+          snapshotPresence();
         }),
       RECONCILE_INTERVAL_MS,
     );
@@ -292,11 +362,17 @@ client.on(Events.GuildMemberRemove, (member) =>
 
 client.on(Events.Error, (error) => log.error({ err: error }, "discord client error"));
 
+let shuttingDown = false;
+
 async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   log.info({ signal }, "shutting down");
   clearInterval(reconcileTimer);
   clearInterval(maintenanceTimer);
   clearInterval(heartbeatTimer);
+  clearInterval(presenceTimer);
+  flushPresence();
   for (const timer of pendingResyncs.values()) clearTimeout(timer);
   await worker.stop();
   await client.destroy();
@@ -311,7 +387,15 @@ try {
   await client.login(env.DISCORD_BOT_TOKEN);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("disallowed intents")) {
+  if (message.includes("disallowed intents") && presenceEnabled) {
+    // The presence intent is not switched on in the Developer Portal: turn the feature off, so the
+    // bot comes back without it (systemd starts it again), and leave the reason in the audit log.
+    log.fatal("Discord rejected the presence intent: enable PRESENCE INTENT in the Developer Portal; «в сети» is switched off");
+    await setSetting("presence.enabled", false, {
+      actorType: AuditActorType.SYSTEM,
+      source: "bot.presence_intent_rejected",
+    }).catch((settingError: unknown) => log.error({ err: settingError }, "could not switch presence off"));
+  } else if (message.includes("disallowed intents")) {
     log.fatal("Discord rejected the intents: enable SERVER MEMBERS INTENT for the bot in the Developer Portal");
   } else {
     log.fatal({ err: error }, "failed to log in to Discord");

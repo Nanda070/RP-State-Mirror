@@ -2,9 +2,9 @@
  * Message designs & sent messages CRUD for the embed manager.
  * Button actions are also managed here.
  */
-import { RecordStatus, prisma } from "@mirror/db";
+import { JobStatus, RecordStatus, prisma } from "@mirror/db";
 import { z } from "zod";
-import { auditedMutation, type AuditContext } from "./audit.js";
+import { auditedMutation, writeAuditEvent, type AuditContext } from "./audit.js";
 import { toJsonValue, type Db } from "./db.js";
 import {
   embedSpecSchema,
@@ -15,7 +15,7 @@ import {
   type V2Component,
   type V2RoleSelect,
 } from "./embeds.js";
-import { enqueueJob } from "./jobs.js";
+import { cancelJob, enqueueJob } from "./jobs.js";
 import { MODULE_JOB_TYPES } from "./module-jobs.js";
 import { UserError } from "./errors.js";
 
@@ -240,19 +240,33 @@ export async function materializeEmbedSpecButtons(spec: EmbedSpec): Promise<Embe
 // Send / resend jobs
 // ──────────────────────────────────────────────────────────────
 
+/** How far ahead a message can be scheduled. */
+export const MAX_SCHEDULE_AHEAD_MS = 90 * 24 * 3_600_000;
+
 export const sendMessageDesignSchema = z.object({
   designId: z.string().min(1),
   guildDiscordId: z.string().regex(/^\d{17,20}$/),
   channelDiscordId: z.string().regex(/^\d{17,20}$/),
   /** Values for `{name}` placeholders of the template. */
   variables: z.record(z.string().max(1000)).optional(),
+  /** Send later: the bot posts the template as it is at that moment. Absent — right away. */
+  sendAt: z.coerce.date().optional(),
 });
 export type SendMessageDesignInput = z.input<typeof sendMessageDesignSchema>;
 
-export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db?: Db) {
+export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db?: Db, now = new Date()) {
   const data = sendMessageDesignSchema.parse(input);
   const design = await prisma.messageDesign.findUnique({ where: { id: data.designId } });
   if (!design || design.status !== RecordStatus.ACTIVE) throw new UserError("Шаблон не найден");
+  if (data.sendAt) {
+    if (Number.isNaN(data.sendAt.getTime())) throw new UserError("Не удалось прочитать время отправки.");
+    if (data.sendAt.getTime() < now.getTime() + 60_000) {
+      throw new UserError("Время отправки должно быть хотя бы на минуту позже текущего.");
+    }
+    if (data.sendAt.getTime() > now.getTime() + MAX_SCHEDULE_AHEAD_MS) {
+      throw new UserError("Отправку можно запланировать не дальше чем на 90 дней вперёд.");
+    }
+  }
   return enqueueJob(
     {
       type: MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND,
@@ -261,10 +275,79 @@ export async function enqueueMessageDesignSend(input: SendMessageDesignInput, db
         guildDiscordId: data.guildDiscordId,
         channelDiscordId: data.channelDiscordId,
         ...(data.variables ? { variables: data.variables } : {}),
+        ...(data.sendAt ? { scheduledFor: data.sendAt.toISOString() } : {}),
       },
+      ...(data.sendAt ? { availableAt: data.sendAt } : {}),
     },
     db,
   );
+}
+
+/** Schedules a template and leaves the plan in the audit log. */
+export async function scheduleMessageDesignSend(
+  input: Omit<SendMessageDesignInput, "sendAt"> & { sendAt: Date | string },
+  context: AuditContext,
+) {
+  return auditedMutation(context, "message_design.send_scheduled", "job", async (tx) => {
+    const job = await enqueueMessageDesignSend({ ...input, sendAt: new Date(input.sendAt) }, tx);
+    return {
+      entityId: job.id,
+      after: { designId: input.designId, channelDiscordId: input.channelDiscordId, sendAt: job.availableAt.toISOString() },
+      result: job,
+    };
+  });
+}
+
+export type ScheduledSend = {
+  jobId: string;
+  designId: string;
+  designName: string;
+  guildDiscordId: string;
+  channelDiscordId: string;
+  sendAt: Date;
+};
+
+/** Sends that wait for their time, soonest first. */
+export async function listScheduledMessageSends(now = new Date()): Promise<ScheduledSend[]> {
+  const jobs = await prisma.job.findMany({
+    where: { type: MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND, status: JobStatus.PENDING, availableAt: { gt: now } },
+    orderBy: { availableAt: "asc" },
+    take: 100,
+  });
+  const scheduled = jobs.filter((job) => {
+    const payload = job.payload as Record<string, unknown> | null;
+    // A send that failed and waits for its retry is not a plan.
+    return typeof payload?.scheduledFor === "string" && job.attempts === 0;
+  });
+  const designIds = [...new Set(scheduled.map((job) => String((job.payload as Record<string, unknown>).designId ?? "")))];
+  const designs = await prisma.messageDesign.findMany({ where: { id: { in: designIds } }, select: { id: true, name: true } });
+  const names = new Map(designs.map((design) => [design.id, design.name]));
+  return scheduled.map((job) => {
+    const payload = job.payload as Record<string, unknown>;
+    const designId = String(payload.designId ?? "");
+    return {
+      jobId: job.id,
+      designId,
+      designName: names.get(designId) ?? "шаблон удалён",
+      guildDiscordId: String(payload.guildDiscordId ?? ""),
+      channelDiscordId: String(payload.channelDiscordId ?? ""),
+      sendAt: job.availableAt,
+    };
+  });
+}
+
+/** Cancels a planned send before its time. */
+export async function cancelScheduledMessageSend(jobId: string, context: AuditContext): Promise<void> {
+  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!job || job.type !== MODULE_JOB_TYPES.MESSAGE_DESIGN_SEND) throw new UserError("Запланированная отправка не найдена.");
+  if (!(await cancelJob(jobId))) throw new UserError("Сообщение уже отправляется или отправлено — отменить нельзя.");
+  await writeAuditEvent({
+    ...context,
+    action: "message_design.send_cancelled",
+    entityType: "job",
+    entityId: jobId,
+    before: { sendAt: job.availableAt.toISOString(), payload: job.payload },
+  });
 }
 
 export async function enqueueMessageDesignResend(sentMessageId: string, db?: Db) {

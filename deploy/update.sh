@@ -11,6 +11,8 @@
 #   sudo bash deploy/update.sh backup     make a backup right now
 #   sudo bash deploy/update.sh rollback   return the code to the version before the last update
 #
+# The test copy (/opt/mirror-staging) is updated the same way: sudo bash deploy/staging.sh update
+#
 # If a step fails, the script stops, says where, and LEAVES MAINTENANCE ON: the site shows the
 # «технические работы» page instead of a half-updated system. Fix the cause and run it again,
 # or run `rollback`.
@@ -66,7 +68,7 @@ restart_and_check() {
   systemctl restart $SERVICES
 
   step "Проверка: сайт отвечает"
-  wait_for_site || die "дашборд не ответил за 2 минуты (journalctl -u mirror-dashboard -n 80)"
+  wait_for_site || die "дашборд не ответил за 2 минуты (journalctl -u $INSTANCE-dashboard -n 80)"
 
   step "Проверка: бот на связи"
   maintenance wait-bot 120
@@ -91,7 +93,7 @@ deploy() {
   current_commit > "$PREVIOUS_FILE"
   chown "$APP_USER:$APP_USER" "$PREVIOUS_FILE"
   # After a rollback the checkout is detached: return to the branch before pulling.
-  as_app "git symbolic-ref -q HEAD >/dev/null || git checkout ${DEPLOY_BRANCH:-main}"
+  as_app "git symbolic-ref -q HEAD >/dev/null || git checkout $(deploy_branch)"
   as_app "git pull --ff-only"
   echo "Было: $(cat "$PREVIOUS_FILE"), стало: $(current_commit)"
 
@@ -130,7 +132,8 @@ rollback() {
 }
 
 status() {
-  echo "Версия: $(current_commit) ($(as_app "git log -1 --format=%cd --date=format:'%d.%m.%Y %H:%M'"))"
+  if [[ "$STAGING" == "1" ]]; then echo "Установка: тестовая копия ($APP_ROOT)"; fi
+  echo "Версия: $(current_commit) ($(as_app "git log -1 --format=%cd --date=format:'%d.%m.%Y %H:%M'")), ветка $(deploy_branch)"
   echo "Адрес:  $(env_get PUBLIC_BASE_URL)"
   for unit in $SERVICES caddy docker; do
     printf '  %-18s %s\n' "$unit" "$(systemctl is-active "$unit" 2>/dev/null || true)"
@@ -151,20 +154,20 @@ case "${1:-deploy}" in
     # Idempotent: creates the factions, default settings and the super admin accounts from .env.
     as_app "pnpm db:seed"
     systemctl start $SERVICES
-    wait_for_site || die "дашборд не ответил (journalctl -u mirror-dashboard -n 80)"
+    wait_for_site || die "дашборд не ответил (journalctl -u $INSTANCE-dashboard -n 80)"
     maintenance wait-bot 120
     ;;
   stop) systemctl stop $SERVICES ;;
   restart)
     systemctl restart $SERVICES
-    wait_for_site || die "дашборд не ответил (journalctl -u mirror-dashboard -n 80)"
+    wait_for_site || die "дашборд не ответил (journalctl -u $INSTANCE-dashboard -n 80)"
     maintenance wait-bot 120
     ;;
   logs)
     case "${2:-}" in
-      bot) journalctl -u mirror-bot -f -n 100 ;;
-      dashboard) journalctl -u mirror-dashboard -f -n 100 ;;
-      *) journalctl -u mirror-bot -u mirror-dashboard -f -n 100 ;;
+      bot) journalctl -u "$INSTANCE-bot" -f -n 100 ;;
+      dashboard) journalctl -u "$INSTANCE-dashboard" -f -n 100 ;;
+      *) journalctl -u "$INSTANCE-bot" -u "$INSTANCE-dashboard" -f -n 100 ;;
     esac
     ;;
   backup) (cd "$APP_ROOT" && docker compose exec -T backup backup.sh) ;;
