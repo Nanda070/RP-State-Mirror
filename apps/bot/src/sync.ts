@@ -1,5 +1,6 @@
 import type { Client, Guild } from "discord.js";
 import {
+  markAbsentGuildsUnavailable,
   reconcileGuildMembers,
   syncGuildChannels,
   syncGuildRoles,
@@ -51,5 +52,13 @@ export async function syncAllGuilds(client: Client, log: Logger) {
     }
     // Brief pause between guild opcode-8 fetches to reduce gateway rate limits.
     await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+  // Guilds in an outage stay in the cache as unavailable, so a guild missing from it is one the
+  // bot is no longer on.
+  try {
+    const gone = await markAbsentGuildsUnavailable([...client.guilds.cache.keys()]);
+    if (gone.length > 0) log.warn({ guildIds: gone }, "guilds the bot is no longer on were archived");
+  } catch (error) {
+    log.error({ err: error }, "absent guilds were not archived");
   }
 }

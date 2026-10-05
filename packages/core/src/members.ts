@@ -135,6 +135,20 @@ export async function markGuildUnavailable(guildDiscordId: string) {
   });
 }
 
+/**
+ * The bot was removed from a guild (or the guild was deleted) while it was offline, so no
+ * «guild gone» event ever came. Given the guilds the bot is on now, the rest are marked the same
+ * way that event would mark them. Returns the Discord IDs that were marked.
+ */
+export async function markAbsentGuildsUnavailable(presentGuildDiscordIds: string[]): Promise<string[]> {
+  const absent = await prisma.guild.findMany({
+    where: { status: RecordStatus.ACTIVE, discordId: { notIn: presentGuildDiscordIds } },
+    select: { discordId: true },
+  });
+  for (const guild of absent) await markGuildUnavailable(guild.discordId);
+  return absent.map((guild) => guild.discordId);
+}
+
 export async function syncGuildRoles(guildDiscordId: string, roles: RoleSnapshot[]) {
   const guild = await requireGuild(guildDiscordId);
   const initial = guild.lastSyncedAt === null;

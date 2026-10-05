@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { AdminLevel, AuditActorType, RoleMappingKind } from "@mirror/db";
 import {
+  markAbsentGuildsUnavailable,
   markMemberLeft,
   reconcileGuildMembers,
   resolveIdentity,
@@ -154,6 +155,25 @@ describe("resolveIdentity", () => {
 
     await markMemberLeft(LSPD_GUILD, USER);
     expect((await resolveIdentity(USER, { superAdminUserIds: [] })).factions).toHaveLength(0);
+  });
+
+  it("drops faction membership when the bot lost the faction guild while it was offline", async () => {
+    await setup();
+    await upsertMember(MAIN, member(USER, ["500000000000000001"]));
+    await upsertMember(LSPD_GUILD, member(USER, ["600000000000000001"]));
+
+    // The bot comes back and is a member of the main guild only.
+    expect(await markAbsentGuildsUnavailable([MAIN])).toEqual([LSPD_GUILD]);
+
+    const identity = await resolveIdentity(USER, { superAdminUserIds: [] });
+    expect(identity.factions).toHaveLength(0);
+    expect(identity.adminLevel).toBe(AdminLevel.HELPER);
+    expect(await prisma.auditLog.count({ where: { action: "guild.disconnected", entityId: LSPD_GUILD } })).toBe(1);
+
+    // A second pass has nothing left to do, and a guild the bot is back on becomes active again.
+    expect(await markAbsentGuildsUnavailable([MAIN])).toEqual([]);
+    await guild(LSPD_GUILD);
+    expect((await resolveIdentity(USER, { superAdminUserIds: [] })).factions).toHaveLength(1);
   });
 
   it("treats bootstrap super admins as SUPER_ADMIN without any roles", async () => {
