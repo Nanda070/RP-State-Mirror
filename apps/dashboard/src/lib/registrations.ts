@@ -6,7 +6,7 @@ export type RegistrationListFilter = {
   status?: RecordStatus;
   /** Free text: static, plate, applicant id. */
   q?: string | undefined;
-  /** One of the display statuses (PENDING, APPROVED, REJECTED, EXPIRED, REVOKED). */
+  /** A registry filter: one of the display statuses, ACTIVE (in force) or ALL. */
   display?: string | undefined;
   limit?: number;
   offset?: number;
@@ -14,6 +14,9 @@ export type RegistrationListFilter = {
 
 /** Stored fields behind each status the registry shows. */
 const DISPLAY_FILTERS: Record<string, Prisma.RegistrationWhereInput> = {
+  // Waiting for a decision or approved and in force: what the registry opens on.
+  ACTIVE: { status: RecordStatus.ACTIVE },
+  ALL: {},
   PENDING: { decision: DecisionStatus.PENDING, status: RecordStatus.ACTIVE },
   APPROVED: { decision: DecisionStatus.APPROVED, status: RecordStatus.ACTIVE },
   REJECTED: { decision: DecisionStatus.REJECTED },
@@ -63,6 +66,16 @@ export const REGISTRATION_DISPLAY_STATUS_RU: Record<RegistrationListItem["displa
   REJECTED: "Отказано",
   EXPIRED: "Истекла",
   REVOKED: "Снята",
+};
+
+/** The registry opens on the registrations in force; closed ones are one filter away. */
+export const REGISTRATION_DEFAULT_FILTER = "ACTIVE";
+
+/** Options of the registry's status filter, in the order they are offered. */
+export const REGISTRATION_FILTERS_RU: Record<string, string> = {
+  ACTIVE: "Действующие",
+  ...REGISTRATION_DISPLAY_STATUS_RU,
+  ALL: "Все",
 };
 
 export function registrationStatusTone(

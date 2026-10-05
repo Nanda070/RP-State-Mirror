@@ -89,6 +89,7 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `documents.ts`, `wanted.ts`, `fines.ts`, `personnel.ts` | базовые модули |
 | `stage4.ts` | персонажи, нашивки, регистрации, переводы, запросы вебхуков, IC ЧС, панели ролей, обратная связь |
 | `pending-expiry.ts` | автозакрытие нерассмотренных заявок |
+| `registration-leave.ts` | снятие регистраций ТС и униформы у вышедших с сервера фракции: `closeRegistrationsOfLeavers` вызывается из обслуживания бота раз в 10 минут. Условия: запись о выходе (`leftAt`) на действующем сервере фракции позже подачи заявки, человека нет ни на одном сервере фракции, прошёл срок ожидания. Одобренная регистрация получает статус «Снята», ждущая решения — отказ; причина — `REGISTRATION_LEFT_REASON`, действие в журнале — `registration.left_faction`. Если проверка хочет снять больше предела, она не снимает ничего, а бот пишет в служебный канал |
 | `cp-sync.ts` | план синхронизации ЧП (чистая логика, без Discord) |
 | `embeds.ts`, `legacy-embeds.ts`, `stage4-embeds.ts`, `message-designs.ts` | описание сообщений, готовые шаблоны, кнопки |
 | `forms.ts` | конструктор форм, проверка ответов, черновики |
@@ -245,7 +246,7 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | Штрафы | `fines.managerRoleIds` |
 | Кадры | `personnel.managerRoleIds` |
 | Нашивки | `tokens.expandThresholdPercent` (10), `tokens.finderRoleIds`, `tokens.openMessage` |
-| Регистрации | `registrations.ttlDays` (31), `registrations.pendingTtlDays` (14), `registrations.vehicleChannelId`, `registrations.uniformChannelId`, `registrations.coordinatorRoleIds` |
+| Регистрации | `registrations.ttlDays` (31), `registrations.pendingTtlDays` (14), `registrations.vehicleChannelId`, `registrations.uniformChannelId`, `registrations.coordinatorRoleIds`, `registrations.closeOnLeave` (вкл.), `registrations.leaveGraceHours` (24), `registrations.leaveMaxPerPass` (10) |
 | Переводы | `transfers.channelId`, `transfers.pingRoleIds`, `transfers.approvalDmText`, `transfers.pendingTtlDays` (14) |
 | IC ЧС | `icBlacklist.enabled`, `icBlacklist.channelId`, `icBlacklist.managerRoleIds`, `icBlacklist.searchRoleIds` |
 | Обратная связь, вебхуки, приглашения | `feedback.categories`, `feedback.notifyChannelId`, `feedback.openMessage`, `webhooks.notifyChannelId`, `invites.guildIds`, `invites.defaultMaxAgeSeconds` |
@@ -472,7 +473,7 @@ Vitest, интеграционные: настоящая PostgreSQL (`docker-com
 | Область | Файлы |
 |---|---|
 | ядро | `audit-settings`, `jobs`, `members-identity`, `role-mappings`, `access`, `errors`, `seed-env`, `utilities` |
-| модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules` |
+| модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules`, `improve-registration-leave` |
 | надёжность бота | `bot-reliability` |
 | разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `stage5-forms`, `stage5-share-links`, `stage5-role-panels` |
 | администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, экспорт, архив) |

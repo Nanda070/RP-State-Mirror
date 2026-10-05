@@ -18,6 +18,7 @@ import {
 import { AuditActorType, prisma, RecordStatus, type Job } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
+  REGISTRATION_LEFT_REASON,
   PERSONNEL_AUDIT_META,
   checkDiscordLimits,
   discordMessageToSpec,
@@ -1166,7 +1167,7 @@ const registrationExpired: JobHandler = async (payload, { client, log }) => {
     client,
     registration.applicantDiscordId,
     registration.status === RecordStatus.REVOKED
-      ? `Регистрация ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} снята администрацией.\n**Причина:** ${registration.rejectionReason ?? "—"}`
+      ? `Регистрация ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} снята${registration.rejectionReason === REGISTRATION_LEFT_REASON ? "" : " администрацией"}.\n**Причина:** ${registration.rejectionReason ?? "—"}`
       : `Срок регистрации ${registrationKindLabel(registration.kind)}${registration.plate ? ` (${registration.plate})` : ""} для статика ${registration.staticId} истёк. При необходимости подайте заявку заново.`,
     log,
     "registrationExpiry",

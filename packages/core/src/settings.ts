@@ -279,6 +279,21 @@ export const settingDefinitions = {
     14,
     "Через сколько дней нерассмотренная заявка на перевод закрывается автоматически",
   ),
+  "registrations.closeOnLeave": defineSetting(
+    z.boolean(),
+    true,
+    "Снимать регистрации ТС и униформы, когда заявитель вышел с сервера фракции",
+  ),
+  "registrations.leaveGraceHours": defineSetting(
+    z.number().int().min(1).max(720),
+    24,
+    "Сколько часов после выхода с сервера фракции регистрация ещё не снимается",
+  ),
+  "registrations.leaveMaxPerPass": defineSetting(
+    z.number().int().min(1).max(1000),
+    10,
+    "Предохранитель: если одна проверка хочет снять больше регистраций ушедших, она не снимает ни одной",
+  ),
 };
 
 export type SettingKey = keyof typeof settingDefinitions;

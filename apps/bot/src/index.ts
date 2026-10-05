@@ -15,6 +15,7 @@ import {
   HEARTBEAT_INTERVAL_MS,
   archiveOldAuditLog,
   claimOverdueFines,
+  closeRegistrationsOfLeavers,
   enableReadCache,
   onJobEnqueued,
   enableSettingsCache,
@@ -84,6 +85,9 @@ let reconcileTimer: NodeJS.Timeout | undefined;
 let maintenanceTimer: NodeJS.Timeout | undefined;
 let heartbeatTimer: NodeJS.Timeout | undefined;
 
+/** How many registrations the last «left the faction» pass held back; a repeat is not reported again. */
+let heldLeaverRegistrations = 0;
+
 /** Time-based status transitions; side effects (card edits, DMs) go through jobs. */
 async function runMaintenance() {
   const [registrations, documents, blacklist, unreviewedRegistrations, unreviewedTransfers] = await Promise.all([
@@ -93,6 +97,21 @@ async function runMaintenance() {
     expirePendingRegistrations(),
     expirePendingTransfers(),
   ]);
+  const leavers = await closeRegistrationsOfLeavers();
+  if (leavers.closed > 0) log.info({ closed: leavers.closed }, "maintenance: registrations of people who left their faction closed");
+  if (leavers.held > 0 && leavers.held !== heldLeaverRegistrations) {
+    log.warn({ held: leavers.held }, "maintenance: too many registrations to close at once — nothing was closed");
+    void reportError(
+      client,
+      "снятие регистраций при уходе из фракции",
+      new Error(
+        `Проверка хочет снять ${leavers.held} регистраций сразу — это больше предела. Ничего не снято. ` +
+          "Если люди действительно ушли, поднимите предел в «Модули → Регистрации»; если нет — проверьте снимок серверов.",
+      ),
+      log,
+    );
+  }
+  heldLeaverRegistrations = leavers.held;
   const overdueFines = await claimOverdueFines();
   if (overdueFines > 0) log.info({ overdueFines }, "maintenance: overdue fine notices queued");
   // Old audit rows move to the archive table a batch at a time; a backlog drains over several runs.

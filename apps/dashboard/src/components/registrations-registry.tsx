@@ -3,7 +3,9 @@ import { Pager, RegistryToolbar } from "./registry-toolbar";
 import { ShareButton } from "./share-button";
 import { formatMoscowShort } from "@/lib/moscow";
 import {
+  REGISTRATION_DEFAULT_FILTER,
   REGISTRATION_DISPLAY_STATUS_RU,
+  REGISTRATION_FILTERS_RU,
   registrationStatusTone,
   type RegistrationListItem,
 } from "@/lib/registrations";
@@ -81,7 +83,8 @@ export function RegistrationsRegistry({
       <RegistryToolbar
         path={path}
         query={query}
-        statuses={REGISTRATION_DISPLAY_STATUS_RU}
+        statuses={REGISTRATION_FILTERS_RU}
+        defaultStatus={REGISTRATION_DEFAULT_FILTER}
         placeholder={showPlate ? "Статик, госномер, Discord ID заявителя" : "Статик, Discord ID заявителя"}
         exportRegistry={exportRegistry}
       />

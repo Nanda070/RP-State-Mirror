@@ -51,6 +51,7 @@ export * from "./users.js";
 export * from "./utilities.js";
 export * from "./vehicles.js";
 export * from "./wanted.js";
+export * from "./registration-leave.js";
 export * from "./registry-actions.js";
 export * from "./read-cache.js";
 export * from "./search.js";

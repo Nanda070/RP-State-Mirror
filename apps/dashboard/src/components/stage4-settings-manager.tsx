@@ -12,6 +12,9 @@ export type Stage4SettingsValues = {
   "registrations.vehicleChannelId": string | null;
   "registrations.uniformChannelId": string | null;
   "registrations.coordinatorRoleIds": string[];
+  "registrations.closeOnLeave": boolean;
+  "registrations.leaveGraceHours": number;
+  "registrations.leaveMaxPerPass": number;
   "transfers.channelId": string | null;
   "transfers.pingRoleIds": string[];
   "transfers.approvalDmText": string;
@@ -168,6 +171,41 @@ export function Stage4SettingsManager({
                 получает сообщение.
               </span>
             </label>
+            <ToggleRow
+              id="registrations-close-on-leave"
+              checked={values["registrations.closeOnLeave"]}
+              onChange={(checked) => patch("registrations.closeOnLeave", checked)}
+              label="Снимать регистрации при уходе из фракции"
+            />
+            {values["registrations.closeOnLeave"] ? (
+              <>
+                <label className="field">
+                  <span>Снимать через, часов после выхода с сервера фракции</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    step={1}
+                    value={values["registrations.leaveGraceHours"]}
+                    onChange={(e) => patch("registrations.leaveGraceHours", Number(e.target.value))}
+                  />
+                </label>
+                <label className="field">
+                  <span>Предел снятий за одну проверку</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    step={1}
+                    value={values["registrations.leaveMaxPerPass"]}
+                    onChange={(e) => patch("registrations.leaveMaxPerPass", Number(e.target.value))}
+                  />
+                  <span className="field-hint">
+                    Если снять нужно больше, проверка не снимает ни одной регистрации и пишет в служебный канал.
+                  </span>
+                </label>
+              </>
+            ) : null}
             <label className="field">
               <span>Канал регистрации ТС</span>
               <ChannelSelect

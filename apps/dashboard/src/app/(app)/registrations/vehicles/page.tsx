@@ -3,7 +3,7 @@ import { RegistrationKind } from "@mirror/db";
 import { redirect } from "next/navigation";
 import { RegistrationsRegistry } from "@/components/registrations-registry";
 import { registryQuery, type RegistrySearch } from "@/components/registry-toolbar";
-import { listRegistrations } from "@/lib/registrations";
+import { REGISTRATION_DEFAULT_FILTER, listRegistrations } from "@/lib/registrations";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 
 export const metadata = { title: "Регистрации ТС" };
@@ -17,7 +17,7 @@ export default async function VehicleRegistrationsPage({ searchParams }: { searc
   const { total, items } = await listRegistrations({
     kind: RegistrationKind.VEHICLE,
     q: query.q,
-    display: query.status,
+    display: query.status ?? REGISTRATION_DEFAULT_FILTER,
     limit: REGISTRY_PAGE_SIZE,
     offset: (query.page - 1) * REGISTRY_PAGE_SIZE,
   });

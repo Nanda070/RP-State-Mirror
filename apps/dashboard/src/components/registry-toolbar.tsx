@@ -28,6 +28,7 @@ export function RegistryToolbar({
   path,
   query,
   statuses,
+  defaultStatus,
   placeholder,
   exportRegistry,
   resetHref,
@@ -38,6 +39,8 @@ export function RegistryToolbar({
   query: { q?: string | undefined; status?: string | undefined };
   /** Status filter options: value → label. */
   statuses?: Record<string, string>;
+  /** The status the registry opens on. When set, `statuses` holds every option, «all» included. */
+  defaultStatus?: string;
   placeholder: string;
   /** Registry key for «Скачать CSV». */
   exportRegistry?: string;
@@ -48,7 +51,7 @@ export function RegistryToolbar({
   /** Extra fields of the form (the audit log has more filters). */
   children?: React.ReactNode;
 }) {
-  const filtered = filteredProp ?? Boolean(query.q || query.status);
+  const filtered = filteredProp ?? Boolean(query.q || (query.status && query.status !== defaultStatus));
   return (
     <form className="registry-toolbar" action={path} method="get" role="search">
       <div className="field registry-toolbar-search">
@@ -58,8 +61,8 @@ export function RegistryToolbar({
       {statuses ? (
         <div className="field">
           <label htmlFor="registry-status">Статус</label>
-          <select id="registry-status" name="status" defaultValue={query.status ?? ""}>
-            <option value="">Все</option>
+          <select id="registry-status" name="status" defaultValue={query.status ?? defaultStatus ?? ""}>
+            {defaultStatus ? null : <option value="">Все</option>}
             {Object.entries(statuses).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
