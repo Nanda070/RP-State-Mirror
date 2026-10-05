@@ -28,6 +28,7 @@ export * from "./module-jobs.js";
 export * from "./monitoring.js";
 export * from "./notifications.js";
 export * from "./pending-expiry.js";
+export * from "./player-card.js";
 export * from "./presence.js";
 export * from "./personnel.js";
 export * from "./profile.js";

@@ -46,6 +46,7 @@ import { handleButtonInteraction, handleModalSubmit, handleSelectInteraction } f
 import { evaluateMemberCpAccess, isCpRelevantGuild, reconcileCpAccess } from "./cp-sync.js";
 import { refusalFor, refuse, reportError } from "./guard.js";
 import { jobHandlers } from "./handlers.js";
+import { DOSSIER_COMMAND_NAME, handleDossierCommand, handleProfileCommand } from "./player-card.js";
 import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
 import { guildChannels, guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
 import { syncAllGuilds, syncGuild } from "./sync.js";
@@ -292,7 +293,22 @@ function routeInteraction(interaction: Interaction) {
     );
     return;
   }
+  const cardContext = () => ({
+    superAdminUserIds: env.SUPER_ADMIN_USER_IDS,
+    publicBaseUrl: env.PUBLIC_BASE_URL,
+    log: log.child({ component: "player-card", command: interaction.isCommand() ? interaction.commandName : "" }),
+  });
+  if (interaction.isUserContextMenuCommand()) {
+    if (interaction.commandName === DOSSIER_COMMAND_NAME) {
+      guarded("dossier", () => handleDossierCommand(interaction, cardContext()));
+    }
+    return;
+  }
   if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName === "профиль") {
+    guarded("profile", () => handleProfileCommand(interaction, cardContext()));
+    return;
+  }
   guarded("interactionCreate", () =>
     handleSlashCommand(interaction, {
       superAdminUserIds: env.SUPER_ADMIN_USER_IDS,

@@ -344,9 +344,9 @@ export function Stage4SettingsManager({
               />
             </label>
             <div className="field">
-              <span className="field-label">Роли /нашивка найти</span>
+              <span className="field-label">Кто может искать нашивки и открывать досье</span>
               <p className="muted u-m0 u-mb1 u-text-sm">
-                Роли серверов GOV и ЧП, которым разрешён поиск нашивок.
+                Роли серверов GOV и ЧП: команда <code>/нашивка найти</code> и «Досье» по правому клику на участнике.
               </p>
               <RoleChipPicker
                 roles={finderRoles}

@@ -94,6 +94,7 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `embeds.ts`, `legacy-embeds.ts`, `stage4-embeds.ts`, `message-designs.ts` | описание сообщений, готовые шаблоны, кнопки |
 | `forms.ts` | конструктор форм, проверка ответов, черновики |
 | `vehicles.ts`, `transfer-rules.ts`, `faq.ts`, `profile.ts` | разделы для игроков |
+| `player-card.ts` | карточка человека для Discord: `buildPlayerCard` собирает её из тех же данных, что страница профиля (`getPlayerProfile`), `getDossierAccess` решает, кто может открыть чужую карточку и видит ли он блок IC ЧС |
 | `share-links.ts` | публичные ссылки на записи |
 | `role-panels.ts` | панели ролей (кнопки и выпадающий список) |
 | `registry-actions.ts` | действия над записями реестров из дашборда, списки с поиском и страницами |
@@ -336,6 +337,8 @@ discord.js 14. Интенты: `Guilds`, `GuildMembers` (в Developer Portal в�
 | `/запрос-тс` | роли, выбранные для сервера в «Модули → Запрос ТС» (`vehicleRequests.requesterRoleIds`); без выбора — любой участник сервера фракции, на прочих серверах — сотрудники фракций; администраторы всегда; запрос уходит в канал из «Модули → Запрос ТС» с упоминанием выбранных ролей, в сообщении — сервер-источник и заявитель |
 | `/чс-гос`, `/снятие-чс-гос`, `/чс-найти` | роли `icBlacklist.*` |
 | `/проверить-фракции`, `/инвайт-админ` | администраторы |
+| `/профиль` | любой участник: своя карточка (персонажи, неоплаченные штрафы, розыск, регистрации), ответ виден только ему |
+| «Досье» (правый клик по участнику → «Приложения») | администраторы и роли из `tokens.finderRoleIds`; блок IC ЧС — тем, кто может искать по нему. Каждое открытие — запись `dossier.viewed` в журнале аудита. Обе команды обрабатывает `apps/bot/src/player-card.ts` |
 
 Команды, которым нужно время, первым действием откладывают ответ (`deferReply`), чтобы уложиться в три секунды Discord.
 
@@ -475,7 +478,7 @@ Vitest, интеграционные: настоящая PostgreSQL (`docker-com
 | ядро | `audit-settings`, `jobs`, `members-identity`, `role-mappings`, `access`, `errors`, `seed-env`, `utilities` |
 | модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules`, `improve-registration-leave` |
 | надёжность бота | `bot-reliability` |
-| разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `stage5-forms`, `stage5-share-links`, `stage5-role-panels` |
+| разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `improve-player-card`, `stage5-forms`, `stage5-share-links`, `stage5-role-panels` |
 | администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, экспорт, архив) |
 | действия и реестры | `stage7-registry` (действия, списки, поиск, кэш настроек) |
 | тексты и данные | `stage7-legal-privacy` (редакции текстов, согласия, обезличивание, встроенная справка) |

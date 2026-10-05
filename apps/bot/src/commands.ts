@@ -6,11 +6,14 @@
  * Field names match the legacy Python bot where applicable.
  */
 import {
+  ApplicationCommandType,
   ChannelType,
+  ContextMenuCommandBuilder,
   REST,
   Routes,
   SlashCommandBuilder,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
+  type RESTPostAPIContextMenuApplicationCommandsJSONBody,
 } from "discord.js";
 
 type SlashBuilder = SlashCommandBuilder | ReturnType<SlashCommandBuilder["addStringOption"]>;
@@ -381,7 +384,17 @@ export const adminInviteCommand = new SlashCommandBuilder()
 // Collect all commands for registration
 // ──────────────────────────────────────────────────────────────
 
-export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
+/** One's own card: characters, unpaid fines, wanted orders, registrations. */
+export const profileCommand = new SlashCommandBuilder()
+  .setName("профиль")
+  .setDescription("Ваши персонажи, штрафы, розыск и регистрации");
+
+/** Right click on a member → «Приложения» → «Досье»: the same card about that member. */
+export const dossierCommand = new ContextMenuCommandBuilder().setName("Досье").setType(ApplicationCommandType.User);
+
+export const ALL_COMMANDS: Array<
+  RESTPostAPIChatInputApplicationCommandsJSONBody | RESTPostAPIContextMenuApplicationCommandsJSONBody
+> = [
   postCommand.toJSON(),
   replyCommand.toJSON(),
   wantedCommand.toJSON(),
@@ -400,6 +413,8 @@ export const ALL_COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   blacklistFindCommand.toJSON(),
   checkFactionsCommand.toJSON(),
   adminInviteCommand.toJSON(),
+  profileCommand.toJSON(),
+  dossierCommand.toJSON(),
 ];
 
 // ──────────────────────────────────────────────────────────────
