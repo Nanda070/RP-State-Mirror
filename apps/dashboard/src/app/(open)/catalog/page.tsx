@@ -1,15 +1,11 @@
 import { canManageModules, listVehicleCatalog } from "@mirror/core";
 import { VehicleCatalog } from "@/components/vehicle-catalog";
-import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { openSectionIdentity } from "@/lib/session";
 
 export const metadata = { title: "Каталог ТС" };
 
 export default async function CatalogPage() {
-  const session = await requireSignedIn();
-  const [identity, models] = await Promise.all([
-    resolveFreshIdentity(session.user.discordId),
-    listVehicleCatalog(),
-  ]);
+  const [identity, models] = await Promise.all([openSectionIdentity(), listVehicleCatalog()]);
 
   return (
     <div className="stack">
@@ -20,7 +16,7 @@ export default async function CatalogPage() {
         </p>
       </div>
       <VehicleCatalog
-        canEdit={canManageModules(identity)}
+        canEdit={identity ? canManageModules(identity) : false}
         models={models.map((model) => ({
           id: model.id,
           name: model.name,

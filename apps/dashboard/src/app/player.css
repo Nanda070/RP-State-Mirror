@@ -4164,3 +4164,64 @@ a.tables-back:hover {
   border-radius: var(--r-md);
   font-weight: 700;
 }
+
+/* ——— Open sections (catalog, calculator, FAQ, tables): what a guest sees ——— */
+.public-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.public-nav-links a {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-h);
+  padding: 0 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.public-nav-links a:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.public-nav-links a[data-active] {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+@media (max-width: 640px) {
+  .public-nav:has(.public-nav-links) {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .public-nav:has(.public-nav-links) .public-nav-brand .brand {
+    display: none;
+  }
+}
+
+.hero-open {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 1.1rem;
+  margin-top: 1.15rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.hero-open a:hover {
+  color: var(--ink);
+}

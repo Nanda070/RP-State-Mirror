@@ -1,14 +1,13 @@
 import { canManageSystemSettings, listTransferRankRules } from "@mirror/core";
 import { TransferCalculator } from "@/components/transfer-calculator";
 import { getActiveFactionOptions } from "@/lib/catalog";
-import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { openSectionIdentity } from "@/lib/session";
 
 export const metadata = { title: "Калькулятор переводов" };
 
 export default async function CalculatorPage() {
-  const session = await requireSignedIn();
   const [identity, factions, rules] = await Promise.all([
-    resolveFreshIdentity(session.user.discordId),
+    openSectionIdentity(),
     getActiveFactionOptions(),
     listTransferRankRules(),
   ]);
@@ -22,7 +21,7 @@ export default async function CalculatorPage() {
           <code>/перевод-фракции</code>.
         </p>
       </div>
-      <TransferCalculator factions={factions} rules={rules} canEdit={canManageSystemSettings(identity)} />
+      <TransferCalculator factions={factions} rules={rules} canEdit={identity ? canManageSystemSettings(identity) : false} />
     </div>
   );
 }

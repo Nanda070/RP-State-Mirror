@@ -1,24 +1,38 @@
-import { canViewModules, isOwnFeedbackAttachment, isVehicleCatalogImage, readMediaFile } from "@mirror/core";
+import {
+  LOCKDOWN_MESSAGE,
+  canViewModules,
+  isOwnFeedbackAttachment,
+  isVehicleCatalogImage,
+  readMediaFile,
+} from "@mirror/core";
+import { auth } from "@/auth";
 import { jsonError } from "@/lib/api";
-import { ForbiddenError, requireIdentity } from "@/lib/session";
+import { AuthRequiredError, ForbiddenError, publicLockedOut, requireIdentity } from "@/lib/session";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 /**
  * Serves a stored image through the dashboard, so storage URLs and keys never reach the browser.
- * Catalog photos are readable by any signed-in user, ticket files by the ticket's author;
+ * Catalog photos are readable by anyone, ticket files by the ticket's author;
  * every other file needs staff access.
  */
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
-    const { identity } = await requireIdentity();
     const { id } = await params;
-    if (
-      !canViewModules(identity) &&
-      !(await isVehicleCatalogImage(id)) &&
-      !(await isOwnFeedbackAttachment(id, identity.discordUserId))
-    ) {
-      throw new ForbiddenError("Нет доступа к файлу");
+    const session = await auth();
+    if (!session?.user?.discordId) {
+      // The catalog is open to guests, so its photos are too; nothing else is.
+      if (await publicLockedOut()) return Response.json({ error: LOCKDOWN_MESSAGE }, { status: 503 });
+      if (!(await isVehicleCatalogImage(id))) throw new AuthRequiredError("Требуется вход через Discord");
+    } else {
+      const { identity } = await requireIdentity();
+      if (
+        !canViewModules(identity) &&
+        !(await isVehicleCatalogImage(id)) &&
+        !(await isOwnFeedbackAttachment(id, identity.discordUserId))
+      ) {
+        throw new ForbiddenError("Нет доступа к файлу");
+      }
     }
     const media = await readMediaFile(id);
     if (!media) return Response.json({ error: "Файл не найден" }, { status: 404 });

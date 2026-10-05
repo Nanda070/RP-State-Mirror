@@ -32,6 +32,11 @@ export function LoginHero({ nextPath }: { nextPath?: string }) {
             {" и "}
             <Link href="/privacy">политику конфиденциальности</Link>.
           </p>
+          <nav className="hero-open" aria-label="Разделы без входа">
+            <Link href="/catalog">Каталог ТС</Link>
+            <Link href="/calculator">Калькулятор</Link>
+            <Link href="/faq">FAQ</Link>
+          </nav>
         </motion.div>
       </div>
 

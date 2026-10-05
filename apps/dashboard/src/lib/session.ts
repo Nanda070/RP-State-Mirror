@@ -62,6 +62,20 @@ export async function requireSignedIn() {
   return session;
 }
 
+/**
+ * Viewer of a section that opens without signing in (catalog, calculator, FAQ):
+ * the fresh identity of a signed-in person, null for a guest.
+ */
+export async function openSectionIdentity(): Promise<Identity | null> {
+  const session = await auth();
+  if (!session?.user?.discordId) {
+    if (await publicLockedOut()) redirect("/maintenance");
+    return null;
+  }
+  if (await isLockedOut(session.identity)) redirect("/maintenance");
+  return resolveFreshIdentity(session.user.discordId);
+}
+
 export async function requireAdminArea() {
   const session = await requireSession();
   const identity = await resolveFreshIdentity(session.user.discordId);

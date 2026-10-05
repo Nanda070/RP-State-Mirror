@@ -1,12 +1,11 @@
 import { canViewModules, listFaq } from "@mirror/core";
 import { FaqBrowser } from "@/components/faq-browser";
-import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { openSectionIdentity } from "@/lib/session";
 
 export const metadata = { title: "FAQ" };
 
 export default async function FaqPage() {
-  const session = await requireSignedIn();
-  const [identity, sections] = await Promise.all([resolveFreshIdentity(session.user.discordId), listFaq()]);
+  const [identity, sections] = await Promise.all([openSectionIdentity(), listFaq()]);
 
   return (
     <div className="stack">
@@ -15,7 +14,7 @@ export default async function FaqPage() {
         <p className="muted">Ответы на частые вопросы и инструкции по командам бота и разделам сайта.</p>
       </div>
       <FaqBrowser
-        canEdit={canViewModules(identity)}
+        canEdit={identity ? canViewModules(identity) : false}
         sections={sections.map((section) => ({
           id: section.id,
           title: section.title,

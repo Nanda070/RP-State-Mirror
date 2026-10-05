@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-/** Sections that need a session. Public pages (`/f/*`, `/s/*`, legal) are intentionally absent. */
+/**
+ * Sections that need a session. Public pages (`/f/*`, `/s/*`, legal) and the sections open to
+ * guests (`/catalog`, `/calculator`, `/faq`, `/tables`) are intentionally absent.
+ */
 const PROTECTED_PREFIXES = [
   "/settings",
   "/profile",
@@ -13,9 +16,6 @@ const PROTECTED_PREFIXES = [
   "/feedback",
   "/support",
   "/ic-blacklist",
-  "/catalog",
-  "/calculator",
-  "/faq",
   "/bans",
   "/transfers",
   "/tokens",
@@ -100,9 +100,6 @@ export const config = {
     "/feedback/:path*",
     "/support/:path*",
     "/ic-blacklist/:path*",
-    "/catalog/:path*",
-    "/calculator/:path*",
-    "/faq/:path*",
     "/bans/:path*",
     "/transfers/:path*",
     "/tokens/:path*",
