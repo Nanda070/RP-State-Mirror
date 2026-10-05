@@ -83,6 +83,10 @@ model User {
   discordId     String     @unique @map("discord_id")
   /// Kinds of direct messages the player switched off (see DM_KINDS in core).
   dmMuted       String[]   @default([]) @map("dm_muted")
+  /// Colour preset of the dashboard (see THEME_PRESETS in core); null — the default one.
+  theme         String?
+  /// Own accent colour `#rrggbb` over the preset; null — the preset's own.
+  accentColor   String?    @map("accent_color")
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
   auditEvents   AuditLog[] @relation("AuditActor")
@@ -1015,4 +1019,20 @@ model SheetImage {
 
   @@index([documentId])
   @@map("sheet_images")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Stage 9: presence, scheduled messages, appearance
+// ──────────────────────────────────────────────────────────────
+
+/// Discord status of a person as the bot last saw it (needs the presence intent, see `presence.enabled`).
+model UserPresence {
+  discordId    String    @id @map("discord_id")
+  /// online | idle | dnd | offline
+  status       String
+  /// When the person was last seen online: the moment of the last change of status.
+  lastOnlineAt DateTime? @map("last_online_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("user_presences")
 }

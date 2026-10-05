@@ -28,6 +28,36 @@ type Sent = {
 
 type Guild = { discordId: string; name: string };
 
+/** A send waiting for its time. */
+type Scheduled = {
+  jobId: string;
+  designName: string;
+  guildDiscordId: string;
+  channelDiscordId: string;
+  /** ISO time. */
+  sendAt: string;
+};
+
+const MOSCOW = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: "Europe/Moscow",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** `YYYY-MM-DDTHH:mm` typed as Moscow time → ISO with the offset (Moscow has no daylight saving). */
+function moscowInputToIso(value: string): string {
+  return `${value}:00+03:00`;
+}
+
+/** Now plus a few minutes, as the value of a datetime-local field in Moscow time. */
+function moscowInputSoon(minutes = 10): string {
+  const moscow = new Date(Date.now() + minutes * 60_000 + 3 * 3_600_000);
+  return moscow.toISOString().slice(0, 16);
+}
+
 const EMPTY_V1: EmbedSpec = {
   version: 1,
   embeds: [{ type: "embed", title: "", description: "", color: 0xff6a1a }],
@@ -87,6 +117,7 @@ function asDesign(raw: unknown): Design | null {
 export function EmbedManager({
   initialDesigns,
   initialSent,
+  initialScheduled,
   guilds,
   channels,
   roles,
@@ -94,6 +125,7 @@ export function EmbedManager({
 }: {
   initialDesigns: Design[];
   initialSent: Sent[];
+  initialScheduled: Scheduled[];
   guilds: Guild[];
   channels: ChannelOption[];
   roles: EditorRole[];
@@ -102,6 +134,9 @@ export function EmbedManager({
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [designs, setDesigns] = useState(initialDesigns);
   const [sent, setSent] = useState(initialSent);
+  const [scheduled, setScheduled] = useState(initialScheduled);
+  const [later, setLater] = useState(false);
+  const [sendAt, setSendAt] = useState(() => moscowInputSoon());
   const [selectedId, setSelectedId] = useState<string | null>(initialDesigns[0]?.id ?? null);
   const [name, setName] = useState(initialDesigns[0]?.name ?? "Новый шаблон");
   const [description, setDescription] = useState(initialDesigns[0]?.description ?? "");
@@ -112,6 +147,9 @@ export function EmbedManager({
   const [channelId, setChannelId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [importLink, setImportLink] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importNotes, setImportNotes] = useState<string[]>([]);
 
   const selected = useMemo(
     () => designs.find((d) => d.id === selectedId) ?? null,
@@ -124,6 +162,49 @@ export function EmbedManager({
     setDescription(d.description ?? "");
     setSpec(asSpec(d.spec));
     setMessage(null);
+  }
+
+  /** The bot reads the message; the editor asks for the result until it is there (up to half a minute). */
+  async function importMessage() {
+    setImporting(true);
+    setMessage(null);
+    setImportNotes([]);
+    try {
+      const res = await fetch("/api/settings/embeds", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "import_message", link: importLink.trim() }),
+      });
+      const data = (await res.json()) as { jobId?: string; error?: string };
+      if (!res.ok || !data.jobId) throw new Error(data.error ?? "Не удалось начать загрузку");
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const poll = await fetch(`/api/settings/embeds?importJob=${encodeURIComponent(data.jobId)}`);
+        const state = (await poll.json()) as
+          | { state: "pending" }
+          | { state: "done"; spec: EmbedSpec; notes: string[] }
+          | { state: "failed"; error: string }
+          | { error: string };
+        if (!poll.ok || "error" in state && !("state" in state)) {
+          throw new Error("error" in state ? state.error : "Ошибка загрузки");
+        }
+        if (!("state" in state) || state.state === "pending") continue;
+        if (state.state === "failed") throw new Error(state.error);
+        setSelectedId(null);
+        setName("Из Discord");
+        setDescription("");
+        setSpec(asSpec(state.spec));
+        setImportNotes(state.notes);
+        setImportLink("");
+        setMessage("Сообщение загружено как новый шаблон. Проверьте и сохраните.");
+        return;
+      }
+      throw new Error("Бот не ответил за полминуты. Проверьте, что он на связи, и попробуйте ещё раз.");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Ошибка");
+    } finally {
+      setImporting(false);
+    }
   }
 
   function newDesign(version: 1 | 2) {
@@ -222,11 +303,16 @@ export function EmbedManager({
           guildDiscordId: guildId,
           channelDiscordId: channelId,
           variables: Object.fromEntries(customVariables.map((name) => [name, variables[name] ?? ""])),
+          ...(later ? { sendAt: moscowInputToIso(sendAt) } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Ошибка отправки");
-      setMessage("Отправка поставлена в очередь");
+      setMessage(
+        later && data.sendAt
+          ? `Запланировано на ${MOSCOW.format(new Date(data.sendAt))} МСК`
+          : "Отправка поставлена в очередь",
+      );
       const refresh = await fetch("/api/settings/embeds");
       if (refresh.ok) {
         const body = await refresh.json();
@@ -236,7 +322,27 @@ export function EmbedManager({
             Boolean(s.designId && designIds.has(s.designId)),
           ),
         );
+        if (Array.isArray(body.scheduled)) setScheduled(body.scheduled as Scheduled[]);
       }
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Ошибка");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function cancelScheduled(jobId: string) {
+    setPending(true);
+    try {
+      const res = await fetch("/api/settings/embeds", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "cancel_scheduled", jobId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Ошибка");
+      setScheduled((prev) => prev.filter((entry) => entry.jobId !== jobId));
+      setMessage("Отправка отменена");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Ошибка");
     } finally {
@@ -316,6 +422,38 @@ export function EmbedManager({
           <h2 className="panel-title">
             Редактор {selected ? `«${selected.name}»` : "(новый)"}
           </h2>
+          <form
+            className="field"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void importMessage();
+            }}
+          >
+            <label htmlFor="importLink">Загрузить существующее сообщение</label>
+            <div className="row u-gap2">
+              <input
+                id="importLink"
+                type="url"
+                placeholder="https://discord.com/channels/…"
+                value={importLink}
+                onChange={(e) => setImportLink(e.target.value)}
+              />
+              <button type="submit" className="btn btn-secondary" disabled={importing || !importLink.trim()}>
+                {importing ? "Загрузка…" : "Загрузить"}
+              </button>
+            </div>
+            <span className="field-hint">
+              В Discord: правый клик по сообщению → «Копировать ссылку на сообщение». Бот должен видеть канал. Сообщение
+              откроется как новый шаблон — исходное не меняется.
+            </span>
+          </form>
+          {importNotes.length > 0 ? (
+            <ul className="import-notes">
+              {importNotes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
           <div className="field">
             <label htmlFor="designName">Название</label>
             <input id="designName" value={name} onChange={(e) => setName(e.target.value)} />
@@ -403,8 +541,35 @@ export function EmbedManager({
             В тексте можно писать <code>{"{server}"}</code>, <code>{"{channel}"}</code>, <code>{"{date}"}</code>,{" "}
             <code>{"{time}"}</code> — бот подставит их сам. Любое другое имя в фигурных скобках станет полем выше.
           </p>
-          <button type="button" className="btn btn-primary" disabled={pending} onClick={() => void send()}>
-            Отправить ботом
+          <div className="field toggle-field">
+            <label className="toggle-row" htmlFor="sendLater">
+              <input id="sendLater" type="checkbox" checked={later} onChange={(e) => setLater(e.target.checked)} />
+              <span>Отправить позже</span>
+            </label>
+          </div>
+          {later ? (
+            <div className="field">
+              <label htmlFor="sendAt">Дата и время, МСК</label>
+              <input
+                id="sendAt"
+                type="datetime-local"
+                value={sendAt}
+                min={moscowInputSoon(1)}
+                onChange={(e) => setSendAt(e.target.value)}
+              />
+              <span className="field-hint">
+                Бот отправит шаблон таким, каким он будет в момент отправки: правки после планирования тоже уйдут.
+                Не дальше чем на 90 дней вперёд.
+              </span>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={pending || (later && !sendAt)}
+            onClick={() => void send()}
+          >
+            {later ? "Запланировать" : "Отправить ботом"}
           </button>
         </div>
 
@@ -416,6 +581,45 @@ export function EmbedManager({
           <p className="form-ok" role="status">
             {message}
           </p>
+        ) : null}
+
+        {scheduled.length > 0 ? (
+          <div className="panel">
+            <h2 className="panel-title u-mt0">Запланированные</h2>
+            <div className="registry-table-wrap">
+              <table className="registry-table">
+                <thead>
+                  <tr>
+                    <th>Когда, МСК</th>
+                    <th>Шаблон</th>
+                    <th>Канал</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {scheduled.map((entry) => (
+                    <tr key={entry.jobId}>
+                      <td>{MOSCOW.format(new Date(entry.sendAt))}</td>
+                      <td>{entry.designName}</td>
+                      <td>
+                        #{channels.find((channel) => channel.discordId === entry.channelDiscordId)?.name ?? "канал удалён"}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={pending}
+                          onClick={() => void cancelScheduled(entry.jobId)}
+                        >
+                          Отменить
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : null}
 
         <div className="panel">

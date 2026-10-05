@@ -2,6 +2,7 @@
 # Mirror: bind a domain (or change the address) of the site.
 #
 #   sudo bash deploy/set-domain.sh mirror.example.com
+#   sudo bash deploy/staging.sh domain test.mirror.example.com     the address of the test copy
 #
 # Before running: the domain's A record must point to this server's IP (check: dig +short <domain>).
 # The script rewrites the address in .env and in the Caddy config, obtains the HTTPS certificate
@@ -41,12 +42,15 @@ env_set OAUTH_REDIRECT_URL "https://$DOMAIN/api/auth/callback/discord"
 echo "Было: ${OLD_URL:-не задано}; стало: https://$DOMAIN (прежний файл: $ENV_FILE.before-domain)"
 
 say "Конфигурация Caddy"
+if [[ "$STAGING" == "0" && ! -f /etc/caddy/sites/mirror.caddy ]] && grep -q "reverse_proxy" /etc/caddy/Caddyfile 2>/dev/null; then
+  echo "Сайт переносится в /etc/caddy/sites/mirror.caddy (рядом может жить тестовая копия)."
+fi
 install_caddyfile "$DOMAIN"
 systemctl reload caddy
 
 say "Перезапуск дашборда и бота"
 systemctl restart $SERVICES
-wait_for_site || die "дашборд не ответил (journalctl -u mirror-dashboard -n 80)"
+wait_for_site || die "дашборд не ответил (journalctl -u $INSTANCE-dashboard -n 80)"
 
 say "Проверка HTTPS"
 for _ in $(seq 1 20); do

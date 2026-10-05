@@ -476,6 +476,7 @@ export function AppShell({
   canManageSystemSettings = false,
   canViewModules = false,
   canManageModules = false,
+  instanceLabel = null,
 }: {
   children: ReactNode;
   displayName: string;
@@ -484,6 +485,8 @@ export function AppShell({
   canManageSystemSettings?: boolean;
   canViewModules?: boolean;
   canManageModules?: boolean;
+  /** «Тестовая копия» on the test installation: nobody mistakes it for the real site. */
+  instanceLabel?: string | null;
 }) {
   const pathname = usePathname();
   // Phone layout: the menu is a drawer. It closes when a page opens and on Escape.
@@ -718,6 +721,11 @@ export function AppShell({
           </div>
 
           <div className="topbar-right">
+            {instanceLabel ? (
+              <span className="instance-label" title="Изменения здесь не попадают на основной сайт">
+                {instanceLabel}
+              </span>
+            ) : null}
             <MskClock />
             <button type="button" className="topbar-search" onClick={() => openCommandPalette()} aria-label="Поиск">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden>

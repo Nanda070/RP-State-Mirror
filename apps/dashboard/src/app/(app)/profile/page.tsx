@@ -3,8 +3,10 @@ import {
   PERSONNEL_EVENT_LABELS_RU,
   buildStatusBadge,
   formatMoney,
+  getAppearance,
   getMutedDmKinds,
   getPlayerProfile,
+  getPresence,
   getSetting,
   listAuditLogPage,
   listSessionsForUser,
@@ -14,6 +16,7 @@ import { RecordStatus, RegistrationKind, prisma } from "@mirror/db";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { AppearanceForm } from "@/components/appearance-form";
 import { DmPreferencesForm } from "@/components/dm-preferences-form";
 import { SessionsList } from "@/components/sessions-list";
 import { getFactionColors } from "@/lib/catalog";
@@ -35,6 +38,7 @@ const TABS = [
   { key: "servers", label: "Фракции и серверы" },
   { key: "history", label: "История" },
   { key: "notifications", label: "Уведомления" },
+  { key: "appearance", label: "Оформление" },
   { key: "sessions", label: "Сессии" },
 ] as const;
 
@@ -61,6 +65,13 @@ function discordBadges(flags: number | null | undefined): string[] {
   return DISCORD_BADGES.filter(([bit]) => (flags & (1 << bit)) !== 0).map(([, label]) => label);
 }
 type TabKey = (typeof TABS)[number]["key"];
+
+const PRESENCE_LABEL = {
+  online: "В сети",
+  idle: "Не активен",
+  dnd: "Не беспокоить",
+  offline: "Не в сети",
+} as const;
 
 const RECORD_STATUS_RU: Record<RecordStatus, string> = {
   ACTIVE: "Активен",
@@ -408,6 +419,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const badge = buildStatusBadge(identity, positions.find((row) => row.discordId === session.user.discordId)?.title);
   const sessions = tab === "sessions" ? await listSessionsForUser(session.user.id) : [];
   const mutedDm = tab === "notifications" ? await getMutedDmKinds(session.user.discordId) : [];
+  const appearance = tab === "appearance" ? await getAppearance(session.user.discordId) : null;
   const [history, personnel] =
     tab === "history"
       ? await Promise.all([
@@ -432,6 +444,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const bannerUrl = session.user.bannerUrl ?? null;
   const accent = session.user.accentColor ?? badge.accentColor ?? null;
   const displayName = session.user.name ?? session.user.username ?? "Discord";
+  const presence = await getPresence(session.user.discordId);
 
   const unpaidFines = profile.fines.filter((fine) => fine.status === RecordStatus.ACTIVE);
   const activeWanted = profile.wanted.filter((row) => row.status === RecordStatus.ACTIVE);
@@ -475,6 +488,15 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             <p className="muted handle truncate" title={`@${session.user.username ?? "discord"}`}>
               @{session.user.username ?? "discord"} · {session.user.discordId}
             </p>
+            {presence ? (
+              <p className="presence-line" data-status={presence.status}>
+                <span className="presence-dot" aria-hidden />
+                {PRESENCE_LABEL[presence.status]}
+                {presence.status === "offline" && presence.lastOnlineAt
+                  ? ` · был(а) в сети ${formatMoscowShort(presence.lastOnlineAt)}`
+                  : ""}
+              </p>
+            ) : null}
             <div className="row">
               <span
                 className="badge"
@@ -623,6 +645,16 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
             обращения приходят всегда.
           </p>
           <DmPreferencesForm kinds={DM_KINDS.map(({ key, label }) => ({ key, label }))} initialMuted={mutedDm} />
+        </div>
+      ) : null}
+
+      {tab === "appearance" && appearance ? (
+        <div className="panel">
+          <h2 className="panel-title">Оформление дашборда</h2>
+          <p className="muted u-mt0 u-mb4">
+            Тема и цвет видны только вам. Выбор применяется сразу; «Сохранить» запоминает его для всех ваших устройств.
+          </p>
+          <AppearanceForm initial={appearance} />
         </div>
       ) : null}
 

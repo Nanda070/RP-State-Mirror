@@ -26,10 +26,13 @@ export function TablesList({
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** A table loaded from a file that lost something on the way: say what before opening it. */
+  const [imported, setImported] = useState<{ slug: string; text: string } | null>(null);
 
   async function act(run: () => Promise<void>) {
     setBusy(true);
     setNotice(null);
+    setImported(null);
     try {
       await run();
     } catch (error) {
@@ -45,8 +48,13 @@ export function TablesList({
       const form = new FormData();
       form.append("file", file);
       const res = await fetch("/api/tables/import", { method: "POST", body: form });
-      const data = (await res.json().catch(() => ({}))) as { slug?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { slug?: string; error?: string; leftBehind?: string | null };
       if (!res.ok || !data.slug) throw new Error(data.error ?? "Не удалось загрузить файл.");
+      if (data.leftBehind) {
+        setImported({ slug: data.slug, text: data.leftBehind });
+        router.refresh();
+        return;
+      }
       router.push(`/tables/${data.slug}`);
       router.refresh();
     });
@@ -93,6 +101,11 @@ export function TablesList({
       {notice ? (
         <p className="form-error" role="alert">
           {notice}
+        </p>
+      ) : null}
+      {imported ? (
+        <p className="form-ok" role="status">
+          Таблица загружена. {imported.text} <Link href={`/tables/${imported.slug}`}>Открыть таблицу</Link>
         </p>
       ) : null}
 

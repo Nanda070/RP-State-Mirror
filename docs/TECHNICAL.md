@@ -1,6 +1,6 @@
 # Mirror · GTA5RP — технический документ
 
-Полное описание устройства системы на 3 октября 2026 года: из чего она состоит, где что лежит, как данные проходят от команды в Discord до записи в базе и обратно. Что система должна делать с точки зрения пользователя — в [PLAN.md](PLAN.md); как развернуть — в [DEPLOYMENT.md](DEPLOYMENT.md); история решений — в [DEVLOG.md](DEVLOG.md).
+Полное описание устройства системы на 5 октября 2026 года (этапы 1–9): из чего она состоит, где что лежит, как данные проходят от команды в Discord до записи в базе и обратно. Что система должна делать с точки зрения пользователя — в [PLAN.md](PLAN.md); как развернуть — в [DEPLOYMENT.md](DEPLOYMENT.md); история решений — в [DEVLOG.md](DEVLOG.md).
 
 Содержание: [1. Обзор](#1-обзор) · [2. Репозиторий](#2-репозиторий) · [3. Принципы](#3-принципы-которые-держит-код) · [4. Окружение](#4-окружение-и-секреты) · [5. База данных](#5-база-данных) · [6. Настройки](#6-настройки) · [7. Права](#7-кто-есть-кто-и-права) · [8. Аудит](#8-аудит) · [9. Очередь задач](#9-очередь-задач) · [10. Бот](#10-бот) · [11. Дашборд](#11-дашборд) · [12. Хранилище файлов](#12-хранилище-файлов) · [13. Безопасность](#13-безопасность) · [14. Надёжность](#14-надёжность-и-наблюдение) · [15. Разработка](#15-разработка) · [16. Тесты](#16-тесты) · [17. Развёртывание](#17-развёртывание) · [18. Известные ограничения](#18-известные-ограничения)
 
@@ -104,7 +104,10 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `faq-docs.ts` | встроенная справка: статьи FAQ, создаваемые один раз |
 | `read-cache.ts` | кэш фракций и привязок ролей для бота |
 | `monitoring.ts` | сигнал «жив», статус служб, оповещение об отключении бота |
-| `media.ts` | файлы в S3 |
+| `media.ts` | файлы в S3; картинки и PDF для обращений (`storeUploadedAttachment`, `storeAttachmentFromUrl`, тип — по содержимому) |
+| `presence.ts` | статус «в сети»: запись изменений от бота, снимок после подключения, `getPresence` для профиля |
+| `message-import.ts` | сообщение Discord → шаблон редактора (`discordMessageToSpec`), разбор ссылки, задача `message_design.import` |
+| `appearance.ts` | тема и цвет акцента дашборда для пользователя |
 | `errors.ts` | `UserError`, `formatUserError` |
 | `text.ts`, `utilities.ts`, `status-badge.ts`, `logger.ts`, `db.ts`, `seed.ts` | вспомогательное |
 
@@ -138,6 +141,9 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` | оба | хранилище файлов |
 | `POSTGRES_PASSWORD`, `BACKUP_AT`, `BACKUP_KEEP_DAYS` | Docker Compose | пароль базы и расписание резервных копий (в разработке — значения по умолчанию) |
 | `NEXT_DIST_DIR` | сборка | проверочная сборка в отдельную папку рядом с работающим dev-сервером |
+| `INSTANCE_LABEL` | дашборд | надпись в верхней панели («Тестовая копия» у тестовой установки); необязательна |
+| `POSTGRES_PORT`, `S3_PORT` | Docker Compose | порты базы и хранилища на `127.0.0.1` (по умолчанию 5432 и 9000; у тестовой копии 5433 и 9001) |
+| `DEPLOY_BRANCH` | `update.sh` | ветка, за которой следует установка; по умолчанию `main` |
 
 Приложения читают корневой `.env` через `node --env-file-if-exists=../../.env`; на сервере — `--env-file=/opt/mirror/.env` в unit-файлах systemd.
 
@@ -151,7 +157,8 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 
 | Таблица | Назначение |
 |---|---|
-| `users` | владелец аккаунта Discord (`discord_id` уникален) |
+| `users` | владелец аккаунта Discord (`discord_id` уникален); выключенные виды ЛС, тема и цвет акцента дашборда |
+| `user_presences` | статус Discord человека, каким его последний раз видел бот, и когда он был в сети |
 | `guilds` | подключённые серверы Discord |
 | `discord_roles`, `discord_channels` | снимок ролей и каналов каждого сервера |
 | `discord_guild_members` | снимок участников: ник, аватар, роли, `is_present`, `left_at` |
@@ -184,7 +191,7 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | `transfers`, `transfer_rank_rules` | переводы между фракциями и правила соответствия рангов |
 | `webhook_requests` | запросы на создание вебхука и формы |
 | `ic_blacklist` | IC чёрный список (номер из последовательности `ic_blacklist_number_seq`) |
-| `feedback_tickets`, `feedback_messages` | обращения |
+| `feedback_tickets`, `feedback_messages` | обращения; у сообщения — id приложенных файлов (`attachment_file_ids`) |
 | `forms`, `form_fields`, `form_submissions`, `form_drafts` | формы, поля, ответы, черновики многошаговых форм |
 | `vehicle_models`, `media_files` | каталог ТС и файлы |
 | `faq_sections`, `faq_items` | FAQ |
@@ -219,6 +226,10 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | `20261003160000_ic_blacklist_number_sequence` | последовательность номеров IC ЧС |
 | `20261003170000_stage6_admin_reliability` | баны, сессии, операции admin-ролей, сигналы служб |
 | `20261003180000_stage7_profile_legal` | значки и рамка аватара в снимке участников; `legal_documents`, `legal_consents` |
+| `20261003190000_stage7_dm_preferences` | выключенные виды личных сообщений |
+| `20261003200000_stage8_sheets`, `20261004100000_stage8_sheet_access` | таблицы, версии, картинки таблиц, доступ |
+| `20261005100000_stage9_presence` | `user_presences` |
+| `20261005120000_stage9_appearance` | `users.theme`, `users.accent_color` |
 
 Новую таблицу нужно добавить и в список `TABLES` в `test/db.ts`, иначе тесты не будут её очищать.
 
@@ -240,6 +251,7 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 | Обратная связь, вебхуки, приглашения | `feedback.categories`, `feedback.notifyChannelId`, `feedback.openMessage`, `webhooks.notifyChannelId`, `invites.guildIds`, `invites.defaultMaxAgeSeconds` |
 | Синхронизация ЧП | `cp.syncEnabled`, `cp.excludedRoleIds`, `cp.logChannelId`, `cp.maxKickPercent` (10), `cp.dryRun` |
 | Администрация | `adminRoles.byGuild` — для каждого сервера наборы ролей по четырём уровням; `admins.positions` — должности для профиля |
+| Статус «в сети» | `presence.enabled` (выкл.) — бот подключается с Presence Intent |
 | Надёжность | `system.lockdown`, `monitoring.errorChannelId`, `monitoring.alertWebhookUrl`, `monitoring.botDownAlertedAt` (служебная), `audit.archiveAfterDays` (365) |
 
 **Кэш.** Бот включает кэш строк настроек на 5 секунд (`enableSettingsCache`): одна команда читает несколько настроек, и одни и те же читаются при каждом взаимодействии. Перед каждой задачей очереди кэш сбрасывается, чтение внутри транзакции кэш не использует, запись через `setSetting` сбрасывает ключ. Дашборд и тесты кэш не включают. Следствие: настройка, изменённая в дашборде, начинает действовать для команд бота не позже чем через 5 секунд.
@@ -284,12 +296,16 @@ PostgreSQL 16, Prisma 6. Схема — `packages/db/prisma/schema.prisma`. Ми
 - **Ровно одна отправка:** `runOnce(job, key, …)` записывает результат шага в `job.result.steps` сразу после отправки; повтор задачи находит запись и не публикует сообщение второй раз.
 - **Воркер бота:** опрос раз в 2 секунды, до 20 задач за такт, до трёх задач одновременно. Задачи одной записи (общий `…Id` в данных задачи) выполняются строго по очереди. Задачу, поставленную самим ботом, воркер берёт сразу: `onJobEnqueued` будит его без ожидания опроса.
 - **Управление:** страница `/jobs` — повторить упавшую или отменённую, отменить ожидающую.
+- **Отложенная отправка:** `scheduleMessageDesignSend` ставит `message_design.send` с `available_at` на выбранное время (не дальше 90 дней) и `scheduledFor` в данных; воркер берёт её не раньше этого времени. Список — `listScheduledMessageSends`, отмена — `cancelScheduledMessageSend`; оба действия в журнале аудита. Проверка очереди в статусе служб считает только задачи, чьё время уже наступило.
+- **Чтение сообщения для редактора:** `message_design.import` (одна попытка) — бот читает сообщение через REST и возвращает в результате задачи шаблон или причину отказа; редактор опрашивает `GET /api/settings/embeds?importJob=<id>`. Неверная ссылка — ответ человеку, а не сбой: в канал ошибок она не попадает.
 
-Типы задач (`MODULE_JOB_TYPES`): `document.send`, `document.response.send`, `wanted.publish`, `wanted.edit_closed`, `fine.publish`, `fine.edit_paid`, `fine.overdue`, `fine.refresh`, `cp.reconcile`, `personnel.publish`, `personnel.kick`, `message_design.send`, `message_design.resend`, `registration.review`, `registration.decided`, `registration.expired`, `transfer.review`, `transfer.decided`, `role_panel.publish`, `role_panel.archive`, `feedback.ticket_notify`, `feedback.reply_send`, `feedback.closed_send`, `feedback.open_publish`, `form.submission_deliver`, `form.open_publish`, `token.receive_publish`, `webhook_request.notify`, `ic_blacklist.publish`, `ic_blacklist.edit_closed`, `admin_roles.apply`.
+Типы задач (`MODULE_JOB_TYPES`): `document.send`, `document.response.send`, `wanted.publish`, `wanted.edit_closed`, `fine.publish`, `fine.edit_paid`, `fine.overdue`, `fine.refresh`, `cp.reconcile`, `personnel.publish`, `personnel.kick`, `message_design.send`, `message_design.resend`, `message_design.import`, `registration.review`, `registration.decided`, `registration.expired`, `transfer.review`, `transfer.decided`, `role_panel.publish`, `role_panel.archive`, `feedback.ticket_notify`, `feedback.reply_send`, `feedback.closed_send`, `feedback.open_publish`, `form.submission_deliver`, `form.open_publish`, `token.receive_publish`, `webhook_request.notify`, `ic_blacklist.publish`, `ic_blacklist.edit_closed`, `admin_roles.apply`.
 
 ## 10. Бот
 
-discord.js 14. Интенты: `Guilds`, `GuildMembers` (в Developer Portal включить **Server Members Intent**).
+discord.js 14. Интенты: `Guilds`, `GuildMembers` (в Developer Portal включить **Server Members Intent**); `GuildPresences` — только при `presence.enabled`.
+
+**Статус «в сети».** Набор интентов задаётся при входе, поэтому бот читает `presence.enabled` до подключения. Изменения статуса (не активности) копятся и пишутся в `user_presences` раз в 5 секунд; после подключения и при часовой синхронизации пишется полный снимок — кого бот не видит, тот «не в сети». Сигнал «жив» несёт `presence: true|false`; профиль показывает статус только при свежем сигнале с `presence: true`. Переключатель в дашборде меняется — бот при очередном сигнале «жив» завершается с кодом 1, systemd поднимает его с новым набором интентов. Discord отказал в интенте (`disallowed intents`) — бот выключает `presence.enabled` (запись в журнале аудита от `bot.presence_intent_rejected`) и завершается; следующий запуск идёт без него.
 
 ### 10.1 Жизненный цикл
 
@@ -326,6 +342,8 @@ discord.js 14. Интенты: `Guilds`, `GuildMembers` (в Developer Portal в�
 
 `custom_id` кнопки — `mirror:<действие>:<id>`; id указывает на строку `button_actions` с параметрами. Действия: `role.toggle`, `role.select`, `form.open`, `form.step`, `form.submit`, `registration.approve|reject`, `transfer.approve|reject` (по сторонам), `feedback.open`, `feedback.category`, `feedback.reply`, `token.receive`, `personnel.kick`, `callback`. От повторных нажатий защищает кулдаун на пару «пользователь + кнопка».
 
+Окна «Обращение» и «Ответить» — текст и поле «Файлы» (до 5 файлов, компонент File Upload): бот скачивает файлы с CDN Discord, проверяет тип по содержимому и сохраняет в S3 до записи сообщения. Сообщения бота об обращении (в канал и в ЛС игроку) прикладывают файлы, пока их сумма не больше 8 МБ; остальные называются со ссылкой на сайт.
+
 Форма с пятью и менее полями — одно модальное окно; больше пяти — несколько шагов с черновиком в `form_drafts`. Поля, которых нет в Discord (выбор из списка, дата, флажок), делают форму веб-формой: кнопка ведёт на `PUBLIC_BASE_URL/f/<адрес>`.
 
 ### 10.4 Синхронизация ЧП
@@ -356,7 +374,7 @@ Next.js 15 (App Router), React 19, Auth.js v5. Серверные компоне
 | Публичные | `/` (вход), `/terms`, `/privacy`, `/cookies`, `/f/<адрес>` (форма), `/s/<токен>` (запись по ссылке), `/denied`, `/maintenance`, 404, ошибка |
 | Игрокам | `/overview`, `/profile`, `/catalog`, `/calculator`, `/faq`, `/ic-blacklist` |
 | Всем, без входа | `/tables` — список таблиц, `/tables/<адрес>` — таблица. Доступ задаётся на каждую таблицу: открытая, по списку Discord ID (нужен вход) или только администраторам; проверяет `canViewSheet` в ядре, закрытая таблица отвечает как несуществующая. Редактор — открытая часть Univer (`components/sheets/sheet-editor.tsx`, только в браузере); книга хранится снимком JSON в `sheet_documents.snapshot`. Правка — «Админ» и выше: блокировка, версия-основание и история в `packages/core/src/sheets.ts`, импорт `.xlsx` — `sheets-xlsx.ts`. API: `/api/tables` (создание), `/api/tables/import`, `/api/tables/order`, `/api/tables/<id>` (переименование, архив), `…/snapshot` (чтение всем, запись администратору), `…/lock`, `…/revisions`, `…/images`, `/api/tables/media/<id>` (картинки таблиц — всем) |
-| Игроку | `/support` — свои обращения: создание, переписка (API `/api/feedback`); `/profile?tab=notifications` — какие личные сообщения присылать (API `/api/profile/notifications`, список видов — `DM_KINDS` в `packages/core/src/notifications.ts`, выключенные хранятся в `users.dm_muted`; бот спрашивает `wantsDm` перед отправкой) |
+| Игроку | `/support` — свои обращения: создание, переписка, файлы (API `/api/feedback`, файлы — `/api/feedback/attachments`); `/profile?tab=appearance` — тема и цвет акцента (API `/api/profile/appearance`); `/profile?tab=notifications` — какие личные сообщения присылать (API `/api/profile/notifications`, список видов — `DM_KINDS` в `packages/core/src/notifications.ts`, выключенные хранятся в `users.dm_muted`; бот спрашивает `wantsDm` перед отправкой) |
 | Реестры (хелпер и выше) | `/documents`, `/wanted`, `/fines`, `/personnel`, `/registrations/vehicles`, `/registrations/uniforms`, `/transfers`, `/tokens`, `/feedback` |
 | Администраторам | `/bans` |
 | Главному администратору | `/settings` (вкладки: серверы и синхронизация; защита и мониторинг; тексты и данные), `/settings/factions` (роли; роли администрации; каналы фракций; права команд), `/settings/modules` (вкладка на каждый модуль), `/settings/sessions` (сессии; журнал аудита), `/settings/embeds`, `/settings/buttons`, `/settings/forms`, `/settings/webhooks` (запросы; архив форм), `/jobs` |
@@ -380,6 +398,9 @@ Next.js 15 (App Router), React 19, Auth.js v5. Серверные компоне
 | `/api/settings/*` | `guilds`, `role-mappings`, `factions`, `modules`, `stage4`, `embeds`, `role-panels`, `lockdown`, `admin-roles`, `cp-sync`, `legal`, `privacy` |
 | `/api/personnel`, `/api/search`, `/api/notifications` | создание кадрового события; поиск для Ctrl+K; что ждёт решения пользователя |
 | `/api/legal/version`, `/api/legal/consent` | действующая редакция условий; принятие её пользователем |
+| `/api/feedback/attachments` | загрузка файлов к сообщению обращения (картинки и PDF); прикрепить файл может только загрузивший его |
+| `/api/profile/notifications`, `/api/profile/appearance` | виды ЛС от бота; тема и цвет акцента |
+| `/api/settings/embeds` | шаблоны сообщений; операции `send` (с `sendAt` — отложенная), `cancel_scheduled`, `import_message`, `resend`, `archive_sent`; `GET ?importJob=` — результат чтения сообщения |
 
 Ошибки приводит к ответу `lib/api.ts → jsonError`: `UserError` и ошибки проверки — 400 с текстом, нет входа — 401, нет прав — 403, остальное — 500 без подробностей.
 
@@ -387,9 +408,11 @@ Next.js 15 (App Router), React 19, Auth.js v5. Серверные компоне
 
 `globals.css` — общая тема; `player.css` подключается после него и содержит стили разделов этапов 5–7 и слой дизайн-системы: одна шкала шрифта (13 / 14 / 15 / 17 / 26 px, переменные `--fs-*`), одна высота кнопок и полей (`--control-h`, 40 px; в строках таблиц — 32 px), вкладки `.settings-tabs`, переключатели `.toggle-row`. Все токены объявлены в `:root` в `globals.css`: радиусы `--r-sm/md/lg`, поверхности `--bg-2` (панель) и `--bg-3` (всплывающие блоки, тень `--shadow-pop`), цвета состояний (`--ok`, `--warn`, `--danger`, `--danger-ink`, `--info` и их `-soft`), цвета Discord для превью (`--dc-*`), шрифт заголовков и меток `--font-hud` (Oswald). В `player.css` — шкала шрифта, высоты контролов и утилиты `u-*`. Общие элементы — в `components/ui.tsx` (`EmptyState`, `Plate`, `Money`, `Stamp`, `WantedStars`, `FactionBadge`, `MoreMenu`, скелетоны) и `components/copy-button.tsx` (`CopyButton`, `LinkActions`); `ui.tsx` не импортирует ядро, поэтому его используют и клиентские компоненты. Цвет фракции страницы берут через `getFactionColors()` из `lib/catalog.ts`. На телефоне таблицы `.registry-table` показываются карточками: оболочка (`app-shell.tsx`) копирует заголовки колонок в `data-label` ячеек. Вкладки страниц хранятся в адресе (`?tab=`) и рисуются компонентом `PageTabs`. Подтверждения — собственный диалог (`lib/confirm.ts`, `RegistryActions`), браузерный `confirm` не используется. Служебные страницы (нет доступа, 404, ошибка, техработы) собраны компонентом `NoticePage` из блоков страницы входа.
 
+**Темы.** Все оттенки акцента (`--accent-hover`, `--accent-soft`, `--accent-pill`, свечения) вычисляются из `--accent` через `color-mix`, поверхности и рамки — из `--bg-*`. Пресеты — блоки `:root[data-theme="midnight|emerald|crimson|graphite"]` в `globals.css`; «Mirror» — сам `:root`. Свой цвет ставится на `<html>` как `--accent` и `--accent-contrast` (тёмный или белый текст по яркости). Выбор хранится в `users.theme`, `users.accent_color` и в cookie `mirror-appearance`: скрипт в `<head>` (`lib/appearance.ts`) применяет его до первой отрисовки, `AppearanceSync` в оболочке приводит cookie к значению из профиля на новом устройстве.
+
 ## 12. Хранилище файлов
 
-S3-совместимое (локально и на сервере — SeaweedFS в Docker). `media.ts`: загрузка с проверкой типа и размера, чтение через `/api/media/[id]` с проверкой прав. Фото в публичной ссылке отдаётся только по живому токену ссылки, не по id файла. Файлы не удаляются.
+S3-совместимое (локально и на сервере — SeaweedFS в Docker). `media.ts`: загрузка с проверкой типа и размера, чтение через `/api/media/[id]` с проверкой прав: хелперы и выше — любой файл, вошедший — фото каталога и файлы своих обращений (в том числе ответы администрации). PDF отдаётся на скачивание (`Content-Disposition: attachment`), картинки — для показа. Фото в публичной ссылке отдаётся только по живому токену ссылки, не по id файла. Файлы не удаляются.
 
 ## 13. Безопасность
 
@@ -443,7 +466,7 @@ pnpm dashboard:dev              # http://localhost:3000
 
 ## 16. Тесты
 
-Vitest, интеграционные: настоящая PostgreSQL (`docker-compose.test.yml`, порт 55432), миграции применяются перед запуском, база очищается перед каждым тестом. 31 файл, тестов — см. вывод `pnpm test`:
+Vitest, интеграционные: настоящая PostgreSQL (`docker-compose.test.yml`, порт 55432), миграции применяются перед запуском, база очищается перед каждым тестом. 39 файлов, тестов — см. вывод `pnpm test`:
 
 | Область | Файлы |
 |---|---|
@@ -454,6 +477,7 @@ Vitest, интеграционные: настоящая PostgreSQL (`docker-com
 | администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, экспорт, архив) |
 | действия и реестры | `stage7-registry` (действия, списки, поиск, кэш настроек) |
 | тексты и данные | `stage7-legal-privacy` (редакции текстов, согласия, обезличивание, встроенная справка) |
+| этап 9 | `player-support` (вложения), `sheets-xlsx` (картинки, условное форматирование, цвета списков), `stage9-presence`, `stage9-scheduled-send`, `stage9-message-import`, `stage9-appearance` |
 | дашборд | `markdown`, `settings-access` |
 
 CI (`.github/workflows/ci.yml`): install, generate, validate, lint, build, check, test.
@@ -469,7 +493,8 @@ CI (`.github/workflows/ci.yml`): install, generate, validate, lint, build, check
 | `deploy/setup.sh` | первая установка сервера Ubuntu одной командой |
 | `deploy/update.sh` | обновление одной командой и управление (`status`, `enable`, `disable`, `start`, `stop`, `restart`, `logs`, `backup`, `rollback`) |
 | `deploy/set-domain.sh` | привязка домена |
-| `deploy/lib.sh` | общие функции скриптов |
+| `deploy/staging.sh` | тестовая копия в `/opt/mirror-staging`: установка, обновление, управление (DEPLOYMENT.md, раздел 12) |
+| `deploy/lib.sh` | общие функции скриптов; какая установка (основная или тестовая копия), её порты, службы, сайт Caddy в `/etc/caddy/sites/` |
 | `deploy/systemd/*.service` | службы бота и дашборда |
 | `deploy/caddy/Caddyfile`, `maintenance.html` | обратный прокси с HTTPS и страница на время перезапуска |
 | `deploy/backup/` | образ и скрипты резервных копий |
@@ -482,5 +507,6 @@ CI (`.github/workflows/ci.yml`): install, generate, validate, lint, build, check
 
 - задачу, поставленную дашбордом, воркер увидит при следующем опросе (до 2 секунд): пробуждение работает только внутри процесса бота;
 - ограничение частоты запросов хранится в памяти процесса дашборда и рассчитано на один экземпляр сайта;
-- статус «в сети» в профиле не показывается: для него боту нужен привилегированный интент присутствия;
+- статус «в сети» работает только при включённом в Developer Portal Presence Intent;
+- импорт `.xlsx` не переносит картинки внутри ячеек, диаграммы и сводные таблицы;
 - страницы за входом не покрыты автоматическими тестами интерфейса.

@@ -2,10 +2,14 @@
 # Mirror: first-time setup of an Ubuntu 22.04 / 24.04 server. One command, safe to run again.
 #
 #   sudo bash deploy/setup.sh
+#   sudo bash deploy/staging.sh setup      the test copy next to it (see docs/DEPLOYMENT.md, section 12)
 #
 # Optional variables:
 #   DOMAIN=mirror.example.com   site address; without it a temporary <ip>.sslip.io address is used
+#                               (test.<ip>.sslip.io for the test copy)
 #   REPO_URL=https://github.com/<owner>/<repo>.git   clone from here when the code is not on the server yet
+#   DEPLOY_BRANCH=main          branch the installation follows (kept in .env for update.sh)
+#   INSTANCE=staging            set up the test copy in /opt/mirror-staging instead of /opt/mirror
 #   APP_ROOT=/opt/mirror  APP_USER=mirror
 #
 # What it does: system packages, Node.js 22, pnpm, Docker, Caddy, the application user, the .env file
@@ -67,6 +71,9 @@ fi
 chown -R "$APP_USER:$APP_USER" "$APP_ROOT"
 # git refuses to work in a folder owned by another user unless told it is safe.
 git config --system --add safe.directory "$APP_ROOT" 2>/dev/null || true
+if [[ -n "${DEPLOY_BRANCH:-}" ]]; then
+  as_app "git fetch origin '$DEPLOY_BRANCH' && git checkout '$DEPLOY_BRANCH'" || die "Не удалось переключиться на ветку $DEPLOY_BRANCH"
+fi
 
 PNPM_VERSION=$(sed -n 's/.*"packageManager": *"pnpm@\([^"]*\)".*/\1/p' "$APP_ROOT/package.json")
 if ! command -v pnpm >/dev/null 2>&1 || [[ "$(pnpm -v)" != "$PNPM_VERSION" ]]; then
@@ -83,6 +90,8 @@ if [[ -z "${DOMAIN:-}" ]]; then
   PUBLIC_IP=$(curl -fsS --max-time 10 https://api.ipify.org || true)
   [[ -n "$PUBLIC_IP" ]] || die "Не удалось определить внешний IP. Запустите с DOMAIN=ваш.домен."
   DOMAIN="${PUBLIC_IP//./-}.sslip.io"
+  # The test copy needs an address of its own: sslip.io answers for any name in front of the IP.
+  if [[ "$STAGING" == "1" ]]; then DOMAIN="test.$DOMAIN"; fi
   echo "Домен не задан — используется временный адрес $DOMAIN (смена: deploy/set-domain.sh)."
 fi
 echo "Сайт: https://$DOMAIN"
@@ -94,8 +103,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
   sed -i "s|__DOMAIN__|$DOMAIN|g" "$ENV_FILE"
   env_set SESSION_SECRET "$(openssl rand -hex 32)"
   env_set POSTGRES_PASSWORD "$DB_PASSWORD"
-  env_set DATABASE_URL "postgresql://mirror:$DB_PASSWORD@127.0.0.1:5432/mirror"
+  env_set DATABASE_URL "postgresql://mirror:$DB_PASSWORD@127.0.0.1:$POSTGRES_PORT/mirror"
+  env_set S3_ENDPOINT "http://127.0.0.1:$S3_PORT"
   env_set S3_SECRET_KEY "$(openssl rand -hex 24)"
+  # Docker Compose reads the ports of this installation's database and storage from here.
+  env_set POSTGRES_PORT "$POSTGRES_PORT"
+  env_set S3_PORT "$S3_PORT"
+  if [[ -n "${DEPLOY_BRANCH:-}" ]]; then env_set DEPLOY_BRANCH "$DEPLOY_BRANCH"; fi
+  if [[ "$STAGING" == "1" ]]; then env_set INSTANCE_LABEL "Тестовая копия"; fi
   echo "Создан. Секреты базы, хранилища и сессий сгенерированы."
 else
   echo "Уже есть — не трогаю."
@@ -115,13 +130,8 @@ as_app "pnpm db:deploy"
 as_app "pnpm build"
 as_app "pnpm db:seed"
 
-say "Службы systemd"
-for unit in mirror-bot mirror-dashboard; do
-  sed -e "s|/opt/mirror|$APP_ROOT|g" -e "s|^User=mirror|User=$APP_USER|" -e "s|^Group=mirror|Group=$APP_USER|" \
-    "$APP_ROOT/deploy/systemd/$unit.service" > "/etc/systemd/system/$unit.service"
-done
-systemctl daemon-reload
-systemctl enable $SERVICES
+say "Службы systemd: $SERVICES"
+install_units
 
 say "Обратный прокси Caddy"
 install_caddyfile "$DOMAIN"
@@ -140,13 +150,20 @@ MISSING=$(missing_secrets)
 if [[ -z "$MISSING" ]]; then
   say "Запуск"
   systemctl restart $SERVICES
-  wait_for_site || warn "Сайт пока не отвечает: journalctl -u mirror-dashboard -n 50"
+  wait_for_site || warn "Сайт пока не отвечает: journalctl -u $INSTANCE-dashboard -n 50"
   maintenance status || true
+fi
+
+STAGING_NOTE=""
+STAGING_DISCORD=""
+if [[ "$STAGING" == "1" ]]; then
+  STAGING_NOTE=" Это тестовая копия: своя база, хранилище, службы и бот."
+  STAGING_DISCORD=$'\n     Для тестовой копии нужно ОТДЕЛЬНОЕ приложение Discord (свой бот и токен) и тестовые серверы:\n     бот с токеном основной установки здесь запускать нельзя.'
 fi
 
 cat <<DONE
 
-Готово.
+Готово.$STAGING_NOTE
   Сайт:              https://$DOMAIN
   Папка проекта:     $APP_ROOT
   Файл настроек:     $ENV_FILE
@@ -156,7 +173,7 @@ if [[ -n "$MISSING" ]]; then
   cat <<NEXT
 Осталось сделать вручную:
   1. Вписать в $ENV_FILE значения: $MISSING
-       sudo nano $ENV_FILE
+       sudo nano $ENV_FILE$STAGING_DISCORD
   2. В Discord Developer Portal → OAuth2 → Redirects добавить:
        https://$DOMAIN/api/auth/callback/discord
      В разделе Bot включить «Server Members Intent».

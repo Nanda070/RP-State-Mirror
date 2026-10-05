@@ -86,9 +86,54 @@ export function mediaExtension(contentType: string): string {
       return "webp";
     case "image/gif":
       return "gif";
+    case "application/pdf":
+      return "pdf";
     default:
       return "bin";
   }
+}
+
+/** Files a ticket may carry: pictures and PDF documents. The type always comes from the bytes. */
+export const ATTACHMENT_CONTENT_TYPES = new Set([...IMAGE_CONTENT_TYPES, "application/pdf"]);
+const ATTACHMENT_TYPE_ERROR = "Недопустимый тип файла: можно прикрепить изображение (PNG, JPEG, WEBP, GIF) или PDF.";
+
+/** Picture or PDF, detected from magic bytes. */
+export function sniffAttachmentContentType(bytes: Uint8Array): string | null {
+  const image = sniffImageContentType(bytes);
+  if (image) return image;
+  if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) {
+    return "application/pdf";
+  }
+  return null;
+}
+
+/** Stores a ticket attachment uploaded through the dashboard (picture or PDF, up to 10 MB). */
+export async function storeUploadedAttachment(
+  bytes: Uint8Array,
+  metadata: { originalName: string; createdById?: string },
+  context: AuditContext,
+) {
+  if (bytes.byteLength === 0) throw new MediaValidationError("Файл пустой.");
+  if (bytes.byteLength > MAX_MEDIA_BYTES) throw new MediaValidationError("Файл превышает лимит 10 МБ.");
+  const contentType = sniffAttachmentContentType(bytes);
+  if (!contentType) throw new MediaValidationError(ATTACHMENT_TYPE_ERROR);
+  return putMediaObject(storageBucket(), bytes, contentType, metadata, context);
+}
+
+/** Downloads a ticket attachment from the Discord CDN (a file field of a modal) and stores it. */
+export async function storeAttachmentFromUrl(
+  url: string,
+  metadata: { originalName: string; createdById?: string },
+  context: AuditContext,
+) {
+  const safeUrl = assertDiscordMediaUrl(url);
+  const bucket = storageBucket();
+  const response = await fetch(safeUrl, { redirect: "error", signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+  if (!response.ok) throw new UserError(`Не удалось скачать вложение: HTTP ${response.status}`);
+  const body = await readBodyWithLimit(response);
+  const contentType = sniffAttachmentContentType(body);
+  if (!contentType) throw new MediaValidationError(ATTACHMENT_TYPE_ERROR);
+  return putMediaObject(bucket, body, contentType, metadata, context);
 }
 
 export async function storeMediaFromUrl(

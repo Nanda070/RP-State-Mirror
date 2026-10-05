@@ -33,6 +33,7 @@ import { embedSpecSchema } from "./embeds.js";
 import { getSetting } from "./settings.js";
 import { assertNotTechBanned } from "./tech-bans.js";
 import { UserError } from "./errors.js";
+import { ATTACHMENT_CONTENT_TYPES } from "./media.js";
 
 const snowflakeLike = z.string().min(1).max(32);
 const snowflakeStrict = z.string().regex(/^\d{17,20}$/);
@@ -940,15 +941,55 @@ export async function archiveRolePanel(id: string, context: AuditContext) {
 
 /** One person cannot hold more open tickets than this: a new one waits until an old one is closed. */
 export const MAX_OPEN_FEEDBACK_TICKETS = 5;
+/** Files one ticket message may carry (pictures and PDF, see ATTACHMENT_CONTENT_TYPES). */
+export const MAX_FEEDBACK_ATTACHMENTS = 5;
 
-export async function createFeedbackTicket(input: {
-  authorDiscordId: string;
-  category: string;
-  content: string;
-  attachmentFileIds?: string[];
-}, context: AuditContext) {
+export type FeedbackAttachmentOptions = {
+  attachmentFileIds?: readonly string[] | undefined;
+  /**
+   * The dashboard user who uploaded the files. When set, every file must be theirs: nobody can
+   * attach someone else's upload (and so gain the right to read it) by guessing its id.
+   */
+  uploaderUserId?: string | undefined;
+};
+
+/** Text of a ticket message: may be empty only when files are attached. */
+function feedbackText(content: string, attachmentCount: number): string {
+  const text = z.string().max(4000, "Текст длиннее 4000 символов. Сократите его.").parse(content.trim());
+  if (!text && attachmentCount === 0) throw new UserError("Напишите текст обращения или прикрепите файл.");
+  return text;
+}
+
+async function checkFeedbackAttachments(tx: Db, options: FeedbackAttachmentOptions): Promise<string[]> {
+  const ids = [...new Set(options.attachmentFileIds ?? [])];
+  if (ids.length === 0) return [];
+  if (ids.length > MAX_FEEDBACK_ATTACHMENTS) {
+    throw new UserError(`Можно прикрепить не больше ${MAX_FEEDBACK_ATTACHMENTS} файлов к одному сообщению.`);
+  }
+  const files = await tx.mediaFile.findMany({ where: { id: { in: ids }, status: RecordStatus.ACTIVE } });
+  const valid = files.filter(
+    (file) =>
+      ATTACHMENT_CONTENT_TYPES.has(file.contentType) &&
+      (options.uploaderUserId === undefined || file.createdById === options.uploaderUserId),
+  );
+  if (valid.length !== ids.length) throw new UserError("Файл не найден. Загрузите его ещё раз.");
+  const used = await tx.feedbackMessage.count({ where: { attachmentFileIds: { hasSome: ids } } });
+  if (used > 0) throw new UserError("Файл уже прикреплён к другому сообщению. Загрузите его ещё раз.");
+  return ids;
+}
+
+export async function createFeedbackTicket(
+  input: {
+    authorDiscordId: string;
+    category: string;
+    content: string;
+    attachmentFileIds?: readonly string[] | undefined;
+    uploaderUserId?: string | undefined;
+  },
+  context: AuditContext,
+) {
   const category = nonEmptyText(64).parse(input.category);
-  const content = nonEmptyText(4000).parse(input.content);
+  const content = feedbackText(input.content, input.attachmentFileIds?.length ?? 0);
   return auditedMutation(context, "feedback_ticket.created", "feedback_ticket", async (tx) => {
     const open = await tx.feedbackTicket.count({
       where: { authorDiscordId: input.authorDiscordId, status: { not: FeedbackTicketStatus.CLOSED } },
@@ -956,11 +997,12 @@ export async function createFeedbackTicket(input: {
     if (open >= MAX_OPEN_FEEDBACK_TICKETS) {
       throw new UserError(`У вас уже ${open} открытых обращений. Дождитесь ответа или допишите в одно из них.`);
     }
+    const attachmentFileIds = await checkFeedbackAttachments(tx, input);
     const ticket = await tx.feedbackTicket.create({
       data: {
         authorDiscordId: input.authorDiscordId,
         category,
-        messages: { create: { authorDiscordId: input.authorDiscordId, content, attachmentFileIds: input.attachmentFileIds ?? [] } },
+        messages: { create: { authorDiscordId: input.authorDiscordId, content, attachmentFileIds } },
       },
       include: { messages: true },
     });
@@ -974,12 +1016,16 @@ export async function addFeedbackMessage(
   authorDiscordId: string,
   content: string,
   context: AuditContext,
+  options: FeedbackAttachmentOptions = {},
 ) {
-  const text = nonEmptyText(4000).parse(content);
+  const text = feedbackText(content, options.attachmentFileIds?.length ?? 0);
   return auditedMutation(context, "feedback_message.created", "feedback_message", async (tx) => {
     const ticket = await tx.feedbackTicket.findUnique({ where: { id: ticketId } });
     if (!ticket || ticket.status === FeedbackTicketStatus.CLOSED) throw new UserError("Тикет закрыт или не найден.");
-    const message = await tx.feedbackMessage.create({ data: { ticketId, authorDiscordId, content: text } });
+    const attachmentFileIds = await checkFeedbackAttachments(tx, options);
+    const message = await tx.feedbackMessage.create({
+      data: { ticketId, authorDiscordId, content: text, attachmentFileIds },
+    });
     if (authorDiscordId !== ticket.authorDiscordId) {
       // Staff answered: the player gets a DM, the ticket is in work.
       await enqueueFeedbackReplySend({ ticketId: ticket.id, messageId: message.id }, tx);
@@ -996,6 +1042,27 @@ export async function addFeedbackMessage(
     }
     return { entityId: message.id, after: message, result: message };
   });
+}
+
+/** Whether the person wrote the ticket a file is attached to: the author reads their own and the staff's files. */
+export async function isOwnFeedbackAttachment(fileId: string, discordId: string): Promise<boolean> {
+  const count = await prisma.feedbackMessage.count({
+    where: { attachmentFileIds: { has: fileId }, ticket: { authorDiscordId: discordId } },
+  });
+  return count > 0;
+}
+
+/** Name, type and size of the files attached to ticket messages, keyed by file id. */
+export async function getFeedbackAttachmentInfo(fileIds: readonly string[]) {
+  const ids = [...new Set(fileIds)];
+  const files =
+    ids.length === 0
+      ? []
+      : await prisma.mediaFile.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, originalName: true, contentType: true, sizeBytes: true, status: true },
+        });
+  return new Map(files.map((file) => [file.id, file]));
 }
 
 export async function listFeedbackTickets() {

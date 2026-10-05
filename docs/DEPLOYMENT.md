@@ -2,7 +2,7 @@
 
 Документ для того, кто разворачивает проект: что купить, какие команды выполнить, как привязать домен и как потом обновлять и чинить. Устройство системы изнутри описано в [TECHNICAL.md](TECHNICAL.md).
 
-> **Статус проверки (без изменений с 3 октября 2026).** Скрипты из папки `deploy/` проверены на синтаксис, конфигурация Caddy — валидатором Caddy, сервис резервных копий и восстановление — на локальном Docker, production-сборка — локально. **На настоящем сервере Ubuntu скрипты `setup.sh`, `update.sh` и `set-domain.sh` целиком ещё не запускались** — первый запуск делайте внимательно и читайте вывод.
+> **Статус проверки (5 октября 2026).** По словам владельца, первая установка на сервере выполнена, токен бота перевыпущен, выгрузка копий на другую машину настроена. Тестовая копия (раздел 12) и новая раскладка Caddy (`/etc/caddy/sites/`) проверены на синтаксис (`bash -n`, ShellCheck) и прогоном генерации конфигурации и служб во временной папке; на настоящем сервере ещё не запускались — первый запуск `deploy/staging.sh setup` делайте внимательно и читайте вывод.
 
 ## 1. Что получится
 
@@ -22,14 +22,14 @@
 | Настройки и секреты | `/opt/mirror/.env` (права 600, владелец `mirror`) |
 | Службы | `mirror-bot`, `mirror-dashboard`, `caddy`, `docker` |
 | Данные базы, файлы, копии | тома Docker `mirror_mirror-postgres`, `mirror_mirror-storage`, `mirror_mirror-backups` |
-| Конфигурация прокси | `/etc/caddy/Caddyfile` |
+| Конфигурация прокси | `/etc/caddy/Caddyfile` импортирует `/etc/caddy/sites/*.caddy`; сайт этой установки — `/etc/caddy/sites/mirror.caddy` |
 | Журналы | `journalctl -u mirror-bot`, `journalctl -u mirror-dashboard`, `/var/log/caddy/` |
 
 ## 2. Что нужно заранее
 
 1. **Сервер (VPS)** с Ubuntu 22.04 или 24.04, от 2 ГБ памяти (сборка дашборда требует около 1,5 ГБ), 20 ГБ диска, публичный IPv4, доступ по SSH с правами `sudo`.
 2. **Приложение Discord** — https://discord.com/developers/applications:
-   - раздел **Bot**: скопировать **Token**; включить **Server Members Intent**;
+   - раздел **Bot**: скопировать **Token**; включить **Server Members Intent**; для статуса «в сети» в профиле — ещё **Presence Intent** (необязательно, см. раздел 8);
    - раздел **OAuth2**: скопировать **Client ID** и **Client Secret**;
    - бот должен быть добавлен на все серверы проекта с правами: управление ролями, исключение участников, управление вебхуками, отправка сообщений, встраивание ссылок, создание приглашений, создание веток. Роль бота на каждом сервере должна стоять **выше** ролей, которыми он управляет.
 3. **Discord ID главных администраторов** (правый клик по пользователю → «Копировать ID» при включённом режиме разработчика).
@@ -321,6 +321,7 @@ ssh user@SERVER_IP 'sudo docker run --rm -v mirror_mirror-backups:/b alpine tar 
 | Сменить секрет Discord | поправить `/opt/mirror/.env`, затем `update.sh restart` |
 | Место на диске | `df -h`, `sudo docker system df` |
 | Обновления системы | `sudo apt update && sudo apt upgrade` |
+| Статус «в сети» в профилях | Developer Portal → Bot → включить **Presence Intent**, затем дашборд → **Настройки → Серверы и синхронизация → Статус «в сети»**. Бот переподключится сам в течение минуты. Если Discord откажет (интент не включён), бот выключит функцию, запустится без неё и оставит запись в журнале аудита |
 
 Оповещения, которые приходят сами (настраиваются в **Настройки → Защита и мониторинг**):
 
@@ -359,6 +360,9 @@ ssh user@SERVER_IP 'sudo docker run --rm -v mirror_mirror-backups:/b alpine tar 
 | `POSTGRES_PASSWORD`, `DATABASE_URL` | да | база; создаются установкой, пароль в обеих строках один |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` | да | хранилище файлов; создаются установкой |
 | `BACKUP_AT`, `BACKUP_KEEP_DAYS` | нет | время ежедневной копии и срок хранения дампов |
+| `POSTGRES_PORT`, `S3_PORT` | нет | порты базы и хранилища в Docker на `127.0.0.1`; по умолчанию 5432 и 9000, у тестовой копии 5433 и 9001 |
+| `DEPLOY_BRANCH` | нет | ветка, за которой следует `update.sh`; по умолчанию `main` |
+| `INSTANCE_LABEL` | нет | надпись в верхней панели сайта; у тестовой копии — «Тестовая копия» |
 
 `POSTGRES_PASSWORD` и ключи S3 **нельзя менять после первого запуска** простой правкой `.env`: база и хранилище запомнили прежние значения. Всё остальное (серверы, роли, каналы, сроки) настраивается в дашборде и в `.env` не хранится.
 
@@ -371,3 +375,61 @@ ssh user@SERVER_IP 'sudo docker run --rm -v mirror_mirror-backups:/b alpine tar 
 - [ ] заданы канал ошибок и вебхук оповещения;
 - [ ] в **Настройки → Серверы и синхронизация** сверка ЧП сначала запущена в режиме «сухой прогон», отчёт в лог-канале проверен, после этого режим выключен;
 - [ ] на тестовом аккаунте пройдены: вход, `/нашивка получить`, заявка на регистрацию и решение по ней, публичная форма.
+
+## 12. Тестовая копия
+
+Вторая установка на том же сервере — чтобы проверить обновление или новую функцию, не трогая настоящий сайт. У неё всё своё:
+
+| Что | Основная установка | Тестовая копия |
+|---|---|---|
+| Папка | `/opt/mirror` | `/opt/mirror-staging` |
+| Службы | `mirror-bot`, `mirror-dashboard` | `mirror-staging-bot`, `mirror-staging-dashboard` |
+| Дашборд | `127.0.0.1:3000` | `127.0.0.1:3001` |
+| База, хранилище | `127.0.0.1:5432`, `:9000`, тома `mirror_*` | `127.0.0.1:5433`, `:9001`, тома `mirror-staging_*` |
+| Сайт в Caddy | `/etc/caddy/sites/mirror.caddy` | `/etc/caddy/sites/mirror-staging.caddy` (с запретом индексации) |
+| Адрес по умолчанию | `<ip>.sslip.io` | `test.<ip>.sslip.io` |
+| Приложение Discord | основное | **отдельное**: свой бот, свой токен, тестовые серверы |
+
+> ⚠️ Бот тестовой копии должен быть **другим приложением Discord**. С токеном основного бота две установки будут отвечать на одни и те же кнопки и команды.
+
+### 12.1 Установить
+
+```bash
+# DOMAIN — необязательно; DEPLOY_BRANCH — ветка, которую проверяете (по умолчанию main)
+sudo DOMAIN=test.mirror.example.com DEPLOY_BRANCH=main bash /opt/mirror/deploy/staging.sh setup
+```
+
+Скрипт берёт код из `/opt/mirror` (вместе с историей git), создаёт свой `.env` со своими паролями, поднимает свою базу и хранилище, ставит службы и сайт в Caddy. Сайт основной установки при первом запуске переезжает из `/etc/caddy/Caddyfile` в `/etc/caddy/sites/mirror.caddy` — содержимое не меняется.
+
+Дальше — как в разделе 3: вписать в `/opt/mirror-staging/.env` значения **тестового** приложения Discord, добавить в его OAuth2 → Redirects адрес `https://<адрес копии>/api/auth/callback/discord` и запустить:
+
+```bash
+sudo bash /opt/mirror/deploy/staging.sh start
+```
+
+Вверху каждой страницы копии видна надпись «Тестовая копия».
+
+### 12.2 Пользоваться
+
+```bash
+sudo bash /opt/mirror/deploy/staging.sh update      # обновить копию (те же шаги, что update.sh)
+sudo bash /opt/mirror/deploy/staging.sh status      # состояние
+sudo bash /opt/mirror/deploy/staging.sh logs bot    # журнал
+sudo bash /opt/mirror/deploy/staging.sh domain test.mirror.example.com   # сменить адрес
+sudo bash /opt/mirror/deploy/staging.sh stop        # остановить
+```
+
+Обычный порядок: обновить копию → проверить → обновить основную установку (`update.sh`). Чтобы проверить ветку, впишите её в `DEPLOY_BRANCH` в `/opt/mirror-staging/.env` и выполните `staging.sh update`.
+
+Данные основной установки в копию не переносятся: в ней лежат вебхуки и каналы настоящих серверов, и задачи из копии ушли бы в настоящий Discord.
+
+### 12.3 Удалить
+
+```bash
+sudo bash /opt/mirror/deploy/staging.sh stop
+sudo systemctl disable mirror-staging-bot mirror-staging-dashboard
+sudo rm /etc/systemd/system/mirror-staging-*.service /etc/caddy/sites/mirror-staging.caddy
+sudo systemctl daemon-reload && sudo systemctl reload caddy
+cd /opt/mirror-staging && sudo docker compose down -v      # -v удаляет базу и файлы копии
+sudo rm -rf /opt/mirror-staging
+```

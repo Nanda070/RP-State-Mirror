@@ -42,6 +42,13 @@ export const botEnvSchema = baseEnvSchema.extend({
 });
 
 export const dashboardEnvSchema = baseEnvSchema.extend({
+  /** Shown in the top bar of every page: «Тестовая копия» on the test installation (deploy/staging.sh). */
+  INSTANCE_LABEL: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((label) => label || undefined),
   DISCORD_CLIENT_ID: snowflakeSchema,
   DISCORD_CLIENT_SECRET: z.string().min(1),
   SESSION_SECRET: z.string().min(16),

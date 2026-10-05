@@ -2,6 +2,7 @@ import {
   canManageModules,
   canManageSystemSettings,
   canViewModules,
+  getFeedbackAttachmentInfo,
   getSetting,
   listFeedbackTickets,
   listStaffDiscordIds,
@@ -14,6 +15,7 @@ import { getActiveChannelOptions, getActiveGuildOptions } from "@/lib/catalog";
 import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
+import { ticketFiles } from "@/lib/ticket-files";
 
 export const metadata = { title: "Обратная связь" };
 
@@ -25,6 +27,9 @@ export default async function FeedbackPage() {
   const canPublish = canManageSystemSettings(identity);
   const canAct = canManageModules(identity);
   const tickets = await listFeedbackTickets();
+  const files = await getFeedbackAttachmentInfo(
+    tickets.flatMap((ticket) => ticket.messages.flatMap((message) => message.attachmentFileIds)),
+  );
   const staffDiscordIds = canAct
     ? await listStaffDiscordIds(getDashboardEnv().SUPER_ADMIN_USER_IDS)
     : [];
@@ -95,6 +100,7 @@ export default async function FeedbackPage() {
             authorLabel: label(m.authorDiscordId),
             content: m.content,
             at: formatMoscowShort(m.createdAt),
+            files: ticketFiles(m.attachmentFileIds, files),
           })),
         }))}
       />

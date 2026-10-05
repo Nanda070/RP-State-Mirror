@@ -5,6 +5,8 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  FileUploadBuilder,
+  LabelBuilder,
   ModalBuilder,
   StringSelectMenuBuilder,
   MessageFlags,
@@ -26,6 +28,9 @@ import {
   ensureUserByDiscordId,
   formatTokenDisplay,
   formatUserError,
+  MAX_FEEDBACK_ATTACHMENTS,
+  storeAttachmentFromUrl,
+  UserError,
   getSetting,
   getDiscordForm,
   getFormDraft,
@@ -708,20 +713,42 @@ async function handleFeedbackOpen(interaction: ButtonInteraction) {
   });
 }
 
+/** Text and up to five files (pictures or PDF); one of the two is enough. */
 function feedbackTextModal(customId: string, title: string) {
   return new ModalBuilder()
     .setCustomId(customId)
     .setTitle(title.slice(0, 45))
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("content")
-          .setLabel("Сообщение")
-          .setStyle(TextInputStyle.Paragraph)
-          .setMaxLength(4000)
-          .setRequired(true),
-      ),
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Сообщение")
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId("content")
+            .setStyle(TextInputStyle.Paragraph)
+            .setMaxLength(4000)
+            .setRequired(false),
+        ),
+      new LabelBuilder()
+        .setLabel("Файлы")
+        .setDescription(`Скриншоты или PDF, до ${MAX_FEEDBACK_ATTACHMENTS} файлов по 10 МБ`)
+        .setFileUploadComponent(
+          new FileUploadBuilder().setCustomId("files").setMinValues(0).setMaxValues(MAX_FEEDBACK_ATTACHMENTS).setRequired(false),
+        ),
     );
+}
+
+/** Text of the feedback modal and its files, stored in S3 before the message is written. */
+async function readFeedbackModal(interaction: ModalSubmitInteraction) {
+  const content = interaction.fields.getTextInputValue("content");
+  const uploads = [...(interaction.fields.getUploadedFiles("files")?.values() ?? [])];
+  if (!content.trim() && uploads.length === 0) throw new UserError("Напишите текст обращения или прикрепите файл.");
+  const context = auditContext(interaction, "discord.modal");
+  const attachmentFileIds: string[] = [];
+  for (const upload of uploads.slice(0, MAX_FEEDBACK_ATTACHMENTS)) {
+    const file = await storeAttachmentFromUrl(upload.url, { originalName: upload.name }, context);
+    attachmentFileIds.push(file.id);
+  }
+  return { content, attachmentFileIds };
 }
 
 async function deferRejectModal(interaction: ModalSubmitInteraction) {
@@ -745,12 +772,10 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
       await interaction.editReply({ content: "Обращение не найдено." });
       return true;
     }
-    await addFeedbackMessage(
-      parsed.id,
-      interaction.user.id,
-      interaction.fields.getTextInputValue("content"),
-      auditContext(interaction, "discord.modal"),
-    );
+    const { content, attachmentFileIds } = await readFeedbackModal(interaction);
+    await addFeedbackMessage(parsed.id, interaction.user.id, content, auditContext(interaction, "discord.modal"), {
+      attachmentFileIds,
+    });
     await interaction.editReply({ content: "Ответ отправлен администрации." });
     return true;
   }
@@ -759,9 +784,9 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     // The id is the position in the category list the player picked from.
     const categories = await getSetting("feedback.categories");
     const category = categories[Number(parsed.id)] ?? categories[0] ?? "Обращение";
-    const content = interaction.fields.getTextInputValue("content");
+    const { content, attachmentFileIds } = await readFeedbackModal(interaction);
     await createFeedbackTicket(
-      { authorDiscordId: interaction.user.id, category, content },
+      { authorDiscordId: interaction.user.id, category, content, attachmentFileIds },
       auditContext(interaction, "discord.modal"),
     );
     await interaction.editReply({ content: "Обращение создано." });

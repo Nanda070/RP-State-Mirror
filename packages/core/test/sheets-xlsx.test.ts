@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { SheetError, assertSheetSnapshot, xlsxToSheetSnapshot } from "@mirror/core";
+import { SheetError, assertSheetSnapshot, importXlsx, xlsxToSheetSnapshot } from "@mirror/core";
 
 type Snapshot = {
   sheetOrder: string[];
@@ -104,6 +104,162 @@ describe("xlsx import", () => {
         ranges: [{ startRow: 2, endRow: 4, startColumn: 4, endColumn: 4 }],
       }),
     ]);
+  });
+
+  it("carries conditional formatting, dropdown chip colours and pictures", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Лицензии");
+    sheet.getRow(1).values = ["Имя", "Статус", "Сумма", "Дело"];
+    for (let row = 2; row <= 5; row += 1) {
+      sheet.getCell(`A${row}`).value = `Адвокат ${row}`;
+      sheet.getCell(`B${row}`).value = row % 2 ? "Активна" : "Изъята";
+      sheet.getCell(`B${row}`).dataValidation = { type: "list", allowBlank: true, formulae: ['"Активна,Изъята,Приостановлена"'] };
+      sheet.getCell(`C${row}`).value = row * 100;
+      sheet.getCell(`D${row}`).value = row === 2 ? "Суд №1" : "—";
+    }
+    const solid = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, bgColor: { argb } });
+    sheet.addConditionalFormatting({
+      ref: "B2:B5",
+      rules: [
+        // Google Sheets writes chip colours like this.
+        { type: "cellIs", operator: "equal", formulae: ['"Активна"'], priority: 1, style: { fill: solid("FF0B8043") } },
+        { type: "cellIs", operator: "equal", formulae: ['"Изъята"'], priority: 2, style: { fill: solid("FFC5221F") } },
+      ],
+    });
+    sheet.addConditionalFormatting({
+      ref: "C2:C5",
+      rules: [
+        {
+          type: "cellIs",
+          operator: "greaterThan",
+          formulae: ["300"],
+          priority: 3,
+          style: { font: { bold: true, color: { argb: "FFFF0000" } } },
+        },
+        { type: "cellIs", operator: "between", formulae: ["100", "250"], priority: 4, style: { fill: solid("FFFFFF00") } },
+      ],
+    });
+    sheet.addConditionalFormatting({
+      ref: "D2:D5",
+      rules: [
+        { type: "containsText", operator: "containsText", text: "Суд", priority: 5, style: { fill: solid("FF00FFFF") } },
+        { type: "expression", formulae: ['$C2>400'], priority: 6, style: { font: { italic: true } } },
+      ],
+    });
+    sheet.addConditionalFormatting({
+      ref: "C2:C5",
+      rules: [
+        {
+          type: "colorScale",
+          priority: 7,
+          cfvo: [{ type: "min" }, { type: "max" }],
+          color: [{ argb: "FFF8696B" }, { argb: "FF63BE7B" }],
+        },
+        { type: "dataBar", priority: 8, cfvo: [{ type: "min" }, { type: "max" }], color: { argb: "FF638EC6" } } as never,
+        {
+          type: "iconSet",
+          priority: 9,
+          iconSet: "3Arrows",
+          cfvo: [
+            { type: "percent", value: 0 },
+            { type: "percent", value: 33 },
+            { type: "percent", value: 67 },
+          ],
+        } as never,
+        { type: "top10", priority: 10, rank: 2, style: { fill: solid("FF999999") } } as never,
+      ],
+    });
+    // 1×1 PNG.
+    const png = Uint8Array.from(
+      atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="),
+      (char) => char.charCodeAt(0),
+    );
+    const imageId = workbook.addImage({ buffer: png as never, extension: "png" });
+    sheet.addImage(imageId, { tl: { col: 5, row: 1 }, ext: { width: 100, height: 50 } });
+    sheet.addImage(imageId, "H2:I4");
+    const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+
+    const stored: string[] = [];
+    const { snapshot, report } = await importXlsx(bytes, "Лицензии", {
+      storeImage: async (image) => {
+        expect(image[0]).toBe(0x89);
+        stored.push(`/api/tables/media/file-${stored.length + 1}`);
+        return stored[stored.length - 1] ?? null;
+      },
+    });
+    expect(assertSheetSnapshot(snapshot)).toBeGreaterThan(0);
+    const resources = Object.fromEntries(
+      ((snapshot as unknown as Snapshot).resources ?? []).map((entry) => [entry.name, JSON.parse(entry.data) as Record<string, unknown>]),
+    );
+
+    // The chip colours land on the list, in the order of its options; those two rules are not cell highlights.
+    const lists = resources.SHEET_DATA_VALIDATION_PLUGIN?.["sheet-1"] as { type: string; formula1?: string; formula2?: string }[];
+    expect(lists.find((rule) => rule.type === "list")).toMatchObject({
+      formula1: "Активна,Изъята,Приостановлена",
+      formula2: "#0b8043,#c5221f,",
+    });
+    expect(report.listColors).toBe(2);
+
+    const cf = resources.SHEET_CONDITIONAL_FORMATTING_PLUGIN?.["sheet-1"] as { ranges: unknown[]; rule: Record<string, unknown> }[];
+    expect(cf.map((entry) => [entry.rule.type, entry.rule.subType ?? null])).toEqual([
+      ["highlightCell", "number"],
+      ["highlightCell", "number"],
+      ["highlightCell", "text"],
+      ["highlightCell", "formula"],
+      ["colorScale", null],
+      ["dataBar", null],
+      ["iconSet", null],
+      ["highlightCell", "rank"],
+    ]);
+    expect(cf[0]).toMatchObject({
+      ranges: [{ startRow: 1, endRow: 4, startColumn: 2, endColumn: 2 }],
+      rule: { operator: "greaterThan", value: 300, style: { bl: 1, cl: { rgb: "#ff0000" } } },
+    });
+    expect(cf[1]?.rule).toMatchObject({ operator: "between", value: [100, 250], style: { bg: { rgb: "#ffff00" } } });
+    expect(cf[2]?.rule).toMatchObject({ operator: "containsText", value: "Суд" });
+    expect(cf[3]?.rule).toMatchObject({ value: "=$C2>400", style: { it: 1 } });
+    expect(cf[4]?.rule).toMatchObject({
+      config: [
+        { index: 0, color: "#f8696b", value: { type: "min" } },
+        { index: 1, color: "#63be7b", value: { type: "max" } },
+      ],
+    });
+    expect(cf[5]?.rule).toMatchObject({ config: { positiveColor: "#638ec6", min: { type: "min" }, max: { type: "max" } } });
+    // Highest icon first: ≥ 67 % — icon 0 (green up), ≥ 33 % — icon 1, the rest — icon 2.
+    expect(cf[6]?.rule).toMatchObject({
+      config: [
+        { operator: "greaterThanOrEqual", value: { type: "percent", value: 67 }, iconType: "3Arrows", iconId: "0" },
+        { operator: "greaterThanOrEqual", value: { type: "percent", value: 33 }, iconId: "1" },
+        { operator: "lessThan", iconId: "2" },
+      ],
+    });
+    expect(cf[7]?.rule).toMatchObject({ isBottom: false, isPercent: false, value: 2 });
+    expect(report).toMatchObject({ conditionalRules: 8, skippedConditionalRules: 0, images: 2, skippedImages: 0 });
+
+    const drawings = resources.SHEET_DRAWING_PLUGIN?.["sheet-1"] as {
+      order: string[];
+      data: Record<string, { source: string; anchorType: string; sheetTransform: { from: unknown; to: unknown } }>;
+    };
+    expect(drawings.order).toHaveLength(2);
+    const [oneCell, twoCell] = drawings.order.map((id) => drawings.data[id]);
+    // 100 px wide from column F (88 px default) ends 12 px into column G; 50 px tall from row 2 ends in row 4.
+    expect(oneCell).toMatchObject({
+      source: "/api/tables/media/file-1",
+      anchorType: "0",
+      sheetTransform: {
+        from: { column: 5, columnOffset: 0, row: 1, rowOffset: 0 },
+        to: { column: 6, columnOffset: 12, row: 3, rowOffset: 2 },
+      },
+    });
+    expect(twoCell).toMatchObject({
+      source: "/api/tables/media/file-2",
+      anchorType: "1",
+      sheetTransform: { from: { column: 7, row: 1 }, to: { column: 9, row: 4 } },
+    });
+
+    // Without a store the pictures are left out and counted.
+    const { report: plain } = await importXlsx(bytes, "Лицензии");
+    expect(plain).toMatchObject({ images: 0, skippedImages: 2 });
   });
 
   it("refuses what is not a workbook", async () => {

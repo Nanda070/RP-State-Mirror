@@ -1,4 +1,4 @@
-import { listMessageDesigns, listSentMessages, type EmbedSpec } from "@mirror/core";
+import { listMessageDesigns, listScheduledMessageSends, listSentMessages, type EmbedSpec } from "@mirror/core";
 import { RecordStatus, prisma } from "@mirror/db";
 import { EmbedManager } from "@/components/embed-manager";
 import { getActiveChannelOptions, getActiveGuildOptions, getActiveRoleOptions } from "@/lib/catalog";
@@ -9,9 +9,10 @@ export const metadata = { title: "Эмбеды" };
 export default async function SettingsEmbedsPage() {
   await requireSystemSettingsPage();
 
-  const [embedDesigns, sent, guilds, channels, roles, forms] = await Promise.all([
+  const [embedDesigns, sent, scheduled, guilds, channels, roles, forms] = await Promise.all([
     listMessageDesigns(false),
     listSentMessages(40),
+    listScheduledMessageSends(),
     getActiveGuildOptions(),
     getActiveChannelOptions(),
     getActiveRoleOptions(),
@@ -47,6 +48,13 @@ export default async function SettingsEmbedsPage() {
           messageDiscordId: s.messageDiscordId,
           design: s.design,
           createdAt: s.createdAt.toISOString(),
+        }))}
+        initialScheduled={scheduled.map((entry) => ({
+          jobId: entry.jobId,
+          designName: entry.designName,
+          guildDiscordId: entry.guildDiscordId,
+          channelDiscordId: entry.channelDiscordId,
+          sendAt: entry.sendAt.toISOString(),
         }))}
         guilds={guilds.map((g) => ({ discordId: g.discordId, name: g.name }))}
         channels={channels.map((c) => ({

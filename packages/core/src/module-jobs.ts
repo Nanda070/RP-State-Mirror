@@ -18,6 +18,7 @@ export const MODULE_JOB_TYPES = {
   PERSONNEL_PUBLISH: "personnel.publish",
   MESSAGE_DESIGN_SEND: "message_design.send",
   MESSAGE_DESIGN_RESEND: "message_design.resend",
+  MESSAGE_DESIGN_IMPORT: "message_design.import",
   REGISTRATION_REVIEW: "registration.review",
   REGISTRATION_DECIDED: "registration.decided",
   REGISTRATION_EXPIRED: "registration.expired",
