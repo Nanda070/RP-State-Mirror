@@ -15,6 +15,10 @@ export const formPayloadSchema = z.object({
   publicEnabled: z.boolean().default(false),
   slug: z.string().nullish(),
   successMessage: z.string().nullish(),
+  requiresDecision: z.boolean().default(false),
+  deciderRoleIds: z.array(z.string()).default([]),
+  approvedDmText: z.string().nullish(),
+  rejectedDmText: z.string().nullish(),
   fields: z
     .array(
       z.object({
@@ -52,6 +56,10 @@ export function normalizeFormPayload(payload: FormPayload) {
     publicEnabled: payload.publicEnabled,
     slug: blank(payload.slug),
     successMessage: blank(payload.successMessage),
+    requiresDecision: payload.requiresDecision,
+    deciderRoleIds: payload.deciderRoleIds,
+    approvedDmText: blank(payload.approvedDmText),
+    rejectedDmText: blank(payload.rejectedDmText),
     fields: payload.fields.map((field) => ({
       key: field.key.trim(),
       label: field.label,

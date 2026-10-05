@@ -2,6 +2,7 @@ import {
   buildStatusBadge,
   canManageSystemSettings,
   canViewModules,
+  countPendingFormSubmissions,
   getPlayerProfile,
 } from "@mirror/core";
 import { DecisionStatus, FeedbackTicketStatus, RecordStatus, TransferStatus, prisma } from "@mirror/db";
@@ -79,7 +80,7 @@ export default async function OverviewPage() {
 async function StaffOverview({ showModules }: { showModules: boolean }) {
   const pending = { decision: DecisionStatus.PENDING, status: RecordStatus.ACTIVE };
   const now = new Date();
-  const [vehicles, uniforms, transfers, tickets, wanted, fines, overdue] = await Promise.all([
+  const [vehicles, uniforms, transfers, tickets, wanted, fines, overdue, formAnswers, oldestFormAnswer] = await Promise.all([
     prisma.registration.count({ where: { ...pending, kind: "VEHICLE" } }),
     prisma.registration.count({ where: { ...pending, kind: "UNIFORM" } }),
     prisma.transfer.count({ where: { status: TransferStatus.PENDING } }),
@@ -87,6 +88,14 @@ async function StaffOverview({ showModules }: { showModules: boolean }) {
     prisma.wanted.count({ where: { status: RecordStatus.ACTIVE } }),
     prisma.fine.count({ where: { status: RecordStatus.ACTIVE } }),
     prisma.fine.count({ where: { status: RecordStatus.ACTIVE, dueAt: { lte: now } } }),
+    showModules ? countPendingFormSubmissions() : 0,
+    showModules
+      ? prisma.formSubmission.findFirst({
+          where: { decision: DecisionStatus.PENDING },
+          orderBy: { createdAt: "asc" },
+          select: { formId: true },
+        })
+      : null,
   ]);
 
   return (
@@ -99,6 +108,18 @@ async function StaffOverview({ showModules }: { showModules: boolean }) {
             { label: "Регистрации форм", value: uniforms, hint: "заявок на рассмотрении", href: "/registrations/uniforms?status=PENDING", alert: true },
             { label: "Переводы", value: transfers, hint: "ждут решения сторон", href: "/transfers?status=PENDING", alert: true },
             { label: "Обращения", value: tickets, hint: "открыто", href: "/feedback", alert: true },
+            // Forms belong to the super admin, like the pages the card leads to.
+            ...(showModules
+              ? [
+                  {
+                    label: "Ответы форм",
+                    value: formAnswers,
+                    hint: "ждут решения",
+                    href: oldestFormAnswer ? `/settings/forms/${oldestFormAnswer.formId}/responses?pending=1` : "/settings/forms",
+                    alert: true,
+                  },
+                ]
+              : []),
           ]}
         />
       </section>

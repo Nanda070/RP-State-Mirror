@@ -17,6 +17,7 @@ import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { UserError } from "./errors.js";
 import { cancelFine, markFinePaid, updateFineAmount } from "./fines.js";
+import { decideFormSubmission } from "./forms.js";
 import { cancelJob, enqueueJob } from "./jobs.js";
 import {
   MODULE_JOB_TYPES,
@@ -47,6 +48,7 @@ export const REGISTRY_ACTIONS = {
   token: ["revoke"],
   character: ["archive", "set_static"],
   ic_blacklist: ["close"],
+  form_submission: ["approve", "reject"],
   job: ["retry", "cancel"],
 } as const;
 
@@ -244,6 +246,12 @@ export async function runRegistryAction(input: RegistryActionInput, context: Aud
         context,
       );
       return "В регистрации отказано.";
+    case "form_submission.approve":
+      await decideFormSubmission(id, DecisionStatus.APPROVED, actorDiscordId, null, context);
+      return "Ответ одобрен.";
+    case "form_submission.reject":
+      await decideFormSubmission(id, DecisionStatus.REJECTED, actorDiscordId, need(text, "Укажите причину отказа."), context);
+      return "В ответе отказано.";
     case "registration.revoke":
       await revokeRegistration(id, actorDiscordId, need(text, "Укажите причину снятия регистрации."), context);
       return "Регистрация снята.";

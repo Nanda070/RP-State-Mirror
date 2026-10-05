@@ -1,7 +1,7 @@
 import { prisma } from "@mirror/db";
 import { FormBuilder } from "@/components/form-builder";
 import { getDashboardEnv } from "@/env";
-import { getActiveChannelOptions } from "@/lib/catalog";
+import { getActiveChannelOptions, getActiveRoleOptions } from "@/lib/catalog";
 import { emptyFormBuilderValue } from "@/lib/forms";
 import { requireSystemSettingsPage } from "@/lib/session";
 
@@ -16,8 +16,9 @@ export default async function NewFormPage({
   const { request } = await searchParams;
   // A form requested through /создать-вебхук starts with that webhook. The URL is a secret, so it is
   // looked up here by request id instead of travelling in the address bar.
-  const [channels, webhookRequest] = await Promise.all([
+  const [channels, roles, webhookRequest] = await Promise.all([
     getActiveChannelOptions(),
+    getActiveRoleOptions(),
     typeof request === "string" && request
       ? prisma.webhookRequest.findUnique({ where: { id: request }, select: { webhookUrl: true, description: true } })
       : null,
@@ -46,6 +47,7 @@ export default async function NewFormPage({
           guildDiscordId: channel.guild.discordId,
           guildName: channel.guild.name,
         }))}
+        roles={roles.map((role) => ({ discordId: role.discordId, name: role.name, guildDiscordId: role.guild.discordId }))}
       />
     </div>
   );

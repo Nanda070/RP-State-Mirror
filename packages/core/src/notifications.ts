@@ -16,6 +16,7 @@ export const DM_KINDS = [
   { key: "fine", label: "Новый штраф" },
   { key: "fineOverdue", label: "Срок оплаты штрафа истёк" },
   { key: "formRequest", label: "Решение по запросу формы" },
+  { key: "formDecision", label: "Решение по ответу на форму" },
 ] as const;
 
 export type DmKind = (typeof DM_KINDS)[number]["key"];

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { FormPreview } from "./form-preview";
+import { RoleChipPicker } from "./role-chip-picker";
 import { ToggleRow } from "./toggle-row";
 
 // Mirrors FORM_FIELD_TYPES in @mirror/core (the core entry point is server-only).
@@ -48,8 +49,15 @@ export type FormBuilderValue = {
   publicEnabled: boolean;
   slug: string;
   successMessage: string;
+  requiresDecision: boolean;
+  deciderRoleIds: string[];
+  approvedDmText: string;
+  rejectedDmText: string;
   fields: FormBuilderField[];
 };
+
+/** A role with the server it belongs to: deciders are picked on the server of the delivery channel. */
+export type FormRoleOption = { discordId: string; name: string; guildDiscordId: string };
 
 /** `autoKey`: the key follows the label until someone edits it or the field is saved. */
 type Row = FormBuilderField & { rowId: number; optionsText: string; autoKey: boolean };
@@ -162,10 +170,12 @@ function localToIso(value: string): string | null {
 export function FormBuilder({
   initial,
   channels,
+  roles,
   publicBaseUrl,
 }: {
   initial: FormBuilderValue;
   channels: ChannelOption[];
+  roles: FormRoleOption[];
   /** `PUBLIC_BASE_URL` from the environment. */
   publicBaseUrl: string;
 }) {
@@ -231,12 +241,17 @@ export function FormBuilder({
   const discordReady = rows.every((row) => FIELD_TYPES.find((type) => type.value === row.type)?.discord);
   const steps = Math.ceil(rows.length / MODAL_FIELDS);
   const publicUrl = form.slug ? `${publicBaseUrl}/f/${form.slug}` : null;
+  const deliveryGuildId = channels.find((channel) => channel.discordId === form.deliveryChannelId)?.guildDiscordId;
+  const deciderRoles = deliveryGuildId ? roles.filter((role) => role.guildDiscordId === deliveryGuildId) : [];
 
   const problems = useMemo(() => {
     const list: string[] = [];
     if (!form.name.trim()) list.push("Укажите название формы.");
     if (!form.webhookUrl.trim() && !form.deliveryChannelId) {
       list.push("Укажите, куда отправлять ответы: канал и/или webhook.");
+    }
+    if (form.requiresDecision && !form.deliveryChannelId) {
+      list.push("Решение по ответам: выберите канал Discord — под сообщением вебхука кнопки не работают.");
     }
     if (rows.length === 0) list.push("Добавьте хотя бы одно поле.");
     const keys = new Set<string>();
@@ -272,6 +287,10 @@ export function FormBuilder({
         publicEnabled: form.publicEnabled,
         slug: form.slug,
         successMessage: form.successMessage,
+        requiresDecision: form.requiresDecision,
+        deciderRoleIds: form.requiresDecision ? form.deciderRoleIds : [],
+        approvedDmText: form.approvedDmText,
+        rejectedDmText: form.rejectedDmText,
         fields: rows.map((row) => {
           const text = row.type === "short" || row.type === "paragraph";
           const minLength = text ? numberOrUndefined(row.minLength) : undefined;
@@ -391,6 +410,49 @@ export function FormBuilder({
             />
           </div>
         </div>
+        <ToggleRow
+          id="formRequiresDecision"
+          checked={form.requiresDecision}
+          onChange={(checked) => set("requiresDecision", checked)}
+          label="Ответы требуют решения: кнопки «Одобрить» и «Отказать» под ответом"
+        />
+        {form.requiresDecision ? (
+          <>
+            <div className="field">
+              <span className="field-label">Кто принимает решение, кроме администраторов</span>
+              <RoleChipPicker
+                roles={deciderRoles}
+                selected={form.deciderRoleIds}
+                onChange={(next) => set("deciderRoleIds", next)}
+                emptyHint={
+                  form.deliveryChannelId ? "На сервере этого канала нет ролей в снимке." : "Сначала выберите канал Discord."
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="formApprovedDm">Сообщение автору при одобрении</label>
+              <textarea
+                id="formApprovedDm"
+                rows={2}
+                maxLength={1000}
+                placeholder={`Ваш ответ на форму «${form.name.trim() || "…"}» одобрен.`}
+                value={form.approvedDmText}
+                onChange={(event) => set("approvedDmText", event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="formRejectedDm">Сообщение автору при отказе</label>
+              <textarea
+                id="formRejectedDm"
+                rows={2}
+                maxLength={1000}
+                placeholder={`По вашему ответу на форму «${form.name.trim() || "…"}» — отказ.`}
+                value={form.rejectedDmText}
+                onChange={(event) => set("rejectedDmText", event.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="panel">

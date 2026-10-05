@@ -94,6 +94,7 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `embeds.ts`, `legacy-embeds.ts`, `stage4-embeds.ts`, `message-designs.ts` | описание сообщений, готовые шаблоны, кнопки |
 | `forms.ts` | конструктор форм, проверка ответов, черновики |
 | `vehicles.ts`, `transfer-rules.ts`, `faq.ts`, `profile.ts` | разделы для игроков |
+| `forms.ts` (решения) | форма с признаком `requiresDecision`: новый ответ получает решение «ждёт» и две кнопки (`form.approve`, `form.reject` в `button_actions`); `decideFormSubmission` принимает одно решение, не от автора ответа, и ставит задачу `form.submission_decided`. Режим требует доставки в канал ботом: под сообщением обычного вебхука кнопки не работают. Кто решает — `canDecideFormSubmission`: администраторы и роли формы (`deciderRoleIds`) |
 | `player-card.ts` | карточка человека для Discord: `buildPlayerCard` собирает её из тех же данных, что страница профиля (`getPlayerProfile`), `getDossierAccess` решает, кто может открыть чужую карточку и видит ли он блок IC ЧС |
 | `share-links.ts` | публичные ссылки на записи |
 | `role-panels.ts` | панели ролей (кнопки и выпадающий список) |
@@ -478,7 +479,7 @@ Vitest, интеграционные: настоящая PostgreSQL (`docker-com
 | ядро | `audit-settings`, `jobs`, `members-identity`, `role-mappings`, `access`, `errors`, `seed-env`, `utilities` |
 | модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules`, `improve-registration-leave` |
 | надёжность бота | `bot-reliability` |
-| разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `improve-player-card`, `stage5-forms`, `stage5-share-links`, `stage5-role-panels` |
+| разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `improve-player-card`, `stage5-forms`, `improve-form-decisions`, `stage5-share-links`, `stage5-role-panels` |
 | администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, экспорт, архив) |
 | действия и реестры | `stage7-registry` (действия, списки, поиск, кэш настроек) |
 | тексты и данные | `stage7-legal-privacy` (редакции текстов, согласия, обезличивание, встроенная справка) |

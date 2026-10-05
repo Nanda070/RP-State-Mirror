@@ -7,14 +7,15 @@
  *   Forms longer than 5 fields are filled in several modal steps; partial answers live in `form_drafts`.
  * - Public page `/f/<slug>`: expiry and response limit are enforced here.
  */
-import { AuditActorType, RecordStatus, prisma, type FormField, type Prisma } from "@mirror/db";
+import { AuditActorType, DecisionStatus, RecordStatus, prisma, type FormField, type Prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { toJsonValue } from "./db.js";
 import { SNOWFLAKE_RE } from "./env.js";
 import { UserError } from "./errors.js";
 import { toCsv } from "./exports.js";
-import { enqueueFormSubmissionDeliver } from "./module-jobs.js";
+import { createButtonAction } from "./message-designs.js";
+import { enqueueFormSubmissionDecided, enqueueFormSubmissionDeliver } from "./module-jobs.js";
 import { discordWebhookUrlSchema } from "./text.js";
 
 export const FORM_FIELD_TYPES = ["short", "paragraph", "number", "select", "multiselect", "checkbox", "date"] as const;
@@ -109,6 +110,12 @@ const formBaseSchema = z.object({
   publicEnabled: z.boolean().default(false),
   slug: slugSchema.nullish(),
   successMessage: z.string().trim().max(500).nullish(),
+  /** Answers get «Одобрить / Отказать» under them in the delivery channel. */
+  requiresDecision: z.boolean().default(false),
+  /** Roles that may decide, besides administrators. */
+  deciderRoleIds: z.array(z.string().regex(SNOWFLAKE_RE)).max(25).default([]),
+  approvedDmText: z.string().trim().max(1000).nullish(),
+  rejectedDmText: z.string().trim().max(1000).nullish(),
 });
 
 function refineForm(data: z.infer<typeof formBaseSchema>, ctx: z.RefinementCtx) {
@@ -116,6 +123,14 @@ function refineForm(data: z.infer<typeof formBaseSchema>, ctx: z.RefinementCtx) 
     ctx.addIssue({
       code: "custom",
       message: "Укажите канал доставки и/или webhook URL для ответов формы.",
+      path: ["deliveryChannelId"],
+    });
+  }
+  if (data.requiresDecision && !data.deliveryChannelId) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "Решение по ответам работает только при доставке в канал: под сообщением вебхука кнопки не нажимаются. Выберите канал.",
       path: ["deliveryChannelId"],
     });
   }
@@ -252,6 +267,10 @@ export async function createDiscordForm(input: CreateDiscordFormInput, context: 
         slug: data.slug ?? null,
         publicEnabled: data.publicEnabled,
         successMessage: data.successMessage ?? null,
+        requiresDecision: data.requiresDecision,
+        deciderRoleIds: data.requiresDecision ? data.deciderRoleIds : [],
+        approvedDmText: data.approvedDmText ?? null,
+        rejectedDmText: data.rejectedDmText ?? null,
         fields: { create: data.fields.map(fieldRow) },
       },
       include: { fields: ACTIVE_FIELDS },
@@ -305,6 +324,10 @@ export async function updateForm(id: string, input: UpdateFormInput, context: Au
         slug: data.slug ?? null,
         publicEnabled: data.publicEnabled,
         successMessage: data.successMessage ?? null,
+        requiresDecision: data.requiresDecision,
+        deciderRoleIds: data.requiresDecision ? data.deciderRoleIds : [],
+        approvedDmText: data.approvedDmText ?? null,
+        rejectedDmText: data.rejectedDmText ?? null,
       },
       include: { fields: ACTIVE_FIELDS },
     });
@@ -449,19 +472,31 @@ async function storeSubmission(form: LoadedForm, raw: Record<string, unknown>, m
       const count = await tx.formSubmission.count({ where: { formId: form.id } });
       if (count >= form.responseLimit) throw new FormError("Лимит ответов формы исчерпан.");
     }
-    const submission = await tx.formSubmission.create({
+    const created = await tx.formSubmission.create({
       data: {
         formId: form.id,
         values: toJsonValue(values),
         authorDiscordId: author,
         source: meta.source,
+        decision: form.requiresDecision ? DecisionStatus.PENDING : null,
       },
     });
+    const submission = form.requiresDecision ? await addReviewButtons(tx, created.id) : created;
     if (form.webhookUrl || form.deliveryChannelId) {
       await enqueueFormSubmissionDeliver(submission.id, tx);
     }
     if (author) await tx.formDraft.deleteMany({ where: { formId: form.id, authorDiscordId: author } });
     return { entityId: submission.id, after: submission, result: submission };
+  });
+}
+
+/** The two buttons under an answer that waits for a decision; the bot puts them on its message. */
+async function addReviewButtons(tx: Prisma.TransactionClient, submissionId: string) {
+  const approve = await createButtonAction("form.approve", { submissionId }, tx);
+  const reject = await createButtonAction("form.reject", { submissionId }, tx);
+  return tx.formSubmission.update({
+    where: { id: submissionId },
+    data: { reviewButtons: { approve: approve.customId, reject: reject.customId } },
   });
 }
 
@@ -483,11 +518,19 @@ export async function submitPublicForm(slug: string, values: Record<string, unkn
   return storeSubmission(form, values, { source: "web" });
 }
 
-export async function listFormSubmissions(formId: string, options: { limit?: number; offset?: number } = {}) {
+export async function listFormSubmissions(
+  formId: string,
+  /** `pending`: only the answers that wait for a decision. */
+  options: { limit?: number; offset?: number; pending?: boolean } = {},
+) {
+  const where: Prisma.FormSubmissionWhereInput = {
+    formId,
+    ...(options.pending ? { decision: DecisionStatus.PENDING } : {}),
+  };
   const [total, items] = await Promise.all([
-    prisma.formSubmission.count({ where: { formId } }),
+    prisma.formSubmission.count({ where }),
     prisma.formSubmission.findMany({
-      where: { formId },
+      where,
       orderBy: { createdAt: "desc" },
       take: Math.min(options.limit ?? 50, 5000),
       skip: options.offset ?? 0,
@@ -511,17 +554,88 @@ export async function formSubmissionsCsv(formId: string): Promise<string> {
     listFormColumns(formId),
     listFormSubmissions(formId, { limit: 5000 }),
   ]);
-  const header = ["Дата (UTC)", "Источник", "Discord ID", ...columns.map((column) => column.label)];
+  const header = ["Дата (UTC)", "Источник", "Discord ID", "Решение", ...columns.map((column) => column.label)];
   const rows = items.map((item) => {
     const values = (item.values ?? {}) as Record<string, unknown>;
     return [
       item.createdAt.toISOString(),
       item.source,
       item.authorDiscordId ?? "",
+      item.decision ? FORM_DECISION_LABELS_RU[item.decision] : "",
       ...columns.map((column) => (column.key in values ? formatFormValue(values[column.key]) : "")),
     ];
   });
   return toCsv(header, rows);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Decisions on answers
+// ──────────────────────────────────────────────────────────────
+
+export const FORM_DECISION_LABELS_RU: Record<DecisionStatus, string> = {
+  PENDING: "Ждёт решения",
+  APPROVED: "Одобрено",
+  REJECTED: "Отказано",
+};
+
+/**
+ * One decision per answer; the author cannot decide their own. The bot then takes the buttons off
+ * the message and tells the author (job `form.submission_decided`).
+ */
+export async function decideFormSubmission(
+  id: string,
+  decision: Exclude<DecisionStatus, "PENDING">,
+  actorDiscordId: string,
+  reason: string | null,
+  context: AuditContext,
+) {
+  const rejectionReason = reason?.trim() ?? "";
+  if (decision === DecisionStatus.REJECTED && !rejectionReason) throw new FormError("Укажите причину отказа.");
+  return auditedMutation(context, `form_submission.${decision.toLowerCase()}`, "form_submission", async (tx) => {
+    const current = await tx.formSubmission.findUnique({ where: { id } });
+    if (!current) throw new FormError("Ответ не найден.");
+    if (current.decision === null) throw new FormError("Этот ответ не требует решения.");
+    if (current.authorDiscordId && current.authorDiscordId === actorDiscordId) {
+      throw new FormError("Решение по своему ответу принимает другой человек.");
+    }
+    const { count } = await tx.formSubmission.updateMany({
+      where: { id, decision: DecisionStatus.PENDING },
+      data: {
+        decision,
+        decidedByDiscordId: actorDiscordId,
+        decidedAt: new Date(),
+        rejectionReason: decision === DecisionStatus.REJECTED ? rejectionReason : null,
+      },
+    });
+    if (count !== 1) throw new FormError("Решение по этому ответу уже принято.");
+    await tx.buttonAction.updateMany({
+      where: { action: { in: ["form.approve", "form.reject"] }, params: { path: ["submissionId"], equals: id } },
+      data: { status: RecordStatus.ARCHIVED },
+    });
+    const updated = await tx.formSubmission.findUniqueOrThrow({ where: { id } });
+    await enqueueFormSubmissionDecided(id, tx);
+    return {
+      entityId: id,
+      before: { decision: current.decision },
+      after: { decision, decidedByDiscordId: actorDiscordId, rejectionReason: updated.rejectionReason },
+      result: updated,
+    };
+  });
+}
+
+/** Where the bot posted the answer, so the message can be edited when the decision is made. */
+export async function setFormSubmissionReviewMessage(id: string, message: { channelId: string; messageId: string }) {
+  return prisma.formSubmission.update({
+    where: { id },
+    data: { reviewChannelId: message.channelId, reviewMessageId: message.messageId },
+  });
+}
+
+/** Answers of live forms that still wait for a decision (the counter on the overview). */
+export async function countPendingFormSubmissions(): Promise<number> {
+  return prisma.formSubmission.count({
+    where: { decision: DecisionStatus.PENDING, form: { status: { in: [RecordStatus.ACTIVE, RecordStatus.CLOSED] } } },
+  });
 }
 
 // ──────────────────────────────────────────────────────────────

@@ -30,6 +30,10 @@ export function emptyFormBuilderValue(webhookUrl = ""): FormBuilderValue {
     publicEnabled: false,
     slug: "",
     successMessage: "",
+    requiresDecision: false,
+    deciderRoleIds: [],
+    approvedDmText: "",
+    rejectedDmText: "",
     fields: [
       {
         key: "name",
@@ -59,6 +63,10 @@ export function toFormBuilderValue(form: EditableForm): FormBuilderValue {
     publicEnabled: form.publicEnabled,
     slug: form.slug ?? "",
     successMessage: form.successMessage ?? "",
+    requiresDecision: form.requiresDecision,
+    deciderRoleIds: form.deciderRoleIds,
+    approvedDmText: form.approvedDmText ?? "",
+    rejectedDmText: form.rejectedDmText ?? "",
     fields: form.fields.map((field): FormBuilderField => {
       const validation =
         field.validation && typeof field.validation === "object" && !Array.isArray(field.validation)

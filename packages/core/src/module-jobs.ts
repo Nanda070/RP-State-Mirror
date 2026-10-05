@@ -31,6 +31,7 @@ export const MODULE_JOB_TYPES = {
   FEEDBACK_CLOSED_SEND: "feedback.closed_send",
   FEEDBACK_OPEN_PUBLISH: "feedback.open_publish",
   FORM_SUBMISSION_DELIVER: "form.submission_deliver",
+  FORM_SUBMISSION_DECIDED: "form.submission_decided",
   FORM_OPEN_PUBLISH: "form.open_publish",
   TOKEN_RECEIVE_PUBLISH: "token.receive_publish",
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
@@ -146,6 +147,14 @@ export function enqueueFeedbackOpenPublish(
 export function enqueueFormSubmissionDeliver(submissionId: string, db?: Db) {
   return enqueueJob(
     { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, payload: { submissionId } },
+    db,
+  );
+}
+
+/** The answer got its decision: the message loses its buttons, the author is told. */
+export function enqueueFormSubmissionDecided(submissionId: string, db?: Db) {
+  return enqueueJob(
+    { type: MODULE_JOB_TYPES.FORM_SUBMISSION_DECIDED, payload: { submissionId } },
     db,
   );
 }

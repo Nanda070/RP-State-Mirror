@@ -19,6 +19,7 @@ import { AuditActorType, prisma, RecordStatus, type Job } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
   REGISTRATION_LEFT_REASON,
+  setFormSubmissionReviewMessage,
   PERSONNEL_AUDIT_META,
   checkDiscordLimits,
   discordMessageToSpec,
@@ -26,7 +27,6 @@ import {
   type RawDiscordMessage,
   discordIdentity,
   embedSpecSchema,
-  formatFormValue,
   formatPersonnelDetailsText,
   formatRoleMentions,
   makeFineOverdueEmbed,
@@ -92,6 +92,7 @@ import {
   renderTransferReview,
 } from "./stage4-review.js";
 import { adminRolesApply } from "./admin-roles.js";
+import { formDecisionDm, formSubmissionButtons, formSubmissionEmbed, loadFormSubmission } from "./form-review.js";
 import { reconcileCpAccess } from "./cp-sync.js";
 import type { JobHandler } from "./worker.js";
 
@@ -1741,10 +1742,7 @@ const vehicleRequestSend: JobHandler = async (payload, { client, log, job }) => 
 
 const formSubmissionDeliver: JobHandler = async (payload, { client, log, job }) => {
   const submissionId = String(payload.submissionId ?? "");
-  const submission = await prisma.formSubmission.findUnique({
-    where: { id: submissionId },
-    include: { form: { include: { fields: { orderBy: { position: "asc" } } } } },
-  });
+  const submission = await loadFormSubmission(submissionId);
   if (!submission) return { status: "skipped", reason: "submission not found" };
 
   const form = submission.form;
@@ -1752,36 +1750,9 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log, job }) 
     return { status: "skipped", reason: "no delivery target" };
   }
 
-  const values = (submission.values ?? {}) as Record<string, unknown>;
-  // Archived fields are shown only when this (older) answer actually has a value for them.
-  const fields = form.fields
-    .filter((field) => field.status === RecordStatus.ACTIVE || field.key in values)
-    .map((field) => ({
-      name: field.label.slice(0, 256),
-      value: formatFormValue(values[field.key]).slice(0, 1024),
-      inline: false,
-    }));
-  const classic: ClassicEmbed = {
-    type: "embed",
-    title: `Ответ: ${form.name}`.slice(0, 256),
-    description: form.description?.slice(0, 4096) || undefined,
-    color: 0x5865f2,
-    fields: [
-      {
-        name: "Автор",
-        value: submission.authorDiscordId
-          ? `<@${submission.authorDiscordId}> (${submission.authorDiscordId})`
-          : submission.source === "web"
-            ? "с сайта, без входа"
-            : "аноним",
-        inline: true,
-      },
-      { name: "ID ответа", value: submission.id, inline: true },
-      ...fields.slice(0, 23),
-    ],
-    timestamp: true,
-  };
-
+  // Rendered from the stored state: an answer decided in the dashboard before the bot got to post
+  // it arrives with the decision and without buttons.
+  const classic = formSubmissionEmbed(submission);
   const results: Array<{ via: string; status: string; messageId?: string | undefined }> = [];
 
   if (form.deliveryChannelId) {
@@ -1790,8 +1761,17 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log, job }) 
       throw new Error(`Канал доставки формы ${form.deliveryChannelId} недоступен`);
     }
     const message = await runOnce(job, "channel", log, async () => ({
-      id: (await channel.send({ embeds: [classicToEmbed(classic)] })).id,
+      id: (
+        await channel.send({
+          embeds: [classicToEmbed(classic)],
+          components: formSubmissionButtons(submission),
+          allowedMentions: { parse: [] },
+        })
+      ).id,
     }));
+    if (submission.decision) {
+      await setFormSubmissionReviewMessage(submissionId, { channelId: channel.id, messageId: message.id });
+    }
     results.push({ via: "channel", status: "sent", messageId: message.id });
   }
 
@@ -1815,6 +1795,40 @@ const formSubmissionDeliver: JobHandler = async (payload, { client, log, job }) 
 
   log.info({ submissionId, results }, "form submission delivered");
   return { status: "sent", submissionId, results };
+};
+
+/** The answer got its decision: the message shows it and loses the buttons, the author is told. */
+const formSubmissionDecided: JobHandler = async (payload, { client, log, job }) => {
+  const submissionId = String(payload.submissionId ?? "");
+  const submission = await loadFormSubmission(submissionId);
+  if (!submission) return { status: "skipped", reason: "submission not found" };
+  if (!submission.decision || submission.decision === "PENDING") {
+    return { status: "skipped", reason: "no decision yet" };
+  }
+
+  let edited = false;
+  if (submission.reviewChannelId && submission.reviewMessageId) {
+    try {
+      const channel = await client.channels.fetch(submission.reviewChannelId);
+      if (channel?.isTextBased()) {
+        const message = await channel.messages.fetch(submission.reviewMessageId);
+        await message.edit({ embeds: [classicToEmbed(formSubmissionEmbed(submission))], components: [] });
+        edited = true;
+      }
+    } catch (error) {
+      log.warn({ err: error, submissionId }, "failed to edit the decided form answer");
+    }
+  }
+
+  const text = formDecisionDm(submission);
+  const authorDiscordId = submission.authorDiscordId;
+  const dm =
+    authorDiscordId && text
+      ? await runOnce(job, "dm", log, async () => ({
+          sent: await sendDirectMessage(client, authorDiscordId, text, log, "formDecision"),
+        }))
+      : { sent: false };
+  return { status: "sent", submissionId, edited, dm: dm.sent };
 };
 
 export const jobHandlers = new Map<string, JobHandler>([
@@ -1853,6 +1867,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FEEDBACK_CLOSED_SEND, feedbackClosedSend],
   [MODULE_JOB_TYPES.FEEDBACK_OPEN_PUBLISH, feedbackOpenPublish],
   [MODULE_JOB_TYPES.FORM_SUBMISSION_DELIVER, formSubmissionDeliver],
+  [MODULE_JOB_TYPES.FORM_SUBMISSION_DECIDED, formSubmissionDecided],
   [MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, formOpenPublish],
   [MODULE_JOB_TYPES.TOKEN_RECEIVE_PUBLISH, tokenReceivePublish],
   [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],

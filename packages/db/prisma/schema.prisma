@@ -759,6 +759,12 @@ model DiscordForm {
   slug                 String?      @unique
   publicEnabled        Boolean      @default(false) @map("public_enabled")
   successMessage       String?      @map("success_message")
+  /// Answers get «Одобрить / Отказать» under them; needs delivery to a channel by the bot.
+  requiresDecision     Boolean      @default(false) @map("requires_decision")
+  /// Roles that may decide, besides administrators.
+  deciderRoleIds       String[]     @default([]) @map("decider_role_ids")
+  approvedDmText       String?      @map("approved_dm_text")
+  rejectedDmText       String?      @map("rejected_dm_text")
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
   fields               FormField[]
@@ -801,9 +807,20 @@ model FormSubmission {
   /// discord | web
   source          String      @default("discord")
   values          Json
+  /// Null: the form asked for no decision when this answer came.
+  decision           DecisionStatus?
+  decidedByDiscordId String?     @map("decided_by_discord_id")
+  decidedAt          DateTime?   @map("decided_at")
+  rejectionReason    String?     @map("rejection_reason")
+  /// The message with the answer in the delivery channel; edited when the decision is made.
+  reviewChannelId    String?     @map("review_channel_id")
+  reviewMessageId    String?     @map("review_message_id")
+  /// Button custom ids created with the answer: { approve, reject }.
+  reviewButtons      Json        @default("{}") @map("review_buttons")
   createdAt       DateTime    @default(now()) @map("created_at")
 
   @@index([formId, createdAt])
+  @@index([decision])
   @@map("form_submissions")
 }
 

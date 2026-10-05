@@ -122,6 +122,15 @@ export function canReviewRegistrationAccess(
   return holdsAnyRole(heldRoleIds, coordinatorRoleIds);
 }
 
+/** Decision on a form answer: module admins or the roles chosen for that form. */
+export function canDecideFormSubmission(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
+  heldRoleIds: readonly string[],
+  deciderRoleIds: readonly string[],
+): boolean {
+  return canManageModules(identity) || holdsAnyRole(heldRoleIds, deciderRoleIds);
+}
+
 /** Transfer side decision: module admins or leader/deputy of that faction. */
 export function canDecideTransferSide(
   identity: Pick<Identity, "adminLevel" | "isSuperAdmin" | "factions">,

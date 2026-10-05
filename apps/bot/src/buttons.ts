@@ -43,6 +43,8 @@ import {
   parseCustomId,
   receiveTokenForStatic,
   submitDiscordForm,
+  canDecideFormSubmission,
+  decideFormSubmission,
   resolveIdentity,
   writeAuditEvent,
   type AuditContext,
@@ -543,6 +545,65 @@ function tokenReceiveModal(actionId: string) {
     );
 }
 
+/** The answer a «form.approve / form.reject» button belongs to, with the roles that may decide. */
+async function loadFormDecisionTarget(params: Record<string, unknown>) {
+  const submissionId = String(params.submissionId ?? "");
+  if (!submissionId) return null;
+  return prisma.formSubmission.findUnique({
+    where: { id: submissionId },
+    select: { id: true, form: { select: { deciderRoleIds: true } } },
+  });
+}
+
+async function canDecideForm(
+  interaction: AnyInteraction,
+  ctx: InteractionContext,
+  deciderRoleIds: readonly string[],
+): Promise<boolean> {
+  const held = interactionRoleIds(interaction);
+  // Fast path: one of the form's roles on the interaction member — skip the identity resolve.
+  if (canDecideFormSubmission({ adminLevel: null, isSuperAdmin: false }, held, deciderRoleIds)) return true;
+  const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
+  return canDecideFormSubmission(identity, [...held, ...identity.heldRoleIds], deciderRoleIds);
+}
+
+/**
+ * «Одобрить / Отказать» under a form answer. The message itself is edited by the job the decision
+ * queues, the same one that runs for a decision made in the dashboard.
+ */
+async function handleFormDecision(
+  interaction: ButtonInteraction,
+  params: Record<string, unknown>,
+  decision: DecisionStatus,
+  actionId: string,
+  ctx: InteractionContext,
+) {
+  // Approve cannot show a modal — defer first so a slow lookup never times out.
+  // Reject must keep the initial response free for showModal / deny reply.
+  if (decision !== DecisionStatus.REJECTED) await deferComponent(interaction);
+  const target = await loadFormDecisionTarget(params);
+  if (!target) {
+    await respondEphemeral(interaction, "Ответ не найден.");
+    return;
+  }
+  if (!(await canDecideForm(interaction, ctx, target.form.deciderRoleIds))) {
+    await denyAccess(interaction);
+    return;
+  }
+  if (decision === DecisionStatus.REJECTED) {
+    await interaction.showModal(reasonModal(`mirror:form.reject:${actionId}`));
+    return;
+  }
+  await decideFormSubmission(
+    target.id,
+    DecisionStatus.APPROVED,
+    interaction.user.id,
+    null,
+    auditContext(interaction, "discord.button"),
+  );
+  await respondEphemeral(interaction, "Ответ одобрен.");
+}
+
 async function handleRegistrationDecision(
   interaction: ButtonInteraction,
   params: Record<string, unknown>,
@@ -814,6 +875,27 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     await finishRegistrationDecision(interaction, ctx, registrationId, "Заявка отклонена.");
     return true;
   }
+  if (parsed.action === "form.reject") {
+    const target = await loadFormDecisionTarget(storedParams(await getButtonAction(parsed.id)));
+    if (!target) {
+      await respondEphemeral(interaction, "Кнопка устарела или отключена.");
+      return true;
+    }
+    await deferRejectModal(interaction);
+    if (!(await canDecideForm(interaction, ctx, target.form.deciderRoleIds))) {
+      await denyAccess(interaction);
+      return true;
+    }
+    await decideFormSubmission(
+      target.id,
+      DecisionStatus.REJECTED,
+      interaction.user.id,
+      interaction.fields.getTextInputValue("reason"),
+      auditContext(interaction, "discord.modal"),
+    );
+    await respondEphemeral(interaction, "В ответе отказано.");
+    return true;
+  }
   if (parsed.action === "transfer.reject") {
     const params = storedParams(await getButtonAction(parsed.id));
     const transferId = String(params.transferId ?? "");
@@ -917,6 +999,10 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     await handleRegistrationDecision(interaction, params, DecisionStatus.REJECTED, parsed.id, ctx);
   } else if (action.startsWith("transfer.approve") || action.startsWith("transfer.reject")) {
     await handleTransferDecision(interaction, params, action, parsed.id, ctx);
+  } else if (action === "form.approve") {
+    await handleFormDecision(interaction, params, DecisionStatus.APPROVED, parsed.id, ctx);
+  } else if (action === "form.reject") {
+    await handleFormDecision(interaction, params, DecisionStatus.REJECTED, parsed.id, ctx);
   } else if (action === "personnel.kick") {
     await handlePersonnelKick(interaction, params, parsed.id, ctx);
   } else if (action === "feedback.open") {
