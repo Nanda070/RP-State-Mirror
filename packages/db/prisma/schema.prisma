@@ -434,11 +434,37 @@ model Fine {
   createdAt            DateTime          @default(now()) @map("created_at")
   updatedAt            DateTime          @updatedAt @map("updated_at")
   sentMessages         SentMessageLink[] @relation("FineMessages")
+  paymentClaims        FinePaymentClaim[]
 
   @@index([staticId])
   @@index([status])
   @@index([factionCode])
   @@map("fines")
+}
+
+/// «Я оплатил»: the fined person reports the payment with a screenshot, the staff confirms it.
+model FinePaymentClaim {
+  id                 String         @id @default(cuid())
+  fineId             String         @map("fine_id")
+  fine               Fine           @relation(fields: [fineId], references: [id])
+  claimantDiscordId  String         @map("claimant_discord_id")
+  comment            String?
+  /// media_files ids (screenshots), never raw URLs.
+  evidenceFileIds    String[]       @default([]) @map("evidence_file_ids")
+  decision           DecisionStatus @default(PENDING)
+  decidedByDiscordId String?        @map("decided_by_discord_id")
+  decidedAt          DateTime?      @map("decided_at")
+  rejectionReason    String?        @map("rejection_reason")
+  reviewChannelId    String?        @map("review_channel_id")
+  reviewMessageId    String?        @map("review_message_id")
+  /// Button custom ids created with the claim: { approve, reject }.
+  reviewButtons      Json           @default("{}") @map("review_buttons")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@index([fineId, decision])
+  @@index([decision])
+  @@map("fine_payment_claims")
 }
 
 // ──────────────────────────────────────────────────────────────

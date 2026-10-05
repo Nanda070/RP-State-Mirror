@@ -30,6 +30,7 @@ const settingKeys = [
   "registrations.closeOnLeave",
   "registrations.leaveGraceHours",
   "registrations.leaveMaxPerPass",
+  "fines.claimChannelId",
   "transfers.channelId",
   "transfers.pingRoleIds",
   "transfers.approvalDmText",

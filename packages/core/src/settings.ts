@@ -279,6 +279,11 @@ export const settingDefinitions = {
     14,
     "Через сколько дней нерассмотренная заявка на перевод закрывается автоматически",
   ),
+  "fines.claimChannelId": defineSetting(
+    snowflakeSchema.nullable(),
+    null,
+    "Канал, куда бот публикует сообщения игроков об оплате штрафа; пока не выбран, кнопка «Я оплатил» не показывается",
+  ),
   "registrations.closeOnLeave": defineSetting(
     z.boolean(),
     true,

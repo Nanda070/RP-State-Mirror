@@ -13,6 +13,8 @@ export const MODULE_JOB_TYPES = {
   FINE_EDIT_PAID: "fine.edit_paid",
   FINE_OVERDUE: "fine.overdue",
   FINE_REFRESH: "fine.refresh",
+  FINE_CLAIM_REVIEW: "fine.claim_review",
+  FINE_CLAIM_DECIDED: "fine.claim_decided",
   PERSONNEL_KICK: "personnel.kick",
   CP_RECONCILE: "cp.reconcile",
   PERSONNEL_PUBLISH: "personnel.publish",

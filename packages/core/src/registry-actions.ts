@@ -16,6 +16,7 @@ import {
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { UserError } from "./errors.js";
+import { decideFinePaymentClaim } from "./fine-claims.js";
 import { cancelFine, markFinePaid, updateFineAmount } from "./fines.js";
 import { decideFormSubmission } from "./forms.js";
 import { cancelJob, enqueueJob } from "./jobs.js";
@@ -49,6 +50,7 @@ export const REGISTRY_ACTIONS = {
   character: ["archive", "set_static"],
   ic_blacklist: ["close"],
   form_submission: ["approve", "reject"],
+  fine_claim: ["approve", "reject"],
   job: ["retry", "cancel"],
 } as const;
 
@@ -246,6 +248,12 @@ export async function runRegistryAction(input: RegistryActionInput, context: Aud
         context,
       );
       return "В регистрации отказано.";
+    case "fine_claim.approve":
+      await decideFinePaymentClaim(id, DecisionStatus.APPROVED, actorDiscordId, null, context);
+      return "Оплата подтверждена, штраф закрыт.";
+    case "fine_claim.reject":
+      await decideFinePaymentClaim(id, DecisionStatus.REJECTED, actorDiscordId, need(text, "Укажите причину отказа."), context);
+      return "Сообщение об оплате отклонено.";
     case "form_submission.approve":
       await decideFormSubmission(id, DecisionStatus.APPROVED, actorDiscordId, null, context);
       return "Ответ одобрен.";

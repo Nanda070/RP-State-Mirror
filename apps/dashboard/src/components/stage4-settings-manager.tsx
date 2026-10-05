@@ -15,6 +15,7 @@ export type Stage4SettingsValues = {
   "registrations.closeOnLeave": boolean;
   "registrations.leaveGraceHours": number;
   "registrations.leaveMaxPerPass": number;
+  "fines.claimChannelId": string | null;
   "transfers.channelId": string | null;
   "transfers.pingRoleIds": string[];
   "transfers.approvalDmText": string;
@@ -36,6 +37,7 @@ export type Stage4SettingsValues = {
 };
 
 export type ModuleTabId =
+  | "fines"
   | "registrations"
   | "transfers"
   | "icBlacklist"
@@ -96,6 +98,7 @@ export function Stage4SettingsManager({
             ...values,
             "registrations.vehicleChannelId": values["registrations.vehicleChannelId"] || null,
             "registrations.uniformChannelId": values["registrations.uniformChannelId"] || null,
+            "fines.claimChannelId": values["fines.claimChannelId"] || null,
             "transfers.channelId": values["transfers.channelId"] || null,
             "vehicleRequests.channelId": values["vehicleRequests.channelId"] || null,
             "webhooks.notifyChannelId": values["webhooks.notifyChannelId"] || null,
@@ -144,6 +147,25 @@ export function Stage4SettingsManager({
   return (
     <div className="stack">
       <section className="panel stack">
+        {tab === "fines" ? (
+          <>
+            <h2 className="panel-title">Штрафы — сообщения об оплате</h2>
+            <label className="field">
+              <span>Канал, куда приходят сообщения «Я оплатил»</span>
+              <ChannelSelect
+                id="fines-claim-channel"
+                value={values["fines.claimChannelId"] ?? ""}
+                onChange={(next) => patch("fines.claimChannelId", next || null)}
+                channels={channels}
+                emptyLabel="Не выбран — кнопка «Я оплатил» выключена"
+              />
+              <span className="field-hint">
+                Подтверждают те же, кому доступна <code>/штраф-оплачено</code>.
+              </span>
+            </label>
+          </>
+        ) : null}
+
         {tab === "registrations" ? (
           <>
             <h2 className="panel-title">Регистрации ТС и униформы</h2>

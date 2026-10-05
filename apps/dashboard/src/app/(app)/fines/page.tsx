@@ -1,9 +1,17 @@
-import { canManageModules, canViewModules, formatMoney, listFinesPage, listShareLinksFor } from "@mirror/core";
+import {
+  canManageModules,
+  canViewModules,
+  formatMoney,
+  listFinesPage,
+  listPendingFineClaims,
+  listShareLinksFor,
+} from "@mirror/core";
 import { RecordStatus } from "@mirror/db";
 import { redirect } from "next/navigation";
 import { RegistryActions } from "@/components/registry-actions";
 import { Pager, RegistryToolbar, registryQuery, type RegistrySearch } from "@/components/registry-toolbar";
 import { ShareButton } from "@/components/share-button";
+import { resolveAuthorLabels } from "@/lib/discord-names";
 import { formatMoscowShort } from "@/lib/moscow";
 import { requireSignedIn, resolveFreshIdentity } from "@/lib/session";
 import { getFactionColors } from "@/lib/catalog";
@@ -28,6 +36,9 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
   const { items, total, page, pages } = await listFinesPage(query);
   const canAct = canManageModules(identity);
   const shareLinks = canAct ? await listShareLinksFor("fine", items.map((item) => item.id)) : null;
+  // «Я оплатил»: the report that waits for the staff, with the person who sent it.
+  const claims = await listPendingFineClaims(items.map((item) => item.id));
+  const claimants = await resolveAuthorLabels([...claims.values()].map((claim) => claim.claimantDiscordId));
   const now = Date.now();
 
   return (
@@ -68,6 +79,7 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                 {items.map((row) => {
                   const active = row.status === RecordStatus.ACTIVE;
                   const overdue = active && row.dueAt !== null && row.dueAt.getTime() <= now;
+                  const claim = claims.get(row.id);
                   return (
                     <tr key={row.id} data-faction="" style={factionStyle(factionColor(row.factionCode))}>
                       <td className="registry-mono nowrap">{row.number}</td>
@@ -86,6 +98,20 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                         >
                           {overdue ? "Просрочен" : (STATUS_RU[row.status] ?? row.status)}
                         </span>
+                        {claim ? (
+                          <div className="muted">
+                            Ждёт подтверждения · {claimants.get(claim.claimantDiscordId) ?? claim.claimantDiscordId}
+                            {claim.evidenceFileIds.map((fileId, index) => (
+                              <span key={fileId}>
+                                {" · "}
+                                <a href={`/api/media/${fileId}`} target="_blank" rel="noreferrer">
+                                  скриншот{claim.evidenceFileIds.length > 1 ? ` ${index + 1}` : ""}
+                                </a>
+                              </span>
+                            ))}
+                            {claim.comment ? <div>{claim.comment}</div> : null}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="nowrap">{formatMoscowShort(row.dueAt)}</td>
                       <td className="nowrap">{formatMoscowShort(row.createdAt)}</td>
@@ -94,6 +120,26 @@ export default async function FinesRegistryPage({ searchParams }: { searchParams
                           <div className="registry-actions">
                             {shareLinks ? (
                               <ShareButton entityType="fine" entityId={row.id} initialLink={shareLinks.get(row.id) ?? null} />
+                            ) : null}
+                            {claim ? (
+                              <RegistryActions
+                                entity="fine_claim"
+                                id={claim.id}
+                                actions={[
+                                  {
+                                    action: "approve",
+                                    label: "Подтвердить оплату",
+                                    confirm: `Подтвердить оплату штрафа ${row.number}? Штраф закроется, игрок получит сообщение.`,
+                                  },
+                                  {
+                                    action: "reject",
+                                    label: "Отклонить",
+                                    tone: "danger",
+                                    confirm: `Отклонить сообщение об оплате штрафа ${row.number}? Игрок получит причину и сможет отправить его заново.`,
+                                    input: { label: "Причина", multiline: true },
+                                  },
+                                ]}
+                              />
                             ) : null}
                             <RegistryActions
                               entity="fine"

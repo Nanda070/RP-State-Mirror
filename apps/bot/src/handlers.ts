@@ -19,6 +19,9 @@ import { AuditActorType, prisma, RecordStatus, type Job } from "@mirror/db";
 import {
   MODULE_JOB_TYPES,
   REGISTRATION_LEFT_REASON,
+  finePaymentClaimsEnabled,
+  getFinePaymentClaim,
+  setFinePaymentClaimReviewMessage,
   setFormSubmissionReviewMessage,
   PERSONNEL_AUDIT_META,
   checkDiscordLimits,
@@ -92,6 +95,7 @@ import {
   renderTransferReview,
 } from "./stage4-review.js";
 import { adminRolesApply } from "./admin-roles.js";
+import { fineClaimButtons, fineClaimDm, fineClaimEmbed, finePaidRow } from "./fine-claim-review.js";
 import { formDecisionDm, formSubmissionButtons, formSubmissionEmbed, loadFormSubmission } from "./form-review.js";
 import { reconcileCpAccess } from "./cp-sync.js";
 import type { JobHandler } from "./worker.js";
@@ -618,10 +622,18 @@ const icBlacklistEditClosed: JobHandler = async (payload, { client, log, job }) 
  * Tells the owner of the fined character in direct messages. The fine names a static id, so the
  * account is found through the active character; nobody is told when no character has that id.
  */
-async function notifyFined(client: Client, job: Job, log: Logger, staticId: string, kind: DmKind, lines: string[]) {
+async function notifyFined(
+  client: Client,
+  job: Job,
+  log: Logger,
+  staticId: string,
+  kind: DmKind,
+  lines: string[],
+  components: ActionRowBuilder<ButtonBuilder>[] = [],
+) {
   const step = await runOnce(job, "dm", log, async () => {
     const discordId = await findDiscordIdByStatic(staticId);
-    const sent = discordId ? await sendDirectMessage(client, discordId, lines.join("\n"), log, kind) : false;
+    const sent = discordId ? await sendDirectMessage(client, discordId, lines.join("\n"), log, kind, components) : false;
     return { sent };
   });
   return step.sent === true;
@@ -653,10 +665,12 @@ const finePublish: JobHandler = async (payload, { client, log, job }) => {
     ? `Новый штраф из правительства. ${mention} требуется исполнение и контроль оплаты.`
     : "Новый штраф из правительства.";
 
+  const claimRows = (await finePaymentClaimsEnabled()) ? [finePaidRow(fine.id)] : [];
   const result = await sendEmbed(client, target, classic, log, {
     once: { job, key: "post" },
     content,
     mentionRoleIds: pingRoleId ? [pingRoleId] : [],
+    components: claimRows,
   });
   if (result.status === "deferred") return result;
   await persistSend(result, { fineId: fine.id });
@@ -664,7 +678,7 @@ const finePublish: JobHandler = async (payload, { client, log, job }) => {
     `Вам выписан штраф **${fine.number}** на **${formatMoney(fine.amount)}** (статик ${fine.staticId}).`,
     `**Основание:** ${fine.reason}`,
     `**Срок оплаты:** ${fine.paymentDeadlineText}`,
-  ]);
+  ], claimRows);
   return { status: "sent", fineNumber: fine.number, messageId: result.messageId, dm };
 };
 
@@ -815,7 +829,7 @@ const fineEditPaid: JobHandler = async (payload, { client, log, job }) => {
       const channel = (await guild.channels.fetch(link.sentMessage.channelDiscordId)) as TextChannel | null;
       if (channel?.isTextBased()) {
         const message = await channel.messages.fetch(link.sentMessage.messageDiscordId);
-        await message.edit({ embeds: [embed] });
+        await message.edit({ embeds: [embed], components: [] });
       }
     } catch (error) {
       log.warn({ err: error }, "failed to edit fine message; continuing with GOV notice");
@@ -1076,6 +1090,7 @@ async function sendDirectMessage(
   content: string,
   log: Logger,
   kind?: DmKind,
+  components: ActionRowBuilder<ButtonBuilder>[] = [],
 ): Promise<boolean> {
   if (kind && !(await wantsDm(discordId, kind))) {
     log.info({ discordId, kind }, "direct message skipped: switched off in the profile");
@@ -1083,7 +1098,7 @@ async function sendDirectMessage(
   }
   try {
     const user = await client.users.fetch(discordId);
-    await user.send({ content, allowedMentions: { parse: [] } });
+    await user.send({ content, components, allowedMentions: { parse: [] } });
     return true;
   } catch (error) {
     log.info({ err: error, discordId }, "direct message not delivered (DMs closed?)");
@@ -1831,6 +1846,84 @@ const formSubmissionDecided: JobHandler = async (payload, { client, log, job }) 
   return { status: "sent", submissionId, edited, dm: dm.sent };
 };
 
+/** A person reported a paid fine: the report goes to the channel chosen in the dashboard. */
+const fineClaimReview: JobHandler = async (payload, { client, log, job }) => {
+  const claimId = String(payload.claimId ?? "");
+  const claim = await getFinePaymentClaim(claimId);
+  if (!claim) return { status: "skipped", reason: "claim not found" };
+  // Idempotent: a retry after a successful post must not post a second copy.
+  if (claim.reviewMessageId) return { status: "skipped", reason: "already posted", messageId: claim.reviewMessageId };
+
+  const channelId = await getSetting("fines.claimChannelId");
+  if (!channelId) return { status: "deferred", reason: "Канал сообщений об оплате штрафов не выбран." };
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased() || !("send" in channel)) {
+    throw new Error(`Канал сообщений об оплате ${channelId} недоступен`);
+  }
+
+  const files: Array<{ attachment: Buffer; name: string }> = [];
+  for (const fileId of claim.evidenceFileIds) {
+    const media = await readMediaFile(fileId);
+    if (media) files.push({ attachment: media.body, name: media.attachmentName });
+  }
+  // The staff that may confirm is pinged only with roles of this very server.
+  const managerRoleIds = await getSetting("fines.managerRoleIds");
+  const guildRoleIds = "guild" in channel && channel.guild ? managerRoleIds.filter((id) => channel.guild.roles.cache.has(id)) : [];
+  const posted = await runOnce(job, "post", log, async () => ({
+    id: (
+      await channel.send({
+        ...(guildRoleIds.length > 0 ? { content: formatRoleMentions(guildRoleIds) } : {}),
+        embeds: [fineClaimEmbed(claim, files[0]?.name ?? null)],
+        components: fineClaimButtons(claim),
+        files,
+        allowedMentions: { parse: [], roles: guildRoleIds },
+      })
+    ).id,
+  }));
+  await setFinePaymentClaimReviewMessage(claimId, { channelId: channel.id, messageId: posted.id });
+  return { status: "sent", claimId, messageId: posted.id, files: files.length };
+};
+
+/** The report got its decision: the message shows it and loses the buttons, the reporter is told. */
+const fineClaimDecided: JobHandler = async (payload, { client, log, job }) => {
+  const claimId = String(payload.claimId ?? "");
+  const claim = await getFinePaymentClaim(claimId);
+  if (!claim) return { status: "skipped", reason: "claim not found" };
+  if (claim.decision === "PENDING") return { status: "skipped", reason: "no decision yet" };
+
+  let edited = false;
+  if (claim.reviewChannelId && claim.reviewMessageId) {
+    try {
+      const channel = await client.channels.fetch(claim.reviewChannelId);
+      if (channel?.isTextBased()) {
+        const message = await channel.messages.fetch(claim.reviewMessageId);
+        // The screenshot stays attached to the message, so the embed keeps referencing it.
+        const image = message.attachments.first()?.name ?? null;
+        await message.edit({ embeds: [fineClaimEmbed(claim, image)], components: [] });
+        edited = true;
+      }
+    } catch (error) {
+      log.warn({ err: error, claimId }, "failed to edit the decided payment report");
+    }
+  }
+
+  const text = fineClaimDm(claim);
+  const dm = text
+    ? await runOnce(job, "dm", log, async () => ({
+        sent: await sendDirectMessage(
+          client,
+          claim.claimantDiscordId,
+          text,
+          log,
+          "finePayment",
+          // Declined: the person may send the report again right from this message.
+          claim.decision === "REJECTED" && claim.fine.status === RecordStatus.ACTIVE ? [finePaidRow(claim.fineId)] : [],
+        ),
+      }))
+    : { sent: false };
+  return { status: "sent", claimId, edited, dm: dm.sent };
+};
+
 export const jobHandlers = new Map<string, JobHandler>([
   [
     "system.ping",
@@ -1849,6 +1942,8 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FINE_EDIT_PAID, fineEditPaid],
   [MODULE_JOB_TYPES.FINE_OVERDUE, fineOverdue],
   [MODULE_JOB_TYPES.FINE_REFRESH, fineRefresh],
+  [MODULE_JOB_TYPES.FINE_CLAIM_REVIEW, fineClaimReview],
+  [MODULE_JOB_TYPES.FINE_CLAIM_DECIDED, fineClaimDecided],
   [MODULE_JOB_TYPES.PERSONNEL_KICK, personnelKick],
   [MODULE_JOB_TYPES.CP_RECONCILE, cpReconcile],
   [MODULE_JOB_TYPES.PERSONNEL_PUBLISH, personnelPublish],

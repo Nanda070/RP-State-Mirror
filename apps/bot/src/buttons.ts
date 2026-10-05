@@ -43,6 +43,11 @@ import {
   parseCustomId,
   receiveTokenForStatic,
   submitDiscordForm,
+  FINE_CLAIM_MAX_FILES,
+  assertCanClaimFinePayment,
+  canConfirmFinePayment,
+  createFinePaymentClaim,
+  decideFinePaymentClaim,
   canDecideFormSubmission,
   decideFormSubmission,
   resolveIdentity,
@@ -604,6 +609,105 @@ async function handleFormDecision(
   await respondEphemeral(interaction, "Ответ одобрен.");
 }
 
+function fineClaimModal(fineId: string, fineNumber: string) {
+  return new ModalBuilder()
+    .setCustomId(`mirror:fine.claim:${fineId}`)
+    .setTitle(`Оплата штрафа ${fineNumber}`.slice(0, 45))
+    .addLabelComponents(
+      new LabelBuilder()
+        .setLabel("Скриншот оплаты")
+        .setDescription(`Картинка, до ${FINE_CLAIM_MAX_FILES} файлов по 10 МБ`)
+        .setFileUploadComponent(
+          new FileUploadBuilder().setCustomId("files").setMinValues(1).setMaxValues(FINE_CLAIM_MAX_FILES).setRequired(true),
+        ),
+      new LabelBuilder()
+        .setLabel("Комментарий")
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId("comment")
+            .setStyle(TextInputStyle.Paragraph)
+            .setMaxLength(1000)
+            .setRequired(false),
+        ),
+    );
+}
+
+/** «Я оплатил»: refuse at once when the report cannot be taken, otherwise ask for the screenshot. */
+async function handleFineClaimOpen(interaction: ButtonInteraction, fineId: string) {
+  const fine = await assertCanClaimFinePayment(fineId, interaction.user.id);
+  await interaction.showModal(fineClaimModal(fine.id, fine.number));
+}
+
+async function handleFineClaimSubmit(interaction: ModalSubmitInteraction, fineId: string) {
+  await deferModalEphemeral(interaction);
+  // Checked again before anything is stored: the fine may have been paid while the window was open.
+  await assertCanClaimFinePayment(fineId, interaction.user.id);
+  const uploads = [...(interaction.fields.getUploadedFiles("files")?.values() ?? [])];
+  if (uploads.length === 0) throw new UserError("Приложите скриншот оплаты.");
+  const context = auditContext(interaction, "discord.modal");
+  const evidenceFileIds: string[] = [];
+  for (const upload of uploads.slice(0, FINE_CLAIM_MAX_FILES)) {
+    const file = await storeAttachmentFromUrl(upload.url, { originalName: upload.name }, context);
+    evidenceFileIds.push(file.id);
+  }
+  await createFinePaymentClaim(
+    {
+      fineId,
+      claimantDiscordId: interaction.user.id,
+      comment: interaction.fields.getTextInputValue("comment"),
+      evidenceFileIds,
+    },
+    context,
+  );
+  await interaction.editReply({ content: "Сообщение об оплате отправлено. Ответ придёт в личные сообщения." });
+}
+
+async function canConfirmFine(interaction: AnyInteraction, ctx: InteractionContext): Promise<boolean> {
+  const held = interactionRoleIds(interaction);
+  const managerRoleIds = await getSetting("fines.managerRoleIds");
+  // Fast path: a fine manager role on the interaction member — skip the identity resolve.
+  if (canConfirmFinePayment({ adminLevel: null, isSuperAdmin: false }, held, managerRoleIds)) return true;
+  const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
+  return canConfirmFinePayment(identity, [...held, ...identity.heldRoleIds], managerRoleIds);
+}
+
+/**
+ * «Подтвердить оплату / Отклонить» under a payment report. The message itself is edited by the job
+ * the decision queues, the same one that runs for a decision made in the dashboard.
+ */
+async function handleFineClaimDecision(
+  interaction: ButtonInteraction,
+  params: Record<string, unknown>,
+  decision: DecisionStatus,
+  actionId: string,
+  ctx: InteractionContext,
+) {
+  const claimId = String(params.claimId ?? "");
+  if (!claimId) {
+    await respondEphemeral(interaction, "Сообщение об оплате не найдено.");
+    return;
+  }
+  // Confirm cannot show a modal — defer first so a slow lookup never times out.
+  // Decline must keep the initial response free for showModal / deny reply.
+  if (decision !== DecisionStatus.REJECTED) await deferComponent(interaction);
+  if (!(await canConfirmFine(interaction, ctx))) {
+    await denyAccess(interaction);
+    return;
+  }
+  if (decision === DecisionStatus.REJECTED) {
+    await interaction.showModal(reasonModal(`mirror:fine.claim_reject:${actionId}`));
+    return;
+  }
+  await decideFinePaymentClaim(
+    claimId,
+    DecisionStatus.APPROVED,
+    interaction.user.id,
+    null,
+    auditContext(interaction, "discord.button"),
+  );
+  await respondEphemeral(interaction, "Оплата подтверждена, штраф закрыт.");
+}
+
 async function handleRegistrationDecision(
   interaction: ButtonInteraction,
   params: Record<string, unknown>,
@@ -896,6 +1000,31 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     await respondEphemeral(interaction, "В ответе отказано.");
     return true;
   }
+  if (parsed.action === "fine.claim") {
+    await handleFineClaimSubmit(interaction, parsed.id);
+    return true;
+  }
+  if (parsed.action === "fine.claim_reject") {
+    const claimId = String(storedParams(await getButtonAction(parsed.id)).claimId ?? "");
+    if (!claimId) {
+      await respondEphemeral(interaction, "Кнопка устарела или отключена.");
+      return true;
+    }
+    await deferRejectModal(interaction);
+    if (!(await canConfirmFine(interaction, ctx))) {
+      await denyAccess(interaction);
+      return true;
+    }
+    await decideFinePaymentClaim(
+      claimId,
+      DecisionStatus.REJECTED,
+      interaction.user.id,
+      interaction.fields.getTextInputValue("reason"),
+      auditContext(interaction, "discord.modal"),
+    );
+    await respondEphemeral(interaction, "Сообщение об оплате отклонено.");
+    return true;
+  }
   if (parsed.action === "transfer.reject") {
     const params = storedParams(await getButtonAction(parsed.id));
     const transferId = String(params.transferId ?? "");
@@ -974,6 +1103,12 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     return true;
   }
 
+  // «Я оплатил» carries the fine itself: it sits under the fine, in the notice and in /профиль.
+  if (parsed.action === "fine.claim") {
+    await handleFineClaimOpen(interaction, parsed.id);
+    return true;
+  }
+
   // «Продолжить» of a multi-step form carries the form id itself, not a stored button action.
   if (parsed.action === "form.step") {
     await handleFormStep(interaction, parsed.id);
@@ -999,6 +1134,10 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     await handleRegistrationDecision(interaction, params, DecisionStatus.REJECTED, parsed.id, ctx);
   } else if (action.startsWith("transfer.approve") || action.startsWith("transfer.reject")) {
     await handleTransferDecision(interaction, params, action, parsed.id, ctx);
+  } else if (action === "fine.claim_approve") {
+    await handleFineClaimDecision(interaction, params, DecisionStatus.APPROVED, parsed.id, ctx);
+  } else if (action === "fine.claim_reject") {
+    await handleFineClaimDecision(interaction, params, DecisionStatus.REJECTED, parsed.id, ctx);
   } else if (action === "form.approve") {
     await handleFormDecision(interaction, params, DecisionStatus.APPROVED, parsed.id, ctx);
   } else if (action === "form.reject") {

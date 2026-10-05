@@ -15,6 +15,7 @@ export const DM_KINDS = [
   { key: "transfer", label: "Решение по переводу между фракциями" },
   { key: "fine", label: "Новый штраф" },
   { key: "fineOverdue", label: "Срок оплаты штрафа истёк" },
+  { key: "finePayment", label: "Решение по сообщению об оплате штрафа" },
   { key: "formRequest", label: "Решение по запросу формы" },
   { key: "formDecision", label: "Решение по ответу на форму" },
 ] as const;

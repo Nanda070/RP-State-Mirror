@@ -14,6 +14,7 @@ import {
 import { AuditActorType } from "@mirror/db";
 import {
   buildPlayerCard,
+  finePaymentClaimsEnabled,
   formatUserError,
   getDossierAccess,
   resolveIdentity,
@@ -21,6 +22,7 @@ import {
   type Logger,
   type PlayerCard,
 } from "@mirror/core";
+import { finePaidButton } from "./fine-claim-review.js";
 
 export const DOSSIER_COMMAND_NAME = "Досье";
 
@@ -68,10 +70,15 @@ export async function handleProfileCommand(interaction: ChatInputCommandInteract
     const identity = await resolveIdentity(interaction.user.id, { superAdminUserIds: ctx.superAdminUserIds });
     // One's own IC blacklist record is shown on the profile page as well.
     const card = await buildPlayerCard(identity, { showBlacklist: true });
+    // «Оплатил» for the first unpaid fines: a row holds five buttons, one is the link.
+    const claimButtons = (await finePaymentClaimsEnabled())
+      ? card.unpaidFines.slice(0, 4).map((fine) => finePaidButton(fine.id, `Оплатил ${fine.number}`))
+      : [];
     await interaction.editReply({
       embeds: [cardEmbed("Профиль", card)],
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
+          ...claimButtons,
           new ButtonBuilder()
             .setStyle(ButtonStyle.Link)
             .setLabel("Открыть в дашборде")

@@ -122,6 +122,15 @@ export function canReviewRegistrationAccess(
   return holdsAnyRole(heldRoleIds, coordinatorRoleIds);
 }
 
+/** Confirming a reported fine payment: whoever may run `/штраф-оплачено`. */
+export function canConfirmFinePayment(
+  identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,
+  heldRoleIds: readonly string[],
+  managerRoleIds: readonly string[],
+): boolean {
+  return canManageModules(identity) || holdsAnyRole(heldRoleIds, managerRoleIds);
+}
+
 /** Decision on a form answer: module admins or the roles chosen for that form. */
 export function canDecideFormSubmission(
   identity: Pick<Identity, "adminLevel" | "isSuperAdmin">,

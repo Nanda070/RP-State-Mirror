@@ -2,6 +2,7 @@
 export const MODULE_TABS = [
   { id: "documents", label: "Документы", icon: "doc" },
   { id: "wanted", label: "Розыск", icon: "target" },
+  { id: "fines", label: "Штрафы", icon: "list" },
   { id: "registrations", label: "Регистрации", icon: "car" },
   { id: "transfers", label: "Переводы", icon: "swap" },
   { id: "icBlacklist", label: "IC ЧС", icon: "ban" },

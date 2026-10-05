@@ -6,7 +6,7 @@
  *
  * Legacy fields: фракция, номер, фио, паспорт, статья, сумма, срок_оплаты.
  */
-import { RecordStatus, prisma } from "@mirror/db";
+import { DecisionStatus, RecordStatus, prisma, type Prisma } from "@mirror/db";
 import { z } from "zod";
 import { auditedMutation, type AuditContext } from "./audit.js";
 import { enqueueJob } from "./jobs.js";
@@ -113,6 +113,38 @@ export async function createFine(input: CreateFineInput, context: AuditContext) 
   });
 }
 
+/**
+ * The fine was closed without the report: paid by the command or the dashboard, or cancelled.
+ * A report that still waits gets the matching decision, and the bot takes the buttons off its message.
+ */
+async function settleFinePaymentClaims(
+  tx: Prisma.TransactionClient,
+  fineId: string,
+  outcome: { decision: "APPROVED"; byDiscordId: string } | { decision: "REJECTED"; reason: string },
+) {
+  const waiting = await tx.finePaymentClaim.findMany({
+    where: { fineId, decision: DecisionStatus.PENDING },
+    select: { id: true },
+  });
+  for (const { id } of waiting) {
+    await tx.finePaymentClaim.update({
+      where: { id },
+      data:
+        outcome.decision === "APPROVED"
+          ? { decision: DecisionStatus.APPROVED, decidedByDiscordId: outcome.byDiscordId, decidedAt: new Date() }
+          : { decision: DecisionStatus.REJECTED, decidedAt: new Date(), rejectionReason: outcome.reason },
+    });
+    await tx.buttonAction.updateMany({
+      where: {
+        action: { in: ["fine.claim_approve", "fine.claim_reject"] },
+        params: { path: ["claimId"], equals: id },
+      },
+      data: { status: RecordStatus.ARCHIVED },
+    });
+    await enqueueJob({ type: MODULE_JOB_TYPES.FINE_CLAIM_DECIDED, payload: { claimId: id } }, tx);
+  }
+}
+
 export async function markFinePaid(input: MarkFinePaidInput, context: AuditContext) {
   const data = markFinePaidSchema.parse(input);
 
@@ -130,6 +162,7 @@ export async function markFinePaid(input: MarkFinePaidInput, context: AuditConte
         paidByDiscordId: data.paidByDiscordId,
       },
     });
+    await settleFinePaymentClaims(tx, fine.id, { decision: "APPROVED", byDiscordId: data.paidByDiscordId });
     return { entityId: fine.id, before: { status: fine.status }, after: updated, result: updated };
   });
 }
@@ -144,6 +177,7 @@ export async function cancelFine(id: string, context: AuditContext) {
       where: { id },
       data: { status: RecordStatus.REVOKED },
     });
+    await settleFinePaymentClaims(tx, id, { decision: "REJECTED", reason: "Штраф отменён." });
     return { entityId: id, before: { status: fine.status }, after: updated, result: updated };
   });
 }
@@ -192,7 +226,13 @@ export async function listFines(filter: ListFinesFilter = {}) {
 export async function claimOverdueFines(now: Date = new Date(), limit = 50): Promise<number> {
   return prisma.$transaction(async (tx) => {
     const fines = await tx.fine.findMany({
-      where: { status: RecordStatus.ACTIVE, overdueNotified: false, dueAt: { lte: now } },
+      // A fine whose payment report waits for the staff is not announced as overdue meanwhile.
+      where: {
+        status: RecordStatus.ACTIVE,
+        overdueNotified: false,
+        dueAt: { lte: now },
+        paymentClaims: { none: { decision: DecisionStatus.PENDING } },
+      },
       orderBy: { dueAt: "asc" },
       take: limit,
       select: { id: true },
