@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChannelSelect, type ChannelOption } from "./channel-select";
 import { GuildChipPicker, RoleChipPicker, type RoleChipOption } from "./role-chip-picker";
 import { ToggleRow } from "./toggle-row";
+import { LawyerCallPublish } from "./lawyer-call-publish";
 import { TokenReceivePublish } from "./token-receive-publish";
 
 export type Stage4SettingsValues = {
@@ -23,6 +24,7 @@ export type Stage4SettingsValues = {
   "vehicleRequests.channelId": string | null;
   "vehicleRequests.pingRoleIds": string[];
   "vehicleRequests.requesterRoleIds": string[];
+  "lawyerCalls.lawyerRoleIds": string[];
   "webhooks.notifyChannelId": string | null;
   "feedback.notifyChannelId": string | null;
   "feedback.categories": string[];
@@ -43,6 +45,7 @@ export type ModuleTabId =
   | "icBlacklist"
   | "tokens"
   | "vehicleRequests"
+  | "lawyerCalls"
   | "webhooks"
   | "feedback"
   | "invites";
@@ -58,6 +61,7 @@ export function Stage4SettingsManager({
   incidentGuildId,
   govGuildId,
   tokenOpenMessage = null,
+  lawyerCallOpenMessage = null,
 }: {
   initial: Stage4SettingsValues;
   /** Which module's settings to show; the strip of tabs belongs to the page. */
@@ -71,6 +75,11 @@ export function Stage4SettingsManager({
   incidentGuildId: string | null;
   govGuildId: string | null;
   tokenOpenMessage?: {
+    guildDiscordId: string;
+    channelDiscordId: string;
+    messageDiscordId: string;
+  } | null;
+  lawyerCallOpenMessage?: {
     guildDiscordId: string;
     channelDiscordId: string;
     messageDiscordId: string;
@@ -439,6 +448,30 @@ export function Stage4SettingsManager({
               />
               <span className="field-hint">Без выбранных ролей на сервере фракции запросить может любой его участник.</span>
             </div>
+          </>
+        ) : null}
+
+        {tab === "lawyerCalls" ? (
+          <>
+            <h2 className="panel-title">Вызов адвоката</h2>
+            <div className="field">
+              <span className="field-label">Роль «Адвокат»</span>
+              <RoleChipPicker
+                roles={incidentRoles}
+                selected={values["lawyerCalls.lawyerRoleIds"]}
+                onChange={(next) => patch("lawyerCalls.lawyerRoleIds", next)}
+                emptyHint={incidentRolesEmpty}
+              />
+              <span className="field-hint">
+                Эту роль бот упоминает в каждом вызове, и только она может нажать «Принять вызов».
+              </span>
+            </div>
+            <hr className="u-rule" />
+            <LawyerCallPublish
+              channels={channels}
+              incidentGuildId={incidentGuildId}
+              initialOpenMessage={lawyerCallOpenMessage}
+            />
           </>
         ) : null}
 

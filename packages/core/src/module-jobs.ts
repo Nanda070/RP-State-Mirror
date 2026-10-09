@@ -38,6 +38,7 @@ export const MODULE_JOB_TYPES = {
   TOKEN_RECEIVE_PUBLISH: "token.receive_publish",
   WEBHOOK_REQUEST_NOTIFY: "webhook_request.notify",
   VEHICLE_REQUEST_SEND: "vehicle_request.send",
+  LAWYER_CALL_PANEL_PUBLISH: "lawyer_call.panel_publish",
   IC_BLACKLIST_PUBLISH: "ic_blacklist.publish",
   IC_BLACKLIST_EDIT_CLOSED: "ic_blacklist.edit_closed",
   ADMIN_ROLES_APPLY: "admin_roles.apply",

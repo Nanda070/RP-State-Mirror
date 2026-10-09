@@ -58,6 +58,8 @@ import {
   setDiscordFormOpenMessage,
   setFeedbackOpenMessage,
   setTokenReceiveOpenMessage,
+  setLawyerCallOpenMessage,
+  LAWYER_CALL_PANEL_TEXT,
   resolveDocumentResponseDelivery,
   resolveDocumentResponseLocalDelivery,
   resolveFactionDocumentDelivery,
@@ -1669,6 +1671,48 @@ const tokenReceivePublish: JobHandler = async (payload, { client, log }) => {
   return { status: "sent", messageId: message.id, messageUrl };
 };
 
+/** The «Вызвать адвоката» panel on the ЧП server; a new publish into the same channel edits the old one. */
+const lawyerCallPanelPublish: JobHandler = async (payload, { client, log }) => {
+  const guildDiscordId = String(payload.guildDiscordId ?? "");
+  const channelDiscordId = String(payload.channelDiscordId ?? "");
+  const messageText =
+    typeof payload.messageText === "string" && payload.messageText.trim()
+      ? payload.messageText.trim().slice(0, 2000)
+      : LAWYER_CALL_PANEL_TEXT;
+
+  const spec: EmbedSpec = {
+    version: 1,
+    embeds: [{ type: "embed", title: "Вызов адвоката", description: messageText, color: 0x5865f2 }],
+    components: [
+      {
+        type: "action_row",
+        components: [{ type: "button", label: "Вызвать адвоката", style: "primary", action: "lawyer.call" }],
+      },
+    ],
+  };
+  const ready = await materializeEmbedSpecButtons(spec);
+  const options = embedSpecToMessageOptions(ready);
+
+  const guild = await client.guilds.fetch(guildDiscordId);
+  const channel = (await guild.channels.fetch(channelDiscordId)) as TextChannel | null;
+  if (!channel?.isTextBased()) throw new Error(`Канал ${channelDiscordId} недоступен`);
+
+  const previous = await getSetting("lawyerCalls.openMessage");
+  let message = null;
+  if (previous && previous.channelDiscordId === channelDiscordId) {
+    const existing = await channel.messages.fetch(previous.messageDiscordId).catch(() => null);
+    if (existing) message = await existing.edit(options as Parameters<typeof existing.edit>[0]);
+  }
+  if (!message) message = await channel.send(options);
+
+  await setLawyerCallOpenMessage({ guildDiscordId: guild.id, channelDiscordId: channel.id, messageDiscordId: message.id });
+  await recordSentMessage({ guildDiscordId: guild.id, channelDiscordId: channel.id, messageDiscordId: message.id, spec: ready });
+
+  const messageUrl = discordMessageUrl(guild.id, channel.id, message.id);
+  log.info({ messageId: message.id, messageUrl }, "lawyer call panel published");
+  return { status: "sent", messageId: message.id, messageUrl };
+};
+
 const webhookRequestNotify: JobHandler = async (payload, { client, log }) => {
   const requestId = String(payload.requestId ?? "");
   const request = await prisma.webhookRequest.findUnique({ where: { id: requestId } });
@@ -1965,6 +2009,7 @@ export const jobHandlers = new Map<string, JobHandler>([
   [MODULE_JOB_TYPES.FORM_SUBMISSION_DECIDED, formSubmissionDecided],
   [MODULE_JOB_TYPES.FORM_OPEN_PUBLISH, formOpenPublish],
   [MODULE_JOB_TYPES.TOKEN_RECEIVE_PUBLISH, tokenReceivePublish],
+  [MODULE_JOB_TYPES.LAWYER_CALL_PANEL_PUBLISH, lawyerCallPanelPublish],
   [MODULE_JOB_TYPES.WEBHOOK_REQUEST_NOTIFY, webhookRequestNotify],
   [MODULE_JOB_TYPES.VEHICLE_REQUEST_SEND, vehicleRequestSend],
   [MODULE_JOB_TYPES.IC_BLACKLIST_PUBLISH, icBlacklistPublish],

@@ -42,6 +42,8 @@ export default async function ModulesSettingsPage({
       "vehicleRequests.channelId",
       "vehicleRequests.pingRoleIds",
       "vehicleRequests.requesterRoleIds",
+      "lawyerCalls.lawyerRoleIds",
+      "lawyerCalls.openMessage",
       "webhooks.notifyChannelId",
       "feedback.notifyChannelId",
       "feedback.categories",
@@ -100,6 +102,7 @@ export default async function ModulesSettingsPage({
     "vehicleRequests.channelId": settings["vehicleRequests.channelId"],
     "vehicleRequests.pingRoleIds": settings["vehicleRequests.pingRoleIds"],
     "vehicleRequests.requesterRoleIds": settings["vehicleRequests.requesterRoleIds"],
+    "lawyerCalls.lawyerRoleIds": settings["lawyerCalls.lawyerRoleIds"],
     "webhooks.notifyChannelId": settings["webhooks.notifyChannelId"],
     "feedback.notifyChannelId": settings["feedback.notifyChannelId"],
     "feedback.categories": settings["feedback.categories"],
@@ -139,6 +142,7 @@ export default async function ModulesSettingsPage({
           incidentGuildId,
           govGuildId,
           tokenOpenMessage: settings["tokens.openMessage"],
+          lawyerCallOpenMessage: settings["lawyerCalls.openMessage"],
         }}
       />
     </div>

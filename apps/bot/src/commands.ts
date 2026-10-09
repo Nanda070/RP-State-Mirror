@@ -15,6 +15,7 @@ import {
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
   type RESTPostAPIContextMenuApplicationCommandsJSONBody,
 } from "discord.js";
+import { LAWYER_CALL_PLACES } from "@mirror/core";
 
 type SlashBuilder = SlashCommandBuilder | ReturnType<SlashCommandBuilder["addStringOption"]>;
 
@@ -330,6 +331,18 @@ export const vehicleRequestCommand = new SlashCommandBuilder()
     o.setName("время").setDescription("Когда нужен транспорт, например «сегодня 20:00 МСК»").setRequired(true).setMaxLength(100),
   );
 
+/** Anyone on the ЧП server calls a lawyer; the call is posted in the same channel. */
+export const lawyerCallCommand = new SlashCommandBuilder()
+  .setName("вызов-адвоката")
+  .setDescription("Вызвать адвоката")
+  .addStringOption((o) =>
+    o
+      .setName("место")
+      .setDescription("Куда вызвать адвоката")
+      .setRequired(true)
+      .addChoices(...LAWYER_CALL_PLACES.map((place) => ({ name: place.label, value: place.value }))),
+  );
+
 export const blacklistAddCommand = new SlashCommandBuilder()
   .setName("чс-гос")
   .setDescription("Добавить гражданина в IC чёрный список правительства штата")
@@ -408,6 +421,7 @@ export const ALL_COMMANDS: Array<
   transferCommand.toJSON(),
   webhookRequestCommand.toJSON(),
   vehicleRequestCommand.toJSON(),
+  lawyerCallCommand.toJSON(),
   blacklistAddCommand.toJSON(),
   blacklistRemoveCommand.toJSON(),
   blacklistFindCommand.toJSON(),

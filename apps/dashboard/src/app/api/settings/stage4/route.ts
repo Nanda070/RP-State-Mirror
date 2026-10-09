@@ -9,6 +9,7 @@ import {
   isSettingKey,
   publishDiscordFormOpen,
   publishFeedbackOpen,
+  publishLawyerCallPanel,
   publishTokenReceive,
   setSetting,
   setWebhookRequestStatus,
@@ -38,6 +39,7 @@ const settingKeys = [
   "vehicleRequests.channelId",
   "vehicleRequests.pingRoleIds",
   "vehicleRequests.requesterRoleIds",
+  "lawyerCalls.lawyerRoleIds",
   "webhooks.notifyChannelId",
   "feedback.notifyChannelId",
   "feedback.categories",
@@ -104,6 +106,11 @@ const actionSchema = z.discriminatedUnion("action", [
     channelDiscordId: snowflake,
     messageText: z.string().trim().max(2000).nullable().optional(),
   }),
+  z.object({
+    action: z.literal("publish-lawyer-call"),
+    channelDiscordId: snowflake,
+    messageText: z.string().trim().max(2000).nullable().optional(),
+  }),
   z.object({ action: z.literal("disable-form"), formId: z.string().min(1) }),
   z.object({ action: z.literal("enable-form"), formId: z.string().min(1) }),
   z.object({ action: z.literal("archive-form"), formId: z.string().min(1) }),
@@ -150,6 +157,14 @@ export async function PATCH(request: Request) {
             channelDiscordId: action.channelDiscordId,
             messageText: action.messageText ?? null,
           },
+          context,
+        ),
+      );
+    }
+    if (action.action === "publish-lawyer-call") {
+      return Response.json(
+        await publishLawyerCallPanel(
+          { channelDiscordId: action.channelDiscordId, messageText: action.messageText ?? null },
           context,
         ),
       );

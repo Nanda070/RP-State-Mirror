@@ -76,6 +76,7 @@ import {
   type Logger,
   type PersonnelEventType,
 } from "@mirror/core";
+import { startLawyerCall } from "./lawyer-call.js";
 
 export interface SlashHandlerContext {
   superAdminUserIds: readonly string[];
@@ -342,6 +343,9 @@ export async function handleSlashCommand(
         break;
       case "запрос-тс":
         await handleVehicleRequest(interaction, ctx);
+        break;
+      case "вызов-адвоката":
+        await startLawyerCall(interaction, interaction.options.getString("место", true), auditFromInteraction(interaction), ctx.log);
         break;
       case "чс-гос":
       case "снятие-чс-гос":

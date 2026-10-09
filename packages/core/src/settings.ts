@@ -136,6 +136,22 @@ export const settingDefinitions = {
     [],
     "Роли, которым разрешена команда /запрос-тс: выбираются по серверам; пока на сервере не выбрано ни одной, действует общее правило",
   ),
+  "lawyerCalls.lawyerRoleIds": defineSetting(
+    z.array(snowflakeSchema).max(25).default([]),
+    [],
+    "Роли «Адвокат» на сервере ЧП: их пингует /вызов-адвоката, и только они принимают вызов",
+  ),
+  "lawyerCalls.openMessage": defineSetting(
+    z
+      .object({
+        guildDiscordId: snowflakeSchema,
+        channelDiscordId: snowflakeSchema,
+        messageDiscordId: snowflakeSchema,
+      })
+      .nullable(),
+    null,
+    "Последнее опубликованное сообщение с кнопкой «Вызвать адвоката»",
+  ),
   "webhooks.notifyChannelId": defineSetting(
     snowflakeSchema.nullable(),
     null,

@@ -94,6 +94,7 @@ docs/                 PLAN, TECHNICAL, DEPLOYMENT, DEVLOG
 | `embeds.ts`, `legacy-embeds.ts`, `stage4-embeds.ts`, `message-designs.ts` | описание сообщений, готовые шаблоны, кнопки |
 | `forms.ts` | конструктор форм, проверка ответов, черновики |
 | `vehicles.ts`, `transfer-rules.ts`, `faq.ts`, `profile.ts` | разделы для игроков |
+| `lawyer-calls.ts` | «Вызов адвоката»: `createLawyerCall` (только сервер ЧП, место из `LAWYER_CALL_PLACES`, нужна роль адвоката), `acceptLawyerCall` (одно принятие на вызов — условное обновление `PENDING → ACCEPTED`), `cancelLawyerCall` (вызвавший, пока не принят), `publishLawyerCallPanel` (кнопка в канал ЧП через очередь). Роль — `lawyerCalls.lawyerRoleIds`, а пока она пуста — `LAWYER_ROLE_IDS_FALLBACK` в коде: единственное место, где ID Discord можно задать в коде |
 | `fine-claims.ts` | «Я оплатил»: `createFinePaymentClaim` принимает сообщение об оплате со скриншотом (одно на штраф; от владельца статика, а если статик ни к кому не привязан — от любого), `decideFinePaymentClaim` подтверждает или отклоняет его. Подтверждение закрывает штраф так же, как `/штраф-оплачено`. Сообщения публикуются в канал `fines.claimChannelId`; пока он не выбран, функция выключена и кнопка нигде не показывается. Штраф, закрытый командой или отменённый, сам закрывает висящее сообщение; пока сообщение ждёт, просрочка по штрафу не объявляется. Кто подтверждает — `canConfirmFinePayment`: администраторы и `fines.managerRoleIds` |
 | `forms.ts` (решения) | форма с признаком `requiresDecision`: новый ответ получает решение «ждёт» и две кнопки (`form.approve`, `form.reject` в `button_actions`); `decideFormSubmission` принимает одно решение, не от автора ответа, и ставит задачу `form.submission_decided`. Режим требует доставки в канал ботом: под сообщением обычного вебхука кнопки не работают. Кто решает — `canDecideFormSubmission`: администраторы и роли формы (`deciderRoleIds`) |
 | `player-card.ts` | карточка человека для Discord: `buildPlayerCard` собирает её из тех же данных, что страница профиля (`getPlayerProfile`), `getDossierAccess` решает, кто может открыть чужую карточку и видит ли он блок IC ЧС |
@@ -337,6 +338,7 @@ discord.js 14. Интенты: `Guilds`, `GuildMembers` (в Developer Portal в�
 | `/перевод-фракции` | игрок; решение — каждая сторона за себя |
 | `/создать-вебхук` | сотрудники фракций |
 | `/запрос-тс` | роли, выбранные для сервера в «Модули → Запрос ТС» (`vehicleRequests.requesterRoleIds`); без выбора — любой участник сервера фракции, на прочих серверах — сотрудники фракций; администраторы всегда; запрос уходит в канал из «Модули → Запрос ТС» с упоминанием выбранных ролей, в сообщении — сервер-источник и заявитель |
+| `/вызов-адвоката` | любой участник сервера ЧП, только в текстовом канале; вызов появляется там же с упоминанием `lawyerCalls.lawyerRoleIds` и веткой под ним. «Принять вызов» — только эти роли (не сам вызвавший), «Отменить» — только вызвавший, пока вызов не принят. То же делает кнопка `lawyer.call` (окно с выбором места). Обработка — `apps/bot/src/lawyer-call.ts` |
 | `/чс-гос`, `/снятие-чс-гос`, `/чс-найти` | роли `icBlacklist.*` |
 | `/проверить-фракции`, `/инвайт-админ` | администраторы |
 | `/профиль` | любой участник: своя карточка (персонажи, неоплаченные штрафы, розыск, регистрации), ответ виден только ему |
@@ -478,7 +480,7 @@ Vitest, интеграционные: настоящая PostgreSQL (`docker-com
 | Область | Файлы |
 |---|---|
 | ядро | `audit-settings`, `jobs`, `members-identity`, `role-mappings`, `access`, `errors`, `seed-env`, `utilities` |
-| модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules`, `improve-registration-leave`, `improve-fine-claims` |
+| модули | `stage3-modules`, `module-jobs`, `legacy-embeds`, `embeds-buttons`, `cp-sync`, `stage4-tokens`, `stage4-registrations`, `stage4-transfers`, `stage4-blacklist`, `stage4-modules`, `improve-registration-leave`, `improve-fine-claims`, `lawyer-calls` |
 | надёжность бота | `bot-reliability` |
 | разделы игроков | `stage5-catalog`, `stage5-transfer-rules`, `stage5-faq`, `stage5-profile`, `improve-player-card`, `stage5-forms`, `improve-form-decisions`, `stage5-share-links`, `stage5-role-panels` |
 | администрирование | `stage6-admin` (блокировка, баны, сессии, admin-роли, мониторинг, экспорт, архив) |

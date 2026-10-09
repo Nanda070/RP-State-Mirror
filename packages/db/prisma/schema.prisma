@@ -57,6 +57,12 @@ enum DecisionStatus {
   REJECTED
 }
 
+enum LawyerCallStatus {
+  PENDING
+  ACCEPTED
+  CANCELLED
+}
+
 enum TransferStatus {
   PENDING
   APPROVED
@@ -465,6 +471,30 @@ model FinePaymentClaim {
   @@index([fineId, decision])
   @@index([decision])
   @@map("fine_payment_claims")
+}
+
+/// «Вызов адвоката» on the ЧП server: who called, where, and the lawyer who took the call.
+model LawyerCall {
+  id                  String           @id @default(cuid())
+  /// Place code from `LAWYER_CALL_PLACES` in core: lspd_kpz | lssd_kpz | fib_office | federal_prison.
+  place               String
+  callerDiscordId     String           @map("caller_discord_id")
+  /// The caller's nickname on the ЧП server at the moment of the call.
+  callerName          String           @map("caller_name")
+  guildDiscordId      String           @map("guild_discord_id")
+  channelDiscordId    String           @map("channel_discord_id")
+  messageDiscordId    String?          @map("message_discord_id")
+  threadDiscordId     String?          @map("thread_discord_id")
+  status              LawyerCallStatus @default(PENDING)
+  acceptedByDiscordId String?          @map("accepted_by_discord_id")
+  acceptedAt          DateTime?        @map("accepted_at")
+  cancelledAt         DateTime?        @map("cancelled_at")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([callerDiscordId])
+  @@map("lawyer_calls")
 }
 
 // ──────────────────────────────────────────────────────────────

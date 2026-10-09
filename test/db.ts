@@ -34,6 +34,7 @@ const TABLES = [
   "document_responses",
   "documents",
   "wanteds",
+  "lawyer_calls",
   "fine_payment_claims",
   "fines",
   "personnel_events",

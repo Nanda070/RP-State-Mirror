@@ -82,6 +82,7 @@ export const BUTTON_ACTIONS = [
   "form.open",
   "feedback.open",
   "token.receive",
+  "lawyer.call",
 ] as const;
 export type ButtonActionName = (typeof BUTTON_ACTIONS)[number];
 

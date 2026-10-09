@@ -16,6 +16,7 @@ export * from "./exports.js";
 export * from "./factions.js";
 export * from "./faq.js";
 export * from "./fine-claims.js";
+export * from "./lawyer-calls.js";
 export * from "./fines.js";
 export * from "./forms.js";
 export * from "./identity.js";

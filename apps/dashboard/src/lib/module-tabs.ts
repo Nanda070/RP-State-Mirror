@@ -8,6 +8,7 @@ export const MODULE_TABS = [
   { id: "icBlacklist", label: "IC ЧС", icon: "ban" },
   { id: "tokens", label: "Нашивки", icon: "tag" },
   { id: "vehicleRequests", label: "Запрос ТС", icon: "key" },
+  { id: "lawyerCalls", label: "Вызов адвоката", icon: "scale" },
   { id: "webhooks", label: "Вебхуки", icon: "hook" },
   { id: "feedback", label: "Обратная связь", icon: "chat" },
   { id: "invites", label: "Приглашения", icon: "link" },

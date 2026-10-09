@@ -6,7 +6,7 @@ export type EditorRole = { discordId: string; name: string; guildName: string };
 export type EditorForm = { id: string; name: string };
 
 type Container = Extract<EmbedSpec, { version: 2 }>["components"][number];
-type ButtonKind = "link" | "callback" | "role.toggle" | "form.open" | "feedback.open";
+type ButtonKind = "link" | "callback" | "role.toggle" | "form.open" | "feedback.open" | "lawyer.call";
 
 const BUTTON_KINDS: { value: ButtonKind; label: string }[] = [
   { value: "link", label: "Ссылка" },
@@ -14,6 +14,7 @@ const BUTTON_KINDS: { value: ButtonKind; label: string }[] = [
   { value: "role.toggle", label: "Выдать / снять роль" },
   { value: "form.open", label: "Открыть форму" },
   { value: "feedback.open", label: "Обратная связь" },
+  { value: "lawyer.call", label: "Вызов адвоката" },
 ];
 
 const BLOCK_TYPES: { value: V2Component["type"]; label: string }[] = [

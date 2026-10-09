@@ -58,6 +58,13 @@ import {
 } from "@mirror/core";
 import { AuditActorType, DecisionStatus, prisma } from "@mirror/db";
 import {
+  handleLawyerAccept,
+  handleLawyerCancel,
+  lawyerCallModal,
+  lawyerCallPlaceFromModal,
+  startLawyerCall,
+} from "./lawyer-call.js";
+import {
   buildRegistrationReview,
   buildTransferReview,
   editStoredReviewMessage,
@@ -1049,6 +1056,14 @@ async function routeModalSubmit(interaction: ModalSubmitInteraction, ctx: Intera
     await finishTransferDecision(interaction, ctx, transferId, "Решение об отказе сохранено.");
     return true;
   }
+  if (parsed.action === "lawyer.call") {
+    if (!(await getButtonAction(parsed.id))) {
+      await respondEphemeral(interaction, "Кнопка устарела или отключена.");
+      return true;
+    }
+    await startLawyerCall(interaction, lawyerCallPlaceFromModal(interaction), auditContext(interaction, "discord.modal"), ctx.log);
+    return true;
+  }
   if (parsed.action === "token.receive") {
     await deferModalEphemeral(interaction);
     if (!(await getButtonAction(parsed.id))) {
@@ -1109,6 +1124,16 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     return true;
   }
 
+  // «Принять вызов / Отменить» under a lawyer call carry the call itself.
+  if (parsed.action === "lawyer.accept") {
+    await handleLawyerAccept(interaction, parsed.id, auditContext(interaction, "discord.button"), ctx.log);
+    return true;
+  }
+  if (parsed.action === "lawyer.cancel") {
+    await handleLawyerCancel(interaction, parsed.id, auditContext(interaction, "discord.button"), ctx.log);
+    return true;
+  }
+
   // «Продолжить» of a multi-step form carries the form id itself, not a stored button action.
   if (parsed.action === "form.step") {
     await handleFormStep(interaction, parsed.id);
@@ -1148,6 +1173,8 @@ async function routeButton(interaction: ButtonInteraction, ctx: InteractionConte
     await handleFeedbackOpen(interaction);
   } else if (action === "token.receive") {
     await interaction.showModal(tokenReceiveModal(parsed.id));
+  } else if (action === "lawyer.call") {
+    await interaction.showModal(lawyerCallModal(`mirror:lawyer.call:${parsed.id}`));
   } else if (action === "callback") {
     await handleCallback(interaction, params);
   } else {
