@@ -13,9 +13,11 @@
     "@mirror/core": "workspace:*",
     "@mirror/db": "workspace:*",
     "discord.js": "^14.27.0",
+    "pg": "^8.23.1",
     "pino": "^10.3.1"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "typescript": "^5.9.2"
   }
 }

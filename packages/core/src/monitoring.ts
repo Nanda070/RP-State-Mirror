@@ -23,6 +23,21 @@ export async function recordHeartbeat(service: string, meta: Record<string, unkn
 
 export type ServiceState = "ok" | "down" | "unknown";
 
+/**
+ * «Пинг Discord 45 мс · ответ на нажатие: обычно 180 мс, 95% быстрее 420 мс» from the bot's heartbeat.
+ * The answer time runs from the moment Discord created the interaction to the bot's first reply.
+ */
+export function botSpeedDetail(meta: unknown): string {
+  if (!meta || typeof meta !== "object") return "";
+  const { pingMs, ackP50Ms, ackP95Ms } = meta as { pingMs?: unknown; ackP50Ms?: unknown; ackP95Ms?: unknown };
+  const parts: string[] = [];
+  if (typeof pingMs === "number" && pingMs >= 0) parts.push(`пинг Discord ${pingMs} мс`);
+  if (typeof ackP50Ms === "number" && typeof ackP95Ms === "number") {
+    parts.push(`ответ на нажатие: обычно ${ackP50Ms} мс, 95% быстрее ${ackP95Ms} мс`);
+  }
+  return parts.length > 0 ? ` · ${parts.join(" · ")}` : "";
+}
+
 export interface ServiceStatus {
   key: string;
   title: string;
@@ -104,7 +119,7 @@ export async function getSystemStatus(): Promise<ServiceStatus[]> {
       !heartbeat
         ? { key: "bot", title: "Бот", state: "unknown", detail: "ещё ни разу не выходил на связь" }
         : isHeartbeatFresh(heartbeat.at, now)
-          ? { key: "bot", title: "Бот", state: "ok", detail: `на связи, ${ago(heartbeat.at, now)}` }
+          ? { key: "bot", title: "Бот", state: "ok", detail: `на связи, ${ago(heartbeat.at, now)}${botSpeedDetail(heartbeat.meta)}` }
           : { key: "bot", title: "Бот", state: "down", detail: `нет связи, последний сигнал ${ago(heartbeat.at, now)}` },
     );
 

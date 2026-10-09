@@ -6,22 +6,40 @@ import { MessageFlags, type Client, type Interaction } from "discord.js";
 import {
   TECH_BAN_MESSAGE,
   findActiveTechBan,
+  listActiveDiscordBanIds,
   getLockdownCached,
   getSetting,
   lockdownText,
   type Logger,
 } from "@mirror/core";
 
-const BAN_CACHE_MS = 15_000;
-const banCache = new Map<string, { banned: boolean; at: number }>();
+/**
+ * Banned Discord accounts, in memory: the check before every interaction does not touch the
+ * database. The list is reloaded when bans change (`bans` notification) and every 15 seconds anyway;
+ * until the first load succeeds, each person is looked up directly.
+ */
+const BAN_RELOAD_MS = 15_000;
+let bannedIds: Set<string> | null = null;
+let bansLoadedAt = 0;
+let bansLoading: Promise<void> | null = null;
+
+export function reloadBans(log?: Logger): Promise<void> {
+  bansLoading ??= listActiveDiscordBanIds()
+    .then((ids) => {
+      bannedIds = new Set(ids);
+      bansLoadedAt = Date.now();
+    })
+    .catch((error: unknown) => log?.warn({ err: error }, "ban list was not reloaded"))
+    .finally(() => {
+      bansLoading = null;
+    });
+  return bansLoading;
+}
 
 async function isBanned(discordId: string): Promise<boolean> {
-  const cached = banCache.get(discordId);
-  if (cached && Date.now() - cached.at < BAN_CACHE_MS) return cached.banned;
-  const banned = Boolean(await findActiveTechBan({ discordId }));
-  if (banCache.size > 2_000) banCache.clear();
-  banCache.set(discordId, { banned, at: Date.now() });
-  return banned;
+  if (!bannedIds) return Boolean(await findActiveTechBan({ discordId }));
+  if (Date.now() - bansLoadedAt > BAN_RELOAD_MS) void reloadBans();
+  return bannedIds.has(discordId);
 }
 
 /**

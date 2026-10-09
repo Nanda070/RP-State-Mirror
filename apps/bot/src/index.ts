@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { hostname } from "node:os";
 import {
   ActivityType,
@@ -15,6 +16,9 @@ import {
   HEARTBEAT_INTERVAL_MS,
   archiveOldAuditLog,
   claimOverdueFines,
+  clearLockdownCache,
+  clearReadCache,
+  clearSettingsCache,
   closeRegistrationsOfLeavers,
   enableReadCache,
   onJobEnqueued,
@@ -44,11 +48,13 @@ import {
 } from "@mirror/core";
 import { handleButtonInteraction, handleModalSubmit, handleSelectInteraction } from "./buttons.js";
 import { evaluateMemberCpAccess, isCpRelevantGuild, reconcileCpAccess } from "./cp-sync.js";
-import { refusalFor, refuse, reportError } from "./guard.js";
+import { DbEvents } from "./db-events.js";
+import { refusalFor, refuse, reloadBans, reportError } from "./guard.js";
 import { jobHandlers } from "./handlers.js";
 import { DOSSIER_COMMAND_NAME, handleDossierCommand, handleProfileCommand } from "./player-card.js";
 import { handleFactionAutocomplete, handleSlashCommand } from "./slash.js";
 import { guildChannels, guildRoles, toGuildSnapshot, toMemberSnapshot } from "./snapshot.js";
+import { answerSpeed, watchAnswerSpeed } from "./speed.js";
 import { syncAllGuilds, syncGuild } from "./sync.js";
 import { JobWorker } from "./worker.js";
 
@@ -58,10 +64,14 @@ const MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 const BOT_ACTIVITY = "GTA5RP Mirror";
 
 const env = parseEnv(botEnvSchema);
+/** Caches of settings and reference data: short while the bot cannot hear changes, long while it can. */
+const SHORT_CACHE_MS = 5_000;
+const LONG_CACHE_MS = 5 * 60_000;
 // Commands read the same settings on every interaction: remember them for a few seconds.
-enableSettingsCache();
-enableReadCache();
+enableSettingsCache(SHORT_CACHE_MS);
+enableReadCache(SHORT_CACHE_MS);
 const log = createLogger("bot", env.LOG_LEVEL);
+const dbEvents = new DbEvents(env.DATABASE_URL, log.child({ component: "db-events" }));
 
 // «В сети» in the profile needs the privileged presence intent; it is switched on in the dashboard.
 // A change of the switch restarts the bot (see `beat`), because intents are fixed at login.
@@ -81,6 +91,28 @@ const client = new Client({
 
 const worker = new JobWorker(client, jobHandlers, log.child({ component: "worker" }), `${hostname()}:${process.pid}`, {
   onPermanentFailure: (job, error) => void reportError(client, `задача ${job.type} (${job.id})`, error, log),
+  // While changes are heard live, the caches are already fresh: every change dropped them.
+  beforeJob: () => {
+    if (dbEvents.connected) return;
+    clearSettingsCache();
+    clearReadCache();
+  },
+});
+watchAnswerSpeed(client, log.child({ component: "speed" }));
+
+dbEvents.on("jobs", () => worker.wake());
+dbEvents.on("settings", () => {
+  clearSettingsCache();
+  clearLockdownCache();
+});
+dbEvents.on("reference", () => clearReadCache());
+dbEvents.on("bans", () => void reloadBans(log));
+dbEvents.onConnection((connected) => {
+  // `enable…` also empties the cache, so nothing stale survives the switch.
+  enableSettingsCache(connected ? LONG_CACHE_MS : SHORT_CACHE_MS);
+  enableReadCache(connected ? LONG_CACHE_MS : SHORT_CACHE_MS);
+  clearLockdownCache();
+  if (!connected) log.warn("database changes are not heard live: polling the queue, short caches");
 });
 let reconcileTimer: NodeJS.Timeout | undefined;
 let maintenanceTimer: NodeJS.Timeout | undefined;
@@ -139,6 +171,8 @@ function beat() {
     guilds: client.guilds.cache.size,
     pingMs: Math.round(client.ws.ping),
     presence: presenceEnabled,
+    liveChanges: dbEvents.connected,
+    ...answerSpeed(),
   }).catch((error: unknown) => log.warn({ err: error }, "heartbeat was not recorded"));
   // The presence switch was changed in the dashboard: reconnect with the other set of intents.
   getSetting("presence.enabled")
@@ -190,18 +224,36 @@ if (presenceEnabled) {
   });
 }
 
+/**
+ * Slash commands go to Discord only when they changed since the last time: a restart does not
+ * re-send them, and Discord limits how often an application may replace its commands.
+ */
+async function registerCommandsIfChanged() {
+  const { ALL_COMMANDS, registerCommands } = await import("./commands.js");
+  const hash = createHash("sha256").update(env.DISCORD_CLIENT_ID).update(JSON.stringify(ALL_COMMANDS)).digest("hex");
+  if ((await getSetting("bot.commandsHash")) === hash) {
+    log.info({ commands: ALL_COMMANDS.length }, "slash commands unchanged");
+    return;
+  }
+  await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
+  await setSetting("bot.commandsHash", hash, { actorType: AuditActorType.SYSTEM, source: "bot.commands" });
+  log.info({ commands: ALL_COMMANDS.length }, "slash commands registered");
+}
+
 client.once(Events.ClientReady, (ready) => {
   log.info({ user: ready.user.tag, guilds: ready.guilds.cache.size }, "connected to Discord");
   guarded("ready", async () => {
     await migrateLegacyRegistrationChannels();
-    await syncAllGuilds(ready, log);
-    const { ALL_COMMANDS, registerCommands } = await import("./commands.js");
-    await registerCommands(env.DISCORD_BOT_TOKEN, env.DISCORD_CLIENT_ID);
-    log.info({ commands: ALL_COMMANDS.length }, "slash commands registered");
+    // The queue, the live changes and the heartbeat start at once: jobs queued while the bot was
+    // away (and dashboard actions) do not wait for the full sync of every server below.
+    dbEvents.start();
+    void reloadBans(log);
     worker.start();
-    // A command or a button of this bot queued a job: run it now, not at the next poll.
-    // The short delay lets the transaction that created the job commit.
-    onJobEnqueued(() => void setTimeout(() => worker.wake(), 200));
+    // A command or a button of this bot queued a job. While changes are heard live, the job's own
+    // notification arrives on commit; otherwise look at the queue after a short pause.
+    onJobEnqueued(() => {
+      if (!dbEvents.connected) setTimeout(() => worker.wake(), 200);
+    });
     beat();
     heartbeatTimer = setInterval(beat, HEARTBEAT_INTERVAL_MS);
     if (presenceEnabled) {
@@ -217,13 +269,14 @@ client.once(Events.ClientReady, (ready) => {
         }),
       RECONCILE_INTERVAL_MS,
     );
-    // Defer CP reconcile so it can reuse the warm member cache from syncAllGuilds.
-    setTimeout(
-      () => guarded("cp-reconcile-initial", () => reconcileCpAccess(ready, log.child({ component: "cp-sync" }))),
-      5_000,
-    );
     maintenanceTimer = setInterval(() => guarded("maintenance", runMaintenance), MAINTENANCE_INTERVAL_MS);
     guarded("maintenance-initial", runMaintenance);
+    guarded("commands", registerCommandsIfChanged);
+    // The full sync runs in the background; the ЧП reconcile follows it to reuse the warm member cache.
+    guarded("initial-sync", async () => {
+      await syncAllGuilds(ready, log);
+      await reconcileCpAccess(ready, log.child({ component: "cp-sync" }));
+    });
   });
 });
 
@@ -399,10 +452,17 @@ client.on(Events.Error, (error) => log.error({ err: error }, "discord client err
 
 let shuttingDown = false;
 
+/** A job stuck on Discord must not keep the process alive: Docker would kill it without a clean exit. */
+const SHUTDOWN_DEADLINE_MS = 15_000;
+
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info({ signal }, "shutting down");
+  setTimeout(() => {
+    log.error("shutdown took too long — exiting");
+    process.exit(process.exitCode ?? 1);
+  }, SHUTDOWN_DEADLINE_MS).unref();
   clearInterval(reconcileTimer);
   clearInterval(maintenanceTimer);
   clearInterval(heartbeatTimer);
@@ -410,6 +470,7 @@ async function shutdown(signal: string) {
   flushPresence();
   for (const timer of pendingResyncs.values()) clearTimeout(timer);
   await worker.stop();
+  await dbEvents.stop();
   await client.destroy();
   await prisma.$disconnect();
   process.exit(process.exitCode ?? 0);

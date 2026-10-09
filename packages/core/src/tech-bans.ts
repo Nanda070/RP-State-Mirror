@@ -94,6 +94,15 @@ export async function findActiveTechBan(subject: { discordId?: string | null; st
   return prisma.techBan.findFirst({ where: { status: RecordStatus.ACTIVE, OR: or } });
 }
 
+/** Every banned Discord account: the bot keeps the list in memory and checks it before each interaction. */
+export async function listActiveDiscordBanIds(): Promise<string[]> {
+  const rows = await prisma.techBan.findMany({
+    where: { status: RecordStatus.ACTIVE, kind: "DISCORD" },
+    select: { value: true },
+  });
+  return rows.map((row) => row.value);
+}
+
 export async function assertNotTechBanned(subject: { discordId?: string | null; staticId?: string | null }) {
   const ban = await findActiveTechBan(subject);
   if (!ban) return;

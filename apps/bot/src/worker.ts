@@ -35,6 +35,16 @@ export interface JobWorkerOptions {
   maxJobsPerTick?: number;
   /** How many jobs may run at the same time. */
   concurrency?: number;
+  /**
+   * Runs before every job. By default it drops the settings and reference caches, so a job sees
+   * what the dashboard just configured; the bot replaces it while it hears database changes live.
+   */
+  beforeJob?: () => void;
+}
+
+function dropCaches() {
+  clearSettingsCache();
+  clearReadCache();
 }
 
 /** Jobs about the same record must keep their order: «publish» before «edit». */
@@ -55,6 +65,7 @@ export class JobWorker {
   /** Last job of each record that is still running: the next one for that record waits for it. */
   private readonly chains = new Map<string, Promise<void>>();
   private readonly onPermanentFailure: ((job: Job, error: unknown) => void) | undefined;
+  private readonly beforeJob: () => void;
   private pollTimer: NodeJS.Timeout | undefined;
   private staleTimer: NodeJS.Timeout | undefined;
   private running: Promise<void> | undefined;
@@ -72,6 +83,7 @@ export class JobWorker {
     this.maxJobsPerTick = options.maxJobsPerTick ?? 20;
     this.concurrency = Math.max(1, options.concurrency ?? 3);
     this.onPermanentFailure = options.onPermanentFailure;
+    this.beforeJob = options.beforeJob ?? dropCaches;
   }
 
   start() {
@@ -151,8 +163,7 @@ export class JobWorker {
     try {
       // A job often runs right after its channel or roles were configured in the dashboard:
       // it must see the settings as they are now, not as the bot remembered them.
-      clearSettingsCache();
-      clearReadCache();
+      this.beforeJob();
       const payload = (job.payload ?? {}) as Record<string, unknown>;
       const result = await handler(payload, { client: this.client, job, log });
       const reason = deferredReason(result);

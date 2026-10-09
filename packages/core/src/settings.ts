@@ -209,6 +209,11 @@ export const settingDefinitions = {
     false,
     "Статус «в сети» в профиле: бот подключается с Presence Intent (включить в Discord Developer Portal)",
   ),
+  "bot.commandsHash": defineSetting(
+    z.string().max(128).nullable(),
+    null,
+    "Служебное: отпечаток slash-команд, последний раз отправленных в Discord (бот отправляет их заново, только когда они изменились)",
+  ),
   "cp.syncEnabled": defineSetting(z.boolean(), true, "Синхронизация ролей ЧП включена"),
   "cp.excludedRoleIds": defineSetting(
     z.array(snowflakeSchema).default([]),
